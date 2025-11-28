@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { MetricCard } from "@/components/MetricCard";
 import { ProgressBar } from "@/components/ProgressBar";
-import { FinancialAnalysis } from "@/lib/fileParser";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   ArrowLeft,
   TrendingUp,
@@ -14,37 +15,262 @@ import {
   Scale,
   Landmark,
   RefreshCw,
-  Percent,
   DollarSign,
   Receipt,
-  Calculator
+  Calculator,
+  LogOut,
+  Loader2
 } from "lucide-react";
 
+interface DREEntry {
+  descricao: string;
+  valor: number;
+  valor_anterior: number | null;
+}
+
+interface BalancoEntry {
+  conta: string;
+  tipo: string;
+  valor: number;
+  valor_anterior: number | null;
+  hierarchy: string;
+}
+
+interface CalculatedDRE {
+  receitaBruta: number;
+  receitaLiquida: number;
+  cmv: number;
+  lucroBruto: number;
+  despesasOperacionais: number;
+  lucroOperacional: number;
+  resultadoFinanceiro: number;
+  lucroLiquido: number;
+  margemBruta: number;
+  margemOperacional: number;
+  margemLiquida: number;
+}
+
+interface CalculatedBalanco {
+  ativoCirculante: number;
+  ativoNaoCirculante: number;
+  ativoTotal: number;
+  passivoCirculante: number;
+  passivoNaoCirculante: number;
+  passivoTotal: number;
+  patrimonioLiquido: number;
+}
+
 const Resultado = () => {
-  const [analysis, setAnalysis] = useState<FinancialAnalysis | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [dreData, setDreData] = useState<CalculatedDRE | null>(null);
+  const [balancoData, setBalancoData] = useState<CalculatedBalanco | null>(null);
+  const [insights, setInsights] = useState<string[]>([]);
   const navigate = useNavigate();
+  const { user, signOut } = useAuth();
 
   useEffect(() => {
-    const storedAnalysis = sessionStorage.getItem("fintrix-analysis");
-    if (storedAnalysis) {
-      setAnalysis(JSON.parse(storedAnalysis));
-    } else {
-      navigate("/upload");
+    if (!user) {
+      navigate("/auth");
+      return;
     }
-  }, [navigate]);
 
-  if (!analysis) {
+    loadData();
+  }, [user, navigate]);
+
+  const loadData = async () => {
+    if (!user) return;
+
+    try {
+      // Load DRE entries
+      const { data: dreEntries, error: dreError } = await supabase
+        .from('dre_entries')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (dreError) throw dreError;
+
+      // Load Balanço entries
+      const { data: balancoEntries, error: balancoError } = await supabase
+        .from('balanco_entries')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (balancoError) throw balancoError;
+
+      if (!dreEntries?.length && !balancoEntries?.length) {
+        navigate("/upload");
+        return;
+      }
+
+      // Calculate DRE metrics
+      const dre = calculateDREMetrics(dreEntries as DREEntry[]);
+      setDreData(dre);
+
+      // Calculate Balanço metrics
+      const balanco = calculateBalancoMetrics(balancoEntries as BalancoEntry[]);
+      setBalancoData(balanco);
+
+      // Generate insights
+      setInsights(generateInsights(dre, balanco));
+    } catch (error) {
+      console.error("Error loading data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const calculateDREMetrics = (entries: DREEntry[]): CalculatedDRE => {
+    const findValue = (keywords: string[]): number => {
+      for (const entry of entries) {
+        const desc = entry.descricao.toLowerCase();
+        for (const kw of keywords) {
+          if (desc.includes(kw.toLowerCase())) {
+            return Math.abs(entry.valor);
+          }
+        }
+      }
+      return 0;
+    };
+
+    const receitaBruta = findValue(['receita operacional', 'receita bruta', 'vendas de mercadorias', 'prestação de serviços']);
+    const receitaLiquida = findValue(['receita líquida', 'receita liquida']) || receitaBruta;
+    const cmv = findValue(['custo mercadorias', 'custo dos produtos', 'cmv', 'cpv', 'custo das mercadorias']);
+    const lucroBruto = findValue(['lucro bruto', 'resultado bruto']) || (receitaLiquida - cmv);
+    const despesasOperacionais = findValue(['despesas operacionais', 'despesas trabalhistas', 'despesas gerais']);
+    const lucroOperacional = findValue(['lucro operacional', 'resultado operacional']) || (lucroBruto - despesasOperacionais);
+    const resultadoFinanceiro = findValue(['resultado financeiro', 'receitas financeiras']);
+    const lucroLiquido = findValue(['lucro do exercício', 'lucro líquido', 'resultado do exercício', 'lucro do período']);
+
+    const margemBruta = receitaLiquida > 0 ? (lucroBruto / receitaLiquida) * 100 : 0;
+    const margemOperacional = receitaLiquida > 0 ? (lucroOperacional / receitaLiquida) * 100 : 0;
+    const margemLiquida = receitaLiquida > 0 ? (Math.abs(lucroLiquido) / receitaLiquida) * 100 : 0;
+
+    return {
+      receitaBruta,
+      receitaLiquida,
+      cmv,
+      lucroBruto,
+      despesasOperacionais,
+      lucroOperacional,
+      resultadoFinanceiro,
+      lucroLiquido: Math.abs(lucroLiquido),
+      margemBruta,
+      margemOperacional,
+      margemLiquida
+    };
+  };
+
+  const calculateBalancoMetrics = (entries: BalancoEntry[]): CalculatedBalanco => {
+    let ativoCirculante = 0;
+    let ativoNaoCirculante = 0;
+    let passivoCirculante = 0;
+    let passivoNaoCirculante = 0;
+    let patrimonioLiquido = 0;
+
+    for (const entry of entries) {
+      const conta = entry.conta.toLowerCase();
+      const valor = Math.abs(entry.valor);
+
+      // Check for main totals
+      if (conta.includes('ativo circulante') && !conta.includes('não')) {
+        ativoCirculante = Math.max(ativoCirculante, valor);
+      } else if (conta.includes('ativo') && (conta.includes('não circulante') || conta.includes('nao circulante'))) {
+        ativoNaoCirculante = Math.max(ativoNaoCirculante, valor);
+      } else if (conta.includes('passivo circulante') && !conta.includes('não')) {
+        passivoCirculante = Math.max(passivoCirculante, valor);
+      } else if (conta.includes('passivo') && (conta.includes('não circulante') || conta.includes('nao circulante'))) {
+        passivoNaoCirculante = Math.max(passivoNaoCirculante, valor);
+      } else if (conta.includes('patrimônio') || conta.includes('patrimonio')) {
+        patrimonioLiquido = Math.max(patrimonioLiquido, valor);
+      }
+    }
+
+    const ativoTotal = ativoCirculante + ativoNaoCirculante;
+    const passivoTotal = passivoCirculante + passivoNaoCirculante;
+
+    return {
+      ativoCirculante,
+      ativoNaoCirculante,
+      ativoTotal,
+      passivoCirculante,
+      passivoNaoCirculante,
+      passivoTotal,
+      patrimonioLiquido
+    };
+  };
+
+  const generateInsights = (dre: CalculatedDRE, balanco: CalculatedBalanco): string[] => {
+    const insights: string[] = [];
+
+    if (dre.margemLiquida > 20) {
+      insights.push("✅ Margem líquida excelente, acima de 20%. A empresa demonstra alta eficiência na conversão de receitas em lucro.");
+    } else if (dre.margemLiquida > 10) {
+      insights.push("👍 Margem líquida saudável entre 10-20%. Há espaço para otimização de custos.");
+    } else if (dre.margemLiquida > 0) {
+      insights.push("⚠️ Margem líquida abaixo de 10%. Recomenda-se revisão de custos operacionais e estratégia de preços.");
+    } else {
+      insights.push("🚨 Empresa operando com prejuízo. Necessária reestruturação urgente de custos.");
+    }
+
+    if (dre.receitaLiquida > 10000000) {
+      insights.push("📈 Receita líquida acima de R$ 10 milhões indica operação de grande porte.");
+    } else if (dre.receitaLiquida > 1000000) {
+      insights.push("📊 Receita líquida na faixa de R$ 1-10 milhões, característica de empresa de médio porte.");
+    }
+
+    if (balanco.ativoTotal > 0 && balanco.passivoCirculante > 0) {
+      const liquidezGeral = balanco.ativoCirculante / balanco.passivoCirculante;
+      if (liquidezGeral > 2) {
+        insights.push("💰 Liquidez corrente excelente. A empresa tem folga financeira para honrar compromissos de curto prazo.");
+      } else if (liquidezGeral > 1) {
+        insights.push("💵 Liquidez corrente adequada. Ativo circulante cobre as obrigações de curto prazo.");
+      } else {
+        insights.push("⚠️ Liquidez corrente preocupante. Pode haver dificuldades no pagamento de obrigações de curto prazo.");
+      }
+    }
+
+    if (balanco.patrimonioLiquido > 0 && balanco.ativoTotal > 0) {
+      const proporcaoPL = (balanco.patrimonioLiquido / balanco.ativoTotal) * 100;
+      if (proporcaoPL > 50) {
+        insights.push("🏦 Estrutura de capital sólida com baixa dependência de terceiros.");
+      } else if (proporcaoPL > 30) {
+        insights.push("📋 Estrutura de capital equilibrada entre capital próprio e de terceiros.");
+      } else {
+        insights.push("⚡ Alta alavancagem financeira. Empresa depende significativamente de capital de terceiros.");
+      }
+    }
+
+    return insights;
+  };
+
+  const handleLogout = async () => {
+    await signOut();
+    navigate("/");
+  };
+
+  if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
-          <div className="w-16 h-16 rounded-full border-4 border-primary border-t-transparent animate-spin mx-auto mb-4" />
+          <Loader2 className="w-16 h-16 animate-spin text-primary mx-auto mb-4" />
           <p className="text-muted-foreground">Carregando análise...</p>
         </div>
       </div>
     );
   }
 
-  const { dre, balanco, insights } = analysis;
+  if (!dreData || !balancoData) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-muted-foreground mb-4">Nenhum dado encontrado.</p>
+          <Link to="/upload">
+            <Button variant="hero">Fazer Upload</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background relative">
@@ -61,6 +287,10 @@ const Resultado = () => {
               Nova Análise
             </Button>
           </Link>
+          <Button variant="ghost" size="sm" onClick={handleLogout}>
+            <LogOut className="w-4 h-4 mr-2" />
+            Sair
+          </Button>
           <Link to="/">
             <Button variant="glass" size="sm">
               <ArrowLeft className="w-4 h-4 mr-2" />
@@ -96,23 +326,23 @@ const Resultado = () => {
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <MetricCard
               title="Receita Bruta"
-              value={dre.receitaBruta}
+              value={dreData.receitaBruta}
               icon={DollarSign}
               variant="highlight"
             />
             <MetricCard
               title="Receita Líquida"
-              value={dre.receitaLiquida}
+              value={dreData.receitaLiquida}
               icon={Wallet}
             />
             <MetricCard
               title="CMV / Custos"
-              value={dre.cmv}
+              value={dreData.cmv}
               icon={Receipt}
             />
             <MetricCard
               title="Lucro Bruto"
-              value={dre.lucroBruto}
+              value={dreData.lucroBruto}
               icon={PiggyBank}
               variant="accent"
             />
@@ -121,22 +351,22 @@ const Resultado = () => {
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <MetricCard
               title="Despesas Operacionais"
-              value={dre.despesasOperacionais}
+              value={dreData.despesasOperacionais}
               icon={Calculator}
             />
             <MetricCard
               title="Lucro Operacional"
-              value={dre.lucroOperacional}
+              value={dreData.lucroOperacional}
               icon={TrendingUp}
             />
             <MetricCard
               title="Resultado Financeiro"
-              value={dre.resultadoFinanceiro}
+              value={dreData.resultadoFinanceiro}
               icon={Scale}
             />
             <MetricCard
               title="Lucro Líquido"
-              value={dre.lucroLiquido}
+              value={dreData.lucroLiquido}
               icon={TrendingUp}
               variant="highlight"
             />
@@ -149,31 +379,31 @@ const Resultado = () => {
               <div>
                 <ProgressBar
                   label="Margem Bruta"
-                  value={dre.margemBruta}
+                  value={dreData.margemBruta}
                   variant="purple"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  {dre.margemBruta.toFixed(2)}%
+                  {dreData.margemBruta.toFixed(2)}%
                 </p>
               </div>
               <div>
                 <ProgressBar
                   label="Margem Operacional"
-                  value={dre.margemOperacional}
+                  value={dreData.margemOperacional}
                   variant="blue"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  {dre.margemOperacional.toFixed(2)}%
+                  {dreData.margemOperacional.toFixed(2)}%
                 </p>
               </div>
               <div>
                 <ProgressBar
                   label="Margem Líquida"
-                  value={dre.margemLiquida}
+                  value={dreData.margemLiquida}
                   variant="gradient"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  {dre.margemLiquida.toFixed(2)}%
+                  {dreData.margemLiquida.toFixed(2)}%
                 </p>
               </div>
             </div>
@@ -190,18 +420,18 @@ const Resultado = () => {
           <div className="grid md:grid-cols-3 gap-4 mb-8">
             <MetricCard
               title="Ativo Total"
-              value={balanco.ativoTotal}
+              value={balancoData.ativoTotal}
               icon={Building}
               variant="highlight"
             />
             <MetricCard
               title="Passivo Total"
-              value={balanco.passivoTotal}
+              value={balancoData.passivoTotal}
               icon={Scale}
             />
             <MetricCard
               title="Patrimônio Líquido"
-              value={balanco.patrimonioLiquido}
+              value={balancoData.patrimonioLiquido}
               icon={Landmark}
               variant="accent"
             />
@@ -216,14 +446,14 @@ const Resultado = () => {
                   <div className="flex justify-between text-sm mb-1">
                     <span className="text-muted-foreground">Ativo Circulante</span>
                     <span className="text-foreground">
-                      {balanco.ativoCirculante.toLocaleString("pt-BR", {
+                      {balancoData.ativoCirculante.toLocaleString("pt-BR", {
                         style: "currency",
                         currency: "BRL"
                       })}
                     </span>
                   </div>
                   <ProgressBar
-                    value={balanco.ativoTotal > 0 ? (balanco.ativoCirculante / balanco.ativoTotal) * 100 : 0}
+                    value={balancoData.ativoTotal > 0 ? (balancoData.ativoCirculante / balancoData.ativoTotal) * 100 : 0}
                     showPercentage={false}
                     variant="purple"
                   />
@@ -232,14 +462,14 @@ const Resultado = () => {
                   <div className="flex justify-between text-sm mb-1">
                     <span className="text-muted-foreground">Ativo Não Circulante</span>
                     <span className="text-foreground">
-                      {balanco.ativoNaoCirculante.toLocaleString("pt-BR", {
+                      {balancoData.ativoNaoCirculante.toLocaleString("pt-BR", {
                         style: "currency",
                         currency: "BRL"
                       })}
                     </span>
                   </div>
                   <ProgressBar
-                    value={balanco.ativoTotal > 0 ? (balanco.ativoNaoCirculante / balanco.ativoTotal) * 100 : 0}
+                    value={balancoData.ativoTotal > 0 ? (balancoData.ativoNaoCirculante / balancoData.ativoTotal) * 100 : 0}
                     showPercentage={false}
                     variant="blue"
                   />
@@ -255,14 +485,14 @@ const Resultado = () => {
                   <div className="flex justify-between text-sm mb-1">
                     <span className="text-muted-foreground">Passivo Circulante</span>
                     <span className="text-foreground">
-                      {balanco.passivoCirculante.toLocaleString("pt-BR", {
+                      {balancoData.passivoCirculante.toLocaleString("pt-BR", {
                         style: "currency",
                         currency: "BRL"
                       })}
                     </span>
                   </div>
                   <ProgressBar
-                    value={balanco.ativoTotal > 0 ? (balanco.passivoCirculante / balanco.ativoTotal) * 100 : 0}
+                    value={balancoData.ativoTotal > 0 ? (balancoData.passivoCirculante / balancoData.ativoTotal) * 100 : 0}
                     showPercentage={false}
                     variant="purple"
                   />
@@ -271,14 +501,14 @@ const Resultado = () => {
                   <div className="flex justify-between text-sm mb-1">
                     <span className="text-muted-foreground">Passivo Não Circulante</span>
                     <span className="text-foreground">
-                      {balanco.passivoNaoCirculante.toLocaleString("pt-BR", {
+                      {balancoData.passivoNaoCirculante.toLocaleString("pt-BR", {
                         style: "currency",
                         currency: "BRL"
                       })}
                     </span>
                   </div>
                   <ProgressBar
-                    value={balanco.ativoTotal > 0 ? (balanco.passivoNaoCirculante / balanco.ativoTotal) * 100 : 0}
+                    value={balancoData.ativoTotal > 0 ? (balancoData.passivoNaoCirculante / balancoData.ativoTotal) * 100 : 0}
                     showPercentage={false}
                     variant="blue"
                   />
@@ -287,14 +517,14 @@ const Resultado = () => {
                   <div className="flex justify-between text-sm mb-1">
                     <span className="text-muted-foreground">Patrimônio Líquido</span>
                     <span className="text-foreground">
-                      {balanco.patrimonioLiquido.toLocaleString("pt-BR", {
+                      {balancoData.patrimonioLiquido.toLocaleString("pt-BR", {
                         style: "currency",
                         currency: "BRL"
                       })}
                     </span>
                   </div>
                   <ProgressBar
-                    value={balanco.ativoTotal > 0 ? (balanco.patrimonioLiquido / balanco.ativoTotal) * 100 : 0}
+                    value={balancoData.ativoTotal > 0 ? (balancoData.patrimonioLiquido / balancoData.ativoTotal) * 100 : 0}
                     showPercentage={false}
                     variant="gradient"
                   />

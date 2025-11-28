@@ -3,16 +3,22 @@ import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { FileUpload } from "@/components/FileUpload";
-import { ArrowLeft, Loader2, ArrowRight } from "lucide-react";
-import { analyzeFinancials, FinancialAnalysis } from "@/lib/fileParser";
+import { ArrowLeft, Loader2, ArrowRight, Download, LogOut } from "lucide-react";
+import { uploadAndProcessFiles, generateDownloadableJSON } from "@/lib/supabaseUpload";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 
 const Upload = () => {
   const [dreFile, setDreFile] = useState<File | null>(null);
   const [balancoFile, setBalancoFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [lastResult, setLastResult] = useState<{
+    dre_entries?: unknown[];
+    balanco_entries?: unknown[];
+  } | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user, signOut } = useAuth();
 
   const handleProcess = async () => {
     if (!dreFile || !balancoFile) {
@@ -24,20 +30,40 @@ const Upload = () => {
       return;
     }
 
+    if (!user) {
+      toast({
+        title: "Autenticação necessária",
+        description: "Faça login para processar os arquivos.",
+        variant: "destructive"
+      });
+      navigate("/auth");
+      return;
+    }
+
     setIsProcessing(true);
 
     try {
-      const analysis = await analyzeFinancials(dreFile, balancoFile);
+      const result = await uploadAndProcessFiles(dreFile, balancoFile, user.id);
       
-      // Store analysis in sessionStorage to pass to results page
-      sessionStorage.setItem("fintrix-analysis", JSON.stringify(analysis));
-      
-      toast({
-        title: "Processamento concluído!",
-        description: "Os arquivos foram analisados com sucesso.",
-      });
+      if (result.success) {
+        setLastResult({
+          dre_entries: result.dre_entries,
+          balanco_entries: result.balanco_entries
+        });
 
-      navigate("/resultado");
+        toast({
+          title: "Processamento concluído!",
+          description: `${result.inserted_dre} linhas de DRE e ${result.inserted_balanco} linhas de Balanço inseridas.`,
+        });
+
+        navigate("/resultado");
+      } else {
+        toast({
+          title: "Erro no processamento",
+          description: result.errors.join('\n'),
+          variant: "destructive"
+        });
+      }
     } catch (error) {
       console.error("Error processing files:", error);
       toast({
@@ -50,6 +76,23 @@ const Upload = () => {
     }
   };
 
+  const handleDownloadDRE = () => {
+    if (lastResult?.dre_entries) {
+      generateDownloadableJSON(lastResult.dre_entries, 'normalized_dre.json');
+    }
+  };
+
+  const handleDownloadBalanco = () => {
+    if (lastResult?.balanco_entries) {
+      generateDownloadableJSON(lastResult.balanco_entries, 'normalized_balanco.json');
+    }
+  };
+
+  const handleLogout = async () => {
+    await signOut();
+    navigate("/");
+  };
+
   return (
     <div className="min-h-screen bg-background relative">
       {/* Background effects */}
@@ -58,12 +101,21 @@ const Upload = () => {
       {/* Navigation */}
       <nav className="relative z-10 container mx-auto px-6 py-6 flex items-center justify-between">
         <Logo />
-        <Link to="/">
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Voltar
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground hidden sm:block">
+            {user?.email}
+          </span>
+          <Button variant="ghost" size="sm" onClick={handleLogout}>
+            <LogOut className="w-4 h-4 mr-2" />
+            Sair
           </Button>
-        </Link>
+          <Link to="/">
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Voltar
+            </Button>
+          </Link>
+        </div>
       </nav>
 
       <main className="relative z-10 container mx-auto px-6 py-12">
@@ -116,19 +168,33 @@ const Upload = () => {
             </Button>
 
             <p className="text-sm text-muted-foreground text-center">
-              Os arquivos serão processados localmente.
+              Os dados serão salvos no banco de dados.
               <br />
-              Formatos aceitos: CSV, XLS, XLSX
+              Formatos aceitos: CSV (separador ;), XLS, XLSX
             </p>
           </div>
+
+          {/* Download buttons after processing */}
+          {lastResult && (
+            <div className="mt-8 flex justify-center gap-4">
+              <Button variant="glass" size="sm" onClick={handleDownloadDRE}>
+                <Download className="w-4 h-4 mr-2" />
+                Download DRE JSON
+              </Button>
+              <Button variant="glass" size="sm" onClick={handleDownloadBalanco}>
+                <Download className="w-4 h-4 mr-2" />
+                Download Balanço JSON
+              </Button>
+            </div>
+          )}
 
           {/* Info Card */}
           <div className="mt-12 glass-card p-6">
             <h3 className="font-display font-semibold mb-3">💡 Dica</h3>
             <p className="text-sm text-muted-foreground">
-              O sistema reconhece automaticamente o layout dos arquivos exportados por sistemas contábeis brasileiros 
-              como Domínio Sistemas. Certifique-se de que os arquivos contêm as informações de DRE e Balanço Patrimonial 
-              em formato tabular.
+              O sistema reconhece automaticamente arquivos CSV com separador ponto-e-vírgula (;), 
+              valores no formato brasileiro (1.234,56) e valores negativos entre parênteses.
+              Compatível com exports do Domínio Sistemas e outros sistemas contábeis brasileiros.
             </p>
           </div>
         </div>

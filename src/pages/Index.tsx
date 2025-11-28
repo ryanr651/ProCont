@@ -1,9 +1,16 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
-import { ArrowRight, BarChart3, FileSpreadsheet, Sparkles, Zap } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { ArrowRight, BarChart3, FileSpreadsheet, Sparkles, Zap, LogIn, LogOut } from "lucide-react";
 
 const Index = () => {
+  const { user, signOut } = useAuth();
+
+  const handleLogout = async () => {
+    await signOut();
+  };
+
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
       {/* Background effects */}
@@ -19,11 +26,26 @@ const Index = () => {
               Ver Exemplo
             </Button>
           </Link>
-          <Link to="/upload">
-            <Button variant="neon" size="sm">
-              Começar
-            </Button>
-          </Link>
+          {user ? (
+            <>
+              <Link to="/upload">
+                <Button variant="neon" size="sm">
+                  Upload
+                </Button>
+              </Link>
+              <Button variant="ghost" size="sm" onClick={handleLogout}>
+                <LogOut className="w-4 h-4 mr-2" />
+                Sair
+              </Button>
+            </>
+          ) : (
+            <Link to="/auth">
+              <Button variant="neon" size="sm">
+                <LogIn className="w-4 h-4 mr-2" />
+                Entrar
+              </Button>
+            </Link>
+          )}
         </div>
       </nav>
 
@@ -50,9 +72,9 @@ const Index = () => {
 
           {/* CTA Buttons */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-20 animate-fade-in" style={{ animationDelay: "0.4s" }}>
-            <Link to="/upload">
+            <Link to={user ? "/upload" : "/auth"}>
               <Button variant="hero" size="xl" className="group">
-                Enviar Arquivos
+                {user ? "Enviar Arquivos" : "Começar Agora"}
                 <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
               </Button>
             </Link>
