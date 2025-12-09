@@ -86,60 +86,6 @@ export type Database = {
         }
         Relationships: []
       }
-      dre_import: {
-        Row: {
-          Nome_conta: string
-          valor_ant: string[] | null
-          valor_atu: string[] | null
-        }
-        Insert: {
-          Nome_conta: string
-          valor_ant?: string[] | null
-          valor_atu?: string[] | null
-        }
-        Update: {
-          Nome_conta?: string
-          valor_ant?: string[] | null
-          valor_atu?: string[] | null
-        }
-        Relationships: []
-      }
-      dre_tabela: {
-        Row: {
-          Nome_conta: string | null
-          valor_ant: string | null
-          valora_atu: string | null
-        }
-        Insert: {
-          Nome_conta?: string | null
-          valor_ant?: string | null
-          valora_atu?: string | null
-        }
-        Update: {
-          Nome_conta?: string | null
-          valor_ant?: string | null
-          valora_atu?: string | null
-        }
-        Relationships: []
-      }
-      dre_teste: {
-        Row: {
-          Nome_Da_Conta: string | null
-          Valor_atual: string | null
-          Valor_Subtotal: string | null
-        }
-        Insert: {
-          Nome_Da_Conta?: string | null
-          Valor_atual?: string | null
-          Valor_Subtotal?: string | null
-        }
-        Update: {
-          Nome_Da_Conta?: string | null
-          Valor_atual?: string | null
-          Valor_Subtotal?: string | null
-        }
-        Relationships: []
-      }
       profiles: {
         Row: {
           created_at: string
