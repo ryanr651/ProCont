@@ -1,30 +1,41 @@
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 
-// Parse Brazilian number format: 1.234,56 -> 1234.56
-// Also handles (1.234,56) as negative
+// ============================================
+// PARSING DE NÚMEROS BRASILEIROS
+// ============================================
+
+/**
+ * Converte número brasileiro para float
+ * - Remove aspas
+ * - Remove "d" ou "c" do final
+ * - Remove separador de milhar (.)
+ * - Troca vírgula decimal por ponto
+ */
 export function parseBrazilianNumber(value: string | number | undefined | null): number {
   if (value === undefined || value === null || value === '') return 0;
   if (typeof value === 'number') return value;
   
   let cleaned = value.toString().trim();
   
-  // Remove R$ and currency symbols
+  // Remove aspas
+  cleaned = cleaned.replace(/"/g, '');
+  
+  // Remove "d" ou "c" do final (indicador débito/crédito)
+  cleaned = cleaned.replace(/[dc]$/i, '');
+  
+  // Remove R$ e símbolos de moeda
   cleaned = cleaned.replace(/R\$\s*/gi, '');
   
-  // Remove 'd' or 'c' suffix (debit/credit indicator) and any trailing junk like ";59d"
-  cleaned = cleaned.replace(/;.*$/, '');
-  cleaned = cleaned.replace(/[dc]$/i, '');
+  // Remove espaços
+  cleaned = cleaned.replace(/\s/g, '');
   
   // Handle parentheses as negative: (6.593,46) -> -6593.46
   const isNegative = cleaned.includes('(') && cleaned.includes(')');
   cleaned = cleaned.replace(/[()]/g, '');
   
-  // Remove spaces
-  cleaned = cleaned.replace(/\s/g, '');
-  
-  // Brazilian format: dots for thousands, comma for decimal
-  // 1.234.567,89 -> 1234567.89
+  // Remove separador de milhar (.) e troca vírgula decimal por ponto
+  // Formato brasileiro: 1.234.567,89 -> 1234567.89
   cleaned = cleaned.replace(/\./g, '').replace(',', '.');
   
   const num = parseFloat(cleaned);
@@ -33,178 +44,22 @@ export function parseBrazilianNumber(value: string | number | undefined | null):
   return isNegative ? -Math.abs(num) : num;
 }
 
-// Normalize header names for matching
-export function normalizeHeader(header: string): string {
-  if (!header) return '';
-  return header
-    .toString()
-    .toLowerCase()
-    .trim()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '') // Remove accents
-    .replace(/\s+/g, '_');
-}
+// ============================================
+// LEITURA DE ARQUIVOS (CSV, XLS, XLSX)
+// ============================================
 
-// Map column variations to standard names
-const DESCRIPTION_VARIATIONS = ['descricao', 'conta', 'titulo', 'historico', 'nome', 'classificacao'];
-const VALUE_VARIATIONS = ['valor', 'valor_atual', 'saldo', 'valor1', 'valor2', 'total'];
-const VALUE_ANTERIOR_VARIATIONS = ['valor_anterior', 'saldo_anterior', 'ano_anterior'];
-
-export function findColumnIndex(headers: string[], variations: string[]): number {
-  const normalizedHeaders = headers.map(normalizeHeader);
-  for (const variation of variations) {
-    const index = normalizedHeaders.findIndex(h => h.includes(variation));
-    if (index !== -1) return index;
-  }
-  return -1;
-}
-
-// Find the first text column (for description) and numeric columns (for values)
-export function detectColumns(rows: string[][]): {
-  descIndex: number;
-  valueIndex: number;
-  valueAnteriorIndex: number;
-  dataStartRow: number;
-} {
-  let descIndex = -1;
-  let valueIndex = -1;
-  let valueAnteriorIndex = -1;
-  let dataStartRow = 0;
-
-  // Try to find header row first
-  for (let i = 0; i < Math.min(10, rows.length); i++) {
-    const row = rows[i];
-    if (!row || row.length === 0) continue;
-
-    const headers = row.map(String);
-    const tempDescIndex = findColumnIndex(headers, DESCRIPTION_VARIATIONS);
-    const tempValueIndex = findColumnIndex(headers, VALUE_VARIATIONS);
-
-    if (tempDescIndex !== -1 || tempValueIndex !== -1) {
-      descIndex = tempDescIndex;
-      valueIndex = tempValueIndex;
-      valueAnteriorIndex = findColumnIndex(headers, VALUE_ANTERIOR_VARIATIONS);
-      dataStartRow = i + 1;
-      break;
-    }
-  }
-
-  // If no headers found, detect based on content
-  if (descIndex === -1 && valueIndex === -1) {
-    for (let i = 0; i < Math.min(15, rows.length); i++) {
-      const row = rows[i];
-      if (!row || row.length < 2) continue;
-
-      // Find first row with at least one text and one numeric value
-      let hasText = false;
-      let hasNumber = false;
-      let textCol = -1;
-      let numCol = -1;
-
-      for (let j = 0; j < row.length; j++) {
-        const cell = String(row[j] || '').trim();
-        if (!cell) continue;
-
-        const num = parseBrazilianNumber(cell);
-        if (num !== 0 || cell.match(/^[\d.,()R$\s-]+$/)) {
-          if (!hasNumber) {
-            hasNumber = true;
-            numCol = j;
-          }
-        } else if (cell.length > 2) {
-          if (!hasText) {
-            hasText = true;
-            textCol = j;
-          }
-        }
-      }
-
-      if (hasText && hasNumber) {
-        descIndex = textCol;
-        valueIndex = numCol;
-        // Look for second numeric column for valor_anterior
-        for (let j = numCol + 1; j < row.length; j++) {
-          const cell = String(row[j] || '').trim();
-          const num = parseBrazilianNumber(cell);
-          if (num !== 0 || cell.match(/^[\d.,()R$\s-]+$/)) {
-            valueAnteriorIndex = j;
-            break;
-          }
-        }
-        dataStartRow = i;
-        break;
-      }
-    }
-  }
-
-  // Fallback: assume first column is description, look for value columns
-  if (descIndex === -1) descIndex = 0;
-  if (valueIndex === -1) {
-    // Find first column with numbers
-    for (let i = 0; i < Math.min(20, rows.length); i++) {
-      const row = rows[i];
-      if (!row) continue;
-      for (let j = 1; j < row.length; j++) {
-        const num = parseBrazilianNumber(row[j]);
-        if (num !== 0) {
-          valueIndex = j;
-          if (j + 1 < row.length) {
-            valueAnteriorIndex = j + 1;
-          }
-          break;
-        }
-      }
-      if (valueIndex !== -1) break;
-    }
-  }
-
-  return { descIndex, valueIndex, valueAnteriorIndex, dataStartRow };
-}
-
-// Detect hierarchy level based on leading empty cells or indentation
-export function detectHierarchyLevel(row: string[], descIndex: number): number {
-  let level = 0;
-  for (let i = 0; i < descIndex; i++) {
-    if (!row[i] || String(row[i]).trim() === '') {
-      level++;
-    }
-  }
-  return level;
-}
-
-// Detect account type for balance sheet
-export function detectAccountType(description: string): string {
-  const upper = description.toUpperCase();
-  if (upper.includes('ATIVO')) return 'ATIVO';
-  if (upper.includes('PASSIVO')) return 'PASSIVO';
-  if (upper.includes('PATRIMÔNIO') || upper.includes('PATRIMONIO') || upper.includes('PL')) return 'PATRIMONIO_LIQUIDO';
-  return 'OUTRO';
-}
-
-// Parse file to 2D array
 export async function parseFileToArray(file: File): Promise<string[][]> {
   const extension = file.name.split('.').pop()?.toLowerCase();
   
   if (extension === 'csv') {
     return new Promise((resolve, reject) => {
       Papa.parse(file, {
-        delimiter: ';', // Brazilian CSV standard
-        skipEmptyLines: true,
+        delimiter: ';', // CSV brasileiro usa ponto-e-vírgula
+        skipEmptyLines: false, // Não pular linhas - precisamos contar
         complete: (results) => {
-          // If semicolon didn't work well, try comma
           const data = results.data as string[][];
-          if (data.length > 0 && data[0].length === 1) {
-            Papa.parse(file, {
-              delimiter: ',',
-              skipEmptyLines: true,
-              complete: (results2) => {
-                resolve(results2.data as string[][]);
-              },
-              error: reject
-            });
-          } else {
-            resolve(data);
-          }
+          console.log(`[Parser] CSV carregado: ${data.length} linhas`);
+          resolve(data);
         },
         error: reject
       });
@@ -218,27 +73,16 @@ export async function parseFileToArray(file: File): Promise<string[][]> {
       raw: false, 
       defval: '' 
     }) as string[][];
+    console.log(`[Parser] Excel carregado: ${data.length} linhas`);
     return data;
   }
   
   throw new Error('Formato não suportado. Use CSV, XLS ou XLSX.');
 }
 
-// Extract period from filename or content
-export function extractPeriod(filename: string, rows: string[][]): string {
-  // Try filename first
-  const dateMatch = filename.match(/(\d{2}\/\d{2}\/\d{4}|\d{4})/);
-  if (dateMatch) return dateMatch[1];
-
-  // Try content
-  for (const row of rows.slice(0, 10)) {
-    const text = row.join(' ');
-    const match = text.match(/(\d{2}\/\d{2}\/\d{4}|\d{4})/);
-    if (match) return match[1];
-  }
-
-  return new Date().getFullYear().toString();
-}
+// ============================================
+// TIPOS DE RETORNO
+// ============================================
 
 export interface ParsedDREEntry {
   descricao: string;
@@ -256,45 +100,98 @@ export interface ParsedBalancoEntry {
   raw_row: string[];
 }
 
+// ============================================
+// PARSER DE DRE (REGRAS FIXAS)
+// ============================================
+
+/**
+ * REGRAS OBRIGATÓRIAS DO DRE:
+ * - Ignorar linhas 1 a 7 (índices 0 a 6)
+ * - Linha 8 (índice 7) contém "Receita Operacional" - ignorar
+ * - A partir da linha 9 (índice 8), dados no formato:
+ *   ,nome_da_conta,,,, "valor_per" ,,,,, "valor_total"
+ * 
+ * Extrai: nome_conta, valor_periodo, valor_total
+ */
 export function parseDREFile(rows: string[][], filename: string): {
   entries: ParsedDREEntry[];
   periodo: string;
   errors: string[];
 } {
-  const { descIndex, valueIndex, valueAnteriorIndex, dataStartRow } = detectColumns(rows);
-  const periodo = extractPeriod(filename, rows);
   const entries: ParsedDREEntry[] = [];
   const errors: string[] = [];
+  const periodo = extractPeriod(filename, rows);
 
-  if (valueIndex === -1) {
-    errors.push('Não foi possível identificar a coluna de valores no DRE.');
-    return { entries, periodo, errors };
-  }
+  console.log(`[DRE Parser] Iniciando parse de ${rows.length} linhas`);
 
-  for (let i = dataStartRow; i < rows.length; i++) {
+  // Começa na linha 9 (índice 8)
+  const DATA_START_INDEX = 8;
+
+  for (let i = DATA_START_INDEX; i < rows.length; i++) {
     const row = rows[i];
     if (!row || row.length === 0) continue;
 
-    const descricao = String(row[descIndex] || '').trim();
-    if (!descricao || descricao.length < 2) continue;
+    try {
+      // Encontra o nome da conta (primeiro texto não vazio)
+      let nomeConta = '';
+      let foundText = false;
+      
+      for (const cell of row) {
+        const cellStr = String(cell || '').trim().replace(/"/g, '');
+        if (cellStr && !foundText) {
+          // Verifica se é texto (não é número)
+          const isNumber = /^[\d.,()R$\s-]+d?$/.test(cellStr);
+          if (!isNumber) {
+            nomeConta = cellStr;
+            foundText = true;
+            break;
+          }
+        }
+      }
 
-    const valor = parseBrazilianNumber(row[valueIndex]);
-    const valor_anterior = valueAnteriorIndex !== -1 
-      ? parseBrazilianNumber(row[valueAnteriorIndex]) 
-      : null;
+      if (!nomeConta) continue;
 
-    // Skip header-like rows
-    if (descricao.toLowerCase().includes('descri') || 
-        descricao.toLowerCase().includes('conta')) continue;
+      // Encontra os valores numéricos
+      const numericValues: number[] = [];
+      for (const cell of row) {
+        const cellStr = String(cell || '').trim();
+        if (!cellStr) continue;
+        
+        // Verifica se parece um número brasileiro
+        const cleanedForCheck = cellStr.replace(/"/g, '').replace(/[dc]$/i, '');
+        if (/^[\d.,()R$\s-]+$/.test(cleanedForCheck) && cleanedForCheck.length > 0) {
+          const num = parseBrazilianNumber(cellStr);
+          // Só adiciona se for um número válido (não 0 de conversão falha)
+          if (num !== 0 || cellStr.includes('0')) {
+            numericValues.push(num);
+          }
+        }
+      }
 
-    entries.push({
-      descricao,
-      valor,
-      valor_anterior: valor_anterior === 0 ? null : valor_anterior,
-      raw_row: row.map(String)
-    });
+      // Precisa ter pelo menos um valor
+      if (numericValues.length === 0) continue;
+
+      const valorPeriodo = numericValues[0] || 0;
+      const valorTotal = numericValues.length > 1 ? numericValues[1] : null;
+
+      console.log(`[DRE Parser] Linha ${i + 1}: "${nomeConta}" -> periodo: ${valorPeriodo}, total: ${valorTotal}`);
+
+      entries.push({
+        descricao: nomeConta,
+        valor: valorPeriodo,
+        valor_anterior: valorTotal,
+        raw_row: row.map(String)
+      });
+
+    } catch (err) {
+      const errorMsg = `Linha ${i + 1}: ${err instanceof Error ? err.message : 'Erro desconhecido'}`;
+      errors.push(errorMsg);
+      console.error(`[DRE Parser] ${errorMsg}`);
+    }
   }
 
+  console.log(`[DRE Parser] Total de entradas válidas: ${entries.length}`);
+  
   if (entries.length === 0) {
     errors.push('Nenhuma entrada válida encontrada no DRE.');
   }
@@ -302,66 +199,163 @@ export function parseDREFile(rows: string[][], filename: string): {
   return { entries, periodo, errors };
 }
 
+// ============================================
+// PARSER DE BALANÇO PATRIMONIAL (REGRAS FIXAS)
+// ============================================
+
+/**
+ * REGRAS OBRIGATÓRIAS DO BALANÇO:
+ * - Leitura começa na linha 9 (índice 8)
+ * - Linha começa com múltiplas vírgulas - ignorar todas
+ * - Primeiro texto encontrado após vírgulas = nome da conta
+ * - Primeiro número = valor atual
+ * - Segundo número = valor anterior
+ * 
+ * Exemplo:
+ * ,,ATIVO,,,,,,,,,,,,,"6.704.423,33d",,,,"5.481.704,59d",,
+ */
 export function parseBalancoFile(rows: string[][], filename: string): {
   entries: ParsedBalancoEntry[];
   periodo: string;
   errors: string[];
 } {
-  const { descIndex, valueIndex, valueAnteriorIndex, dataStartRow } = detectColumns(rows);
-  const periodo = extractPeriod(filename, rows);
   const entries: ParsedBalancoEntry[] = [];
   const errors: string[] = [];
+  const periodo = extractPeriod(filename, rows);
   let currentType = 'OUTRO';
   const hierarchyStack: string[] = [];
 
-  if (valueIndex === -1) {
-    errors.push('Não foi possível identificar a coluna de valores no Balanço.');
-    return { entries, periodo, errors };
-  }
+  console.log(`[Balanço Parser] Iniciando parse de ${rows.length} linhas`);
 
-  for (let i = dataStartRow; i < rows.length; i++) {
+  // Começa na linha 9 (índice 8)
+  const DATA_START_INDEX = 8;
+
+  for (let i = DATA_START_INDEX; i < rows.length; i++) {
     const row = rows[i];
     if (!row || row.length === 0) continue;
 
-    const conta = String(row[descIndex] || '').trim();
-    if (!conta || conta.length < 2) continue;
+    try {
+      // Conta quantas colunas vazias no início (para hierarquia)
+      let emptyCount = 0;
+      for (const cell of row) {
+        const cellStr = String(cell || '').trim();
+        if (cellStr === '' || cellStr === '""') {
+          emptyCount++;
+        } else {
+          break;
+        }
+      }
 
-    // Skip header-like rows
-    if (conta.toLowerCase().includes('descri') || 
-        conta.toLowerCase() === 'conta') continue;
+      // Encontra o nome da conta (primeiro texto não vazio após as vírgulas)
+      let nomeConta = '';
+      
+      for (const cell of row) {
+        const cellStr = String(cell || '').trim().replace(/"/g, '');
+        if (!cellStr) continue;
+        
+        // Verifica se é texto (não é número)
+        const isNumber = /^[\d.,()R$\s-]+d?$/.test(cellStr);
+        if (!isNumber && cellStr.length > 0) {
+          nomeConta = cellStr;
+          break;
+        }
+      }
 
-    // Update current type based on major sections
-    const detectedType = detectAccountType(conta);
-    if (detectedType !== 'OUTRO') {
-      currentType = detectedType;
+      if (!nomeConta) continue;
+
+      // Encontra os valores numéricos
+      const numericValues: number[] = [];
+      for (const cell of row) {
+        const cellStr = String(cell || '').trim();
+        if (!cellStr) continue;
+        
+        // Verifica se parece um número brasileiro (com possível "d" no final)
+        const cleanedForCheck = cellStr.replace(/"/g, '').replace(/[dc]$/i, '');
+        if (/^[\d.,()R$\s-]+$/.test(cleanedForCheck) && cleanedForCheck.length > 0) {
+          const num = parseBrazilianNumber(cellStr);
+          // Só adiciona se for um número válido
+          if (num !== 0 || cellStr.includes('0')) {
+            numericValues.push(num);
+          }
+        }
+      }
+
+      // Precisa ter pelo menos um valor
+      if (numericValues.length === 0) continue;
+
+      const valorAtual = numericValues[0] || 0;
+      const valorAnterior = numericValues.length > 1 ? numericValues[1] : null;
+
+      // Detecta tipo de conta (ATIVO, PASSIVO, PATRIMÔNIO)
+      const detectedType = detectAccountType(nomeConta);
+      if (detectedType !== 'OUTRO') {
+        currentType = detectedType;
+      }
+
+      // Constrói hierarquia baseada na indentação
+      const level = Math.floor(emptyCount / 2); // Aproximação do nível
+      while (hierarchyStack.length > level) {
+        hierarchyStack.pop();
+      }
+      hierarchyStack[level] = nomeConta;
+      const hierarchy = hierarchyStack.filter(Boolean).join(' > ');
+
+      console.log(`[Balanço Parser] Linha ${i + 1}: "${nomeConta}" (${currentType}) -> atual: ${valorAtual}, anterior: ${valorAnterior}`);
+
+      entries.push({
+        conta: nomeConta,
+        tipo: currentType,
+        valor: valorAtual,
+        valor_anterior: valorAnterior,
+        hierarchy,
+        raw_row: row.map(String)
+      });
+
+    } catch (err) {
+      const errorMsg = `Linha ${i + 1}: ${err instanceof Error ? err.message : 'Erro desconhecido'}`;
+      errors.push(errorMsg);
+      console.error(`[Balanço Parser] ${errorMsg}`);
     }
-
-    const valor = parseBrazilianNumber(row[valueIndex]);
-    const valor_anterior = valueAnteriorIndex !== -1 
-      ? parseBrazilianNumber(row[valueAnteriorIndex]) 
-      : null;
-
-    // Build hierarchy
-    const level = detectHierarchyLevel(row, descIndex);
-    while (hierarchyStack.length > level) {
-      hierarchyStack.pop();
-    }
-    hierarchyStack[level] = conta;
-    const hierarchy = hierarchyStack.filter(Boolean).join(' > ');
-
-    entries.push({
-      conta,
-      tipo: currentType,
-      valor,
-      valor_anterior: valor_anterior === 0 ? null : valor_anterior,
-      hierarchy,
-      raw_row: row.map(String)
-    });
   }
+
+  console.log(`[Balanço Parser] Total de entradas válidas: ${entries.length}`);
 
   if (entries.length === 0) {
     errors.push('Nenhuma entrada válida encontrada no Balanço.');
   }
 
   return { entries, periodo, errors };
+}
+
+// ============================================
+// FUNÇÕES AUXILIARES
+// ============================================
+
+/**
+ * Detecta tipo de conta baseado no nome
+ */
+function detectAccountType(description: string): string {
+  const upper = description.toUpperCase();
+  if (upper.startsWith('ATIVO') || upper === 'ATIVO') return 'ATIVO';
+  if (upper.startsWith('PASSIVO') || upper === 'PASSIVO') return 'PASSIVO';
+  if (upper.includes('PATRIMÔNIO') || upper.includes('PATRIMONIO') || upper === 'PL') return 'PATRIMONIO_LIQUIDO';
+  return 'OUTRO';
+}
+
+/**
+ * Extrai período do nome do arquivo ou conteúdo
+ */
+function extractPeriod(filename: string, rows: string[][]): string {
+  // Tenta extrair do nome do arquivo
+  const dateMatch = filename.match(/(\d{2}\/\d{2}\/\d{4}|\d{4})/);
+  if (dateMatch) return dateMatch[1];
+
+  // Tenta extrair do conteúdo
+  for (const row of rows.slice(0, 10)) {
+    const text = row.join(' ');
+    const match = text.match(/(\d{2}\/\d{2}\/\d{4}|\d{4})/);
+    if (match) return match[1];
+  }
+
+  return new Date().getFullYear().toString();
 }
