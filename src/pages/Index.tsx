@@ -28,6 +28,11 @@ const Index = () => {
           </Link>
           {user ? (
             <>
+              <Link to="/empresas">
+                <Button variant="ghost" size="sm">
+                  Empresas
+                </Button>
+              </Link>
               <Link to="/upload">
                 <Button variant="neon" size="sm">
                   Upload

@@ -10,6 +10,8 @@ import Auth from "./pages/Auth";
 import Showcase from "./pages/Showcase";
 import Upload from "./pages/Upload";
 import Resultado from "./pages/Resultado";
+import CadastroEmpresa from "./pages/CadastroEmpresa";
+import Empresas from "./pages/Empresas";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -38,6 +40,22 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <Resultado />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/cadastro-empresa" 
+              element={
+                <ProtectedRoute>
+                  <CadastroEmpresa />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/empresas" 
+              element={
+                <ProtectedRoute>
+                  <Empresas />
                 </ProtectedRoute>
               } 
             />
