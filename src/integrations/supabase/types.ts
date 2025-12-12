@@ -140,6 +140,39 @@ export type Database = {
         }
         Relationships: []
       }
+      empresas: {
+        Row: {
+          cnae: string
+          cnpj: string
+          contexto: string | null
+          created_at: string
+          id: string
+          nome: string
+          regime_tributario: string
+          user_id: string
+        }
+        Insert: {
+          cnae: string
+          cnpj: string
+          contexto?: string | null
+          created_at?: string
+          id?: string
+          nome: string
+          regime_tributario: string
+          user_id: string
+        }
+        Update: {
+          cnae?: string
+          cnpj?: string
+          contexto?: string | null
+          created_at?: string
+          id?: string
+          nome?: string
+          regime_tributario?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
