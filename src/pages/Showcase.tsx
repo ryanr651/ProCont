@@ -60,7 +60,7 @@ const Showcase = () => {
             Dashboard de <span className="gradient-text">Análise Financeira</span>
           </h1>
           <p className="text-muted-foreground max-w-2xl mx-auto">
-            Este é um exemplo ilustrativo de como o Fintrix transforma DRE e Balanço Patrimonial 
+            Este é um exemplo ilustrativo de como o ProCont transforma DRE e Balanço Patrimonial 
             em análises financeiras visuais. Os resultados reais serão exibidos após o envio dos arquivos do usuário.
           </p>
         </div>

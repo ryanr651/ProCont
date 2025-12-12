@@ -164,7 +164,7 @@ const Auth = () => {
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-6">
-          Admin de teste: admin@fintrix.com / Admin
+          Admin de teste: admin@procont.com / Admin
         </p>
       </div>
     </div>

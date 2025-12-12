@@ -6,7 +6,7 @@
 
 @layer base {
   :root {
-    /* FINTRIX Design System - Futuristic Purple + Neon Blue */
+    /* ProCont Design System - Futuristic Purple + Neon Blue */
     --background: 250 30% 6%;
     --foreground: 220 20% 95%;
 
@@ -40,7 +40,7 @@
 
     --radius: 0.75rem;
 
-    /* Custom FINTRIX tokens */
+    /* Custom ProCont tokens */
     --neon-purple: 262 100% 53%;
     --neon-blue: 192 100% 50%;
     --neon-cyan: 180 100% 50%;

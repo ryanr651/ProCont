@@ -30,7 +30,7 @@ export function Logo({ className, size = "md" }: LogoProps) {
         <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-primary to-secondary blur-lg opacity-50" />
       </div>
       <span className={cn("font-display font-bold gradient-text", sizeClasses[size])}>
-        FINTRIX
+        ProCont
       </span>
     </div>
   );
