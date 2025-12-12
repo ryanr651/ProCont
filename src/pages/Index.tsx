@@ -128,7 +128,7 @@ const Index = () => {
       {/* Footer */}
       <footer className="relative z-10 border-t border-border py-8">
         <div className="container mx-auto px-6 text-center text-sm text-muted-foreground">
-          © 2024 FINTRIX. Análise financeira inteligente para escritórios contábeis.
+          © 2024 ProCont. Análise financeira inteligente para escritórios contábeis.
         </div>
       </footer>
     </div>
