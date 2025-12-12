@@ -161,32 +161,74 @@ const Resultado = () => {
   };
 
   const calculateBalancoMetrics = (entries: BalancoEntry[]): CalculatedBalanco => {
-    // Sum values by tipo field (section classification done during import)
+    // Find specific key lines by exact account name instead of summing by type
+    // The values should come from the summary lines in the CSV, not from summing individual entries
+    
+    let ativoTotal = 0;
     let ativoCirculante = 0;
     let ativoNaoCirculante = 0;
+    let passivoTotal = 0;
     let passivoCirculante = 0;
     let passivoNaoCirculante = 0;
     let patrimonioLiquido = 0;
 
+    // Track section context to differentiate "CIRCULANTE" under ATIVO vs PASSIVO
+    let inAtivoSection = false;
+    let inPassivoSection = false;
+    let foundAtivoCirculante = false;
+    let foundPassivoCirculante = false;
+
     for (const entry of entries) {
       const valor = Math.abs(entry.valor);
-      const tipo = (entry.tipo || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const conta = (entry.conta || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 
-      if (tipo === 'ATIVO CIRCULANTE') {
-        ativoCirculante += valor;
-      } else if (tipo === 'ATIVO NAO CIRCULANTE') {
-        ativoNaoCirculante += valor;
-      } else if (tipo === 'PASSIVO CIRCULANTE') {
-        passivoCirculante += valor;
-      } else if (tipo === 'PASSIVO NAO CIRCULANTE') {
-        passivoNaoCirculante += valor;
-      } else if (tipo === 'PATRIMONIO LIQUIDO') {
-        patrimonioLiquido += valor;
+      // 1. Line "ATIVO" → ATIVO_TOTAL
+      if (conta === 'ATIVO') {
+        ativoTotal = valor;
+        inAtivoSection = true;
+        inPassivoSection = false;
+        continue;
+      }
+
+      // 4. Line "PASSIVO" → PASSIVO_TOTAL
+      if (conta === 'PASSIVO') {
+        passivoTotal = valor;
+        inAtivoSection = false;
+        inPassivoSection = true;
+        continue;
+      }
+
+      // 2. Line "CIRCULANTE" under ATIVO → ATIVO_CIRCULANTE
+      // 5. Line "CIRCULANTE" under PASSIVO → PASSIVO_CIRCULANTE
+      if (conta === 'CIRCULANTE') {
+        if (inAtivoSection && !foundAtivoCirculante) {
+          ativoCirculante = valor;
+          foundAtivoCirculante = true;
+        } else if (inPassivoSection && !foundPassivoCirculante) {
+          passivoCirculante = valor;
+          foundPassivoCirculante = true;
+        }
+        continue;
+      }
+
+      // 3. Line "ATIVO NAO CIRCULANTE" or "NAO CIRCULANTE" under ATIVO → ATIVO_NAO_CIRCULANTE
+      if (conta === 'ATIVO NAO CIRCULANTE' || (conta === 'NAO CIRCULANTE' && inAtivoSection)) {
+        ativoNaoCirculante = valor;
+        continue;
+      }
+
+      // 6. Line "PASSIVO NAO CIRCULANTE" or "NAO CIRCULANTE" under PASSIVO → PASSIVO_NAO_CIRCULANTE
+      if (conta === 'PASSIVO NAO CIRCULANTE' || (conta === 'NAO CIRCULANTE' && inPassivoSection)) {
+        passivoNaoCirculante = valor;
+        continue;
+      }
+
+      // 7. Line "PATRIMONIO LIQUIDO" → PATRIMONIO_LIQUIDO
+      if (conta === 'PATRIMONIO LIQUIDO') {
+        patrimonioLiquido = valor;
+        continue;
       }
     }
-
-    const ativoTotal = ativoCirculante + ativoNaoCirculante;
-    const passivoTotal = passivoCirculante + passivoNaoCirculante;
 
     return {
       ativoCirculante,
