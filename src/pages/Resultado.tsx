@@ -161,6 +161,7 @@ const Resultado = () => {
   };
 
   const calculateBalancoMetrics = (entries: BalancoEntry[]): CalculatedBalanco => {
+    // Sum values by tipo field (section classification done during import)
     let ativoCirculante = 0;
     let ativoNaoCirculante = 0;
     let passivoCirculante = 0;
@@ -168,20 +169,19 @@ const Resultado = () => {
     let patrimonioLiquido = 0;
 
     for (const entry of entries) {
-      const conta = entry.conta.toLowerCase();
       const valor = Math.abs(entry.valor);
+      const tipo = (entry.tipo || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-      // Check for main totals
-      if (conta.includes('ativo circulante') && !conta.includes('não')) {
-        ativoCirculante = Math.max(ativoCirculante, valor);
-      } else if (conta.includes('ativo') && (conta.includes('não circulante') || conta.includes('nao circulante'))) {
-        ativoNaoCirculante = Math.max(ativoNaoCirculante, valor);
-      } else if (conta.includes('passivo circulante') && !conta.includes('não')) {
-        passivoCirculante = Math.max(passivoCirculante, valor);
-      } else if (conta.includes('passivo') && (conta.includes('não circulante') || conta.includes('nao circulante'))) {
-        passivoNaoCirculante = Math.max(passivoNaoCirculante, valor);
-      } else if (conta.includes('patrimônio') || conta.includes('patrimonio')) {
-        patrimonioLiquido = Math.max(patrimonioLiquido, valor);
+      if (tipo === 'ATIVO CIRCULANTE') {
+        ativoCirculante += valor;
+      } else if (tipo === 'ATIVO NAO CIRCULANTE') {
+        ativoNaoCirculante += valor;
+      } else if (tipo === 'PASSIVO CIRCULANTE') {
+        passivoCirculante += valor;
+      } else if (tipo === 'PASSIVO NAO CIRCULANTE') {
+        passivoNaoCirculante += valor;
+      } else if (tipo === 'PATRIMONIO LIQUIDO') {
+        patrimonioLiquido += valor;
       }
     }
 
