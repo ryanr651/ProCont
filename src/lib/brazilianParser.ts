@@ -202,19 +202,6 @@ export function parseDREFile(rows: string[][], filename: string): {
   return { entries, periodo, errors };
 }
 
-// Detect account type for balance sheet
-function detectAccountType(description: string): string {
-  const upper = description.toUpperCase().trim();
-  if (upper === 'ATIVO' || upper.startsWith('ATIVO ')) return 'ATIVO';
-  if (upper === 'PASSIVO' || upper.startsWith('PASSIVO ')) return 'PASSIVO';
-  if (upper.includes('PATRIMÔNIO') || upper.includes('PATRIMONIO') || upper === 'PL') return 'PATRIMONIO_LIQUIDO';
-  return 'OUTRO';
-}
-
-// Detect hierarchy level based on leading empty cells
-function detectHierarchyLevel(row: string[], textIndex: number): number {
-  return textIndex;
-}
 
 /**
  * Parse Balanço Patrimonial file following Domínio Sistemas format:
@@ -224,6 +211,13 @@ function detectHierarchyLevel(row: string[], textIndex: number): number {
  * - Lines have multiple leading commas
  * - Values have "d" suffix (e.g., "6.704.423,33d")
  * - Extract: nome_da_conta, valor_atual, valor_anterior
+ * 
+ * SECTION CLASSIFICATION RULES:
+ * - From start until "ATIVO NÃO CIRCULANTE" → tipo = "ATIVO CIRCULANTE"
+ * - From "ATIVO NÃO CIRCULANTE" until "PASSIVO" → tipo = "ATIVO NÃO CIRCULANTE"
+ * - From "PASSIVO" until "PASSIVO NÃO CIRCULANTE" → tipo = "PASSIVO CIRCULANTE"
+ * - From "PASSIVO NÃO CIRCULANTE" until "PATRIMONIO LIQUIDO" → tipo = "PASSIVO NÃO CIRCULANTE"
+ * - From "PATRIMONIO LIQUIDO" until end → tipo = "PATRIMONIO LIQUIDO"
  */
 export function parseBalancoFile(rows: string[][], filename: string): {
   entries: ParsedBalancoEntry[];
@@ -233,7 +227,6 @@ export function parseBalancoFile(rows: string[][], filename: string): {
   const periodo = extractPeriod(filename, rows);
   const entries: ParsedBalancoEntry[] = [];
   const errors: string[] = [];
-  let currentType = 'OUTRO';
   const hierarchyStack: string[] = [];
 
   // Start at line 9 (index 8) - skip lines 1-8
@@ -243,6 +236,9 @@ export function parseBalancoFile(rows: string[][], filename: string): {
     errors.push('Arquivo Balanço não contém dados suficientes. Esperado pelo menos 9 linhas.');
     return { entries, periodo, errors };
   }
+
+  // Current section type - starts with ATIVO CIRCULANTE
+  let currentTipo = 'ATIVO CIRCULANTE';
 
   for (let i = startRow; i < rows.length; i++) {
     const row = rows[i];
@@ -257,10 +253,22 @@ export function parseBalancoFile(rows: string[][], filename: string): {
     const lowerConta = conta.toLowerCase();
     if (lowerConta.includes('descri') || lowerConta === 'conta') continue;
 
-    // Update current type based on major sections
-    const detectedType = detectAccountType(conta);
-    if (detectedType !== 'OUTRO') {
-      currentType = detectedType;
+    // Normalize account name for section detection (remove accents and uppercase)
+    const normalizedConta = conta
+      .toUpperCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, ''); // Remove accents
+
+    // Update current section type based on section markers
+    // Order matters! Check in sequence
+    if (normalizedConta.includes('PATRIMONIO LIQUIDO') || normalizedConta === 'PATRIMONIO LIQUIDO') {
+      currentTipo = 'PATRIMONIO LIQUIDO';
+    } else if (normalizedConta.includes('PASSIVO NAO CIRCULANTE') || normalizedConta === 'NAO CIRCULANTE' && currentTipo.startsWith('PASSIVO')) {
+      currentTipo = 'PASSIVO NAO CIRCULANTE';
+    } else if (normalizedConta === 'PASSIVO' || (normalizedConta.includes('PASSIVO') && !normalizedConta.includes('NAO CIRCULANTE') && !normalizedConta.includes('CIRCULANTE'))) {
+      currentTipo = 'PASSIVO CIRCULANTE';
+    } else if (normalizedConta.includes('ATIVO NAO CIRCULANTE') || (normalizedConta === 'NAO CIRCULANTE' && currentTipo.startsWith('ATIVO'))) {
+      currentTipo = 'ATIVO NAO CIRCULANTE';
     }
 
     // Find numeric values after the text cell
@@ -270,8 +278,11 @@ export function parseBalancoFile(rows: string[][], filename: string): {
     const valor = numericValues.length > 0 ? numericValues[0] : 0;
     const valor_anterior = numericValues.length > 1 ? numericValues[1] : null;
 
+    // Skip rows with no values
+    if (valor === 0 && (valor_anterior === null || valor_anterior === 0)) continue;
+
     // Build hierarchy based on indentation level (number of leading empty cells)
-    const level = detectHierarchyLevel(row, textIndex);
+    const level = textIndex;
     while (hierarchyStack.length > level) {
       hierarchyStack.pop();
     }
@@ -280,7 +291,7 @@ export function parseBalancoFile(rows: string[][], filename: string): {
 
     entries.push({
       conta,
-      tipo: currentType,
+      tipo: currentTipo,
       valor,
       valor_anterior,
       hierarchy,
