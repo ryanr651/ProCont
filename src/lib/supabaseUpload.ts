@@ -40,12 +40,18 @@ export async function uploadAndProcessFiles(
     const balancoResult = parseBalancoFile(balancoRows, balancoFile.name);
     errors.push(...balancoResult.errors);
 
-    if (dreResult.entries.length === 0 && balancoResult.entries.length === 0) {
+    // TOLERANT VALIDATION: Process whatever data was found
+    // Only fail if absolutely NO data could be extracted from BOTH files
+    const hasAnyDreData = dreResult.entries.length > 0;
+    const hasAnyBalancoData = balancoResult.entries.length > 0 || 
+                               balancoResult.metrics.ativoTotal > 0;
+
+    if (!hasAnyDreData && !hasAnyBalancoData) {
       return {
         success: false,
         inserted_dre: 0,
         inserted_balanco: 0,
-        errors: errors.length > 0 ? errors : ['Nenhum dado válido encontrado nos arquivos.']
+        errors: ['Não foi possível identificar nenhum valor contábil nos arquivos enviados. Verifique se os arquivos contêm dados numéricos.']
       };
     }
 
