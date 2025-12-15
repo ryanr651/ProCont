@@ -60,6 +60,17 @@ interface CalculatedBalanco {
   patrimonioLiquido: number;
 }
 
+/**
+ * Normalize text for comparison (remove accents, uppercase)
+ */
+function normalizeText(text: string): string {
+  return text
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
 const Resultado = () => {
   const [loading, setLoading] = useState(true);
   const [dreData, setDreData] = useState<CalculatedDRE | null>(null);
@@ -106,7 +117,7 @@ const Resultado = () => {
       const dre = calculateDREMetrics(dreEntries as DREEntry[]);
       setDreData(dre);
 
-      // Calculate Balanço metrics
+      // Calculate Balanço metrics from key lines
       const balanco = calculateBalancoMetrics(balancoEntries as BalancoEntry[]);
       setBalancoData(balanco);
 
@@ -122,9 +133,9 @@ const Resultado = () => {
   const calculateDREMetrics = (entries: DREEntry[]): CalculatedDRE => {
     const findValue = (keywords: string[]): number => {
       for (const entry of entries) {
-        const desc = entry.descricao.toLowerCase();
+        const desc = normalizeText(entry.descricao);
         for (const kw of keywords) {
-          if (desc.includes(kw.toLowerCase())) {
+          if (desc.includes(normalizeText(kw))) {
             return Math.abs(entry.valor);
           }
         }
@@ -160,10 +171,19 @@ const Resultado = () => {
     };
   };
 
+  /**
+   * Calculate Balanço metrics by finding KEY LINES directly
+   * 
+   * RULES (DO NOT SUM - read directly from specific lines):
+   * 1. ATIVO → Ativo Total
+   * 2. CIRCULANTE (first one after ATIVO) → Ativo Circulante
+   * 3. ATIVO NAO CIRCULANTE or NAO CIRCULANTE (in ATIVO section) → Ativo Não Circulante
+   * 4. PASSIVO → Passivo Total
+   * 5. CIRCULANTE (first one after PASSIVO) → Passivo Circulante
+   * 6. PASSIVO NAO CIRCULANTE or NAO CIRCULANTE (in PASSIVO section) → Passivo Não Circulante
+   * 7. PATRIMONIO LIQUIDO → Patrimônio Líquido
+   */
   const calculateBalancoMetrics = (entries: BalancoEntry[]): CalculatedBalanco => {
-    // Find specific key lines by exact account name instead of summing by type
-    // The values should come from the summary lines in the CSV, not from summing individual entries
-    
     let ativoTotal = 0;
     let ativoCirculante = 0;
     let ativoNaoCirculante = 0;
@@ -172,7 +192,7 @@ const Resultado = () => {
     let passivoNaoCirculante = 0;
     let patrimonioLiquido = 0;
 
-    // Track section context to differentiate "CIRCULANTE" under ATIVO vs PASSIVO
+    // Track section context
     let inAtivoSection = false;
     let inPassivoSection = false;
     let foundAtivoCirculante = false;
@@ -180,7 +200,7 @@ const Resultado = () => {
 
     for (const entry of entries) {
       const valor = Math.abs(entry.valor);
-      const conta = (entry.conta || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+      const conta = normalizeText(entry.conta);
 
       // 1. Line "ATIVO" → ATIVO_TOTAL
       if (conta === 'ATIVO') {
@@ -211,19 +231,19 @@ const Resultado = () => {
         continue;
       }
 
-      // 3. Line "ATIVO NAO CIRCULANTE" or "NAO CIRCULANTE" under ATIVO → ATIVO_NAO_CIRCULANTE
+      // 3. Line "ATIVO NAO CIRCULANTE" or "NAO CIRCULANTE" under ATIVO
       if (conta === 'ATIVO NAO CIRCULANTE' || (conta === 'NAO CIRCULANTE' && inAtivoSection)) {
         ativoNaoCirculante = valor;
         continue;
       }
 
-      // 6. Line "PASSIVO NAO CIRCULANTE" or "NAO CIRCULANTE" under PASSIVO → PASSIVO_NAO_CIRCULANTE
+      // 6. Line "PASSIVO NAO CIRCULANTE" or "NAO CIRCULANTE" under PASSIVO
       if (conta === 'PASSIVO NAO CIRCULANTE' || (conta === 'NAO CIRCULANTE' && inPassivoSection)) {
         passivoNaoCirculante = valor;
         continue;
       }
 
-      // 7. Line "PATRIMONIO LIQUIDO" → PATRIMONIO_LIQUIDO
+      // 7. Line "PATRIMONIO LIQUIDO"
       if (conta === 'PATRIMONIO LIQUIDO') {
         patrimonioLiquido = valor;
         continue;
