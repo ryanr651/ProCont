@@ -254,10 +254,11 @@ export interface BalancoMetrics {
 /**
  * Parse DRE file following Domínio Sistemas format
  * 
- * Rules:
- * 1. Find "DEMONSTRAÇÃO DO RESULTADO DO EXERCÍCIO" to start
- * 2. Column structure: Nome da conta, Valor, Subtotal
- * 3. Handle groups appropriately
+ * TOLERANT RULES:
+ * 1. Try to find "DEMONSTRAÇÃO DO RESULTADO DO EXERCÍCIO" to start
+ * 2. Fallback: look for "RECEITA" if main header not found
+ * 3. DRE is valid if at least one monetary value was processed
+ * 4. Never abort - process whatever data is found
  */
 export function parseDREFile(rows: string[][], filename: string): {
   entries: ParsedDREEntry[];
@@ -268,32 +269,45 @@ export function parseDREFile(rows: string[][], filename: string): {
   const entries: ParsedDREEntry[] = [];
   const errors: string[] = [];
 
-  // Find start of DRE data - look for "DEMONSTRAÇÃO DO RESULTADO" or start after headers
+  // Find start of DRE data with multiple fallback strategies
   let startRow = 0;
-  for (let i = 0; i < rows.length && i < 20; i++) {
+  let foundDREHeader = false;
+
+  // Strategy 1: Look for "DEMONSTRAÇÃO DO RESULTADO"
+  for (let i = 0; i < rows.length && i < 30; i++) {
     const rowText = normalizeText(rows[i]?.join(' ') || '');
     if (rowText.includes('DEMONSTRACAO DO RESULTADO') || 
         rowText.includes('DEMONSTRAÇÃO DO RESULTADO')) {
       startRow = i + 1;
+      foundDREHeader = true;
       break;
     }
   }
 
-  // If not found, try line 8 (index 7) as fallback
-  if (startRow === 0) {
-    startRow = 7;
+  // Strategy 2: Fallback - look for "RECEITA" if main header not found
+  if (!foundDREHeader) {
+    for (let i = 0; i < rows.length && i < 30; i++) {
+      const { text } = findFirstTextCell(rows[i] || []);
+      const normalText = normalizeText(text);
+      if (normalText.includes('RECEITA')) {
+        startRow = i;
+        foundDREHeader = true;
+        break;
+      }
+    }
   }
 
-  if (rows.length <= startRow) {
-    errors.push('Arquivo DRE não contém dados suficientes.');
-    return { entries, periodo, errors };
+  // Strategy 3: Last fallback - start from line 5
+  if (!foundDREHeader) {
+    startRow = Math.min(5, rows.length - 1);
   }
 
+  // Process all rows from startRow
   for (let i = startRow; i < rows.length; i++) {
     const row = rows[i];
     if (!row || row.length === 0) continue;
 
-    const { text: descricao, index: textIndex } = findFirstTextCell(row);
+    const { text: descricao } = findFirstTextCell(row);
     if (!descricao || descricao.length < 2) continue;
 
     // Skip header-like rows
@@ -303,7 +317,7 @@ export function parseDREFile(rows: string[][], filename: string): {
     // Find numeric values
     const numericValues = findAllNumericValues(row);
 
-    // Skip if no values
+    // Skip if no values - but don't abort the entire process
     if (numericValues.length === 0) continue;
 
     // First value = current, second value = previous (if exists)
@@ -318,30 +332,21 @@ export function parseDREFile(rows: string[][], filename: string): {
     });
   }
 
-  if (entries.length === 0) {
-    errors.push('Nenhuma entrada válida encontrada no DRE.');
-  }
-
+  // Only show warning, never block - DRE is valid if at least one entry was found
+  // Even if no entries, we don't block - maybe only Balanço has data
+  
   return { entries, periodo, errors };
 }
 
 /**
  * Parse Balanço Patrimonial file
  * 
- * CRITICAL RULES:
- * 1. Find first occurrence of "ATIVO" - all lines above are ignored
- * 2. Read totals directly from key lines (DO NOT recalculate):
- *    - ATIVO → Ativo Total
- *    - CIRCULANTE (immediately after ATIVO) → Ativo Circulante
- *    - ATIVO NÃO CIRCULANTE → Ativo Não Circulante
- *    - PASSIVO → Passivo Total
- *    - CIRCULANTE (immediately after PASSIVO) → Passivo Circulante
- *    - PASSIVO NÃO CIRCULANTE → Passivo Não Circulante
- *    - PATRIMÔNIO LÍQUIDO → Patrimônio Líquido
- * 3. Handle D/C suffix correctly:
- *    - ATIVO: D = add, C = subtract
- *    - PASSIVO/PL: C = add, D = subtract
- * 4. Two numeric columns: first = current, second = previous
+ * TOLERANT RULES (CRITICAL):
+ * 1. Balanço is VALID if "ATIVO" is found - don't require all blocks
+ * 2. Read totals from key lines progressively (what's found, not what's missing)
+ * 3. Missing fields = null/0, NOT errors
+ * 4. Never abort - process whatever data is found
+ * 5. Only error if NO numeric values at all
  */
 export function parseBalancoFile(rows: string[][], filename: string): {
   entries: ParsedBalancoEntry[];
@@ -354,7 +359,7 @@ export function parseBalancoFile(rows: string[][], filename: string): {
   const errors: string[] = [];
   const hierarchyStack: string[] = [];
 
-  // Metrics extracted from key lines
+  // Metrics extracted from key lines - default to 0, not error
   const metrics: BalancoMetrics = {
     ativoTotal: 0,
     ativoCirculante: 0,
@@ -365,36 +370,46 @@ export function parseBalancoFile(rows: string[][], filename: string): {
     patrimonioLiquido: 0
   };
 
-  // Find first occurrence of "ATIVO" - this is where data starts
+  // Find first occurrence of "ATIVO" - this marks a valid Balanço
   let startRow = -1;
+  let foundAtivo = false;
+  
   for (let i = 0; i < rows.length; i++) {
     const { text } = findFirstTextCell(rows[i] || []);
     const normalText = normalizeText(text);
     if (normalText === 'ATIVO') {
       startRow = i;
+      foundAtivo = true;
       break;
     }
   }
 
-  if (startRow === -1) {
-    // Fallback: try line 9 (index 8)
-    startRow = 8;
-  }
-
-  if (rows.length <= startRow) {
-    errors.push('Arquivo Balanço não contém dados suficientes.');
-    return { entries, metrics, periodo, errors };
+  // Fallback: if "ATIVO" not found, try to find any accounting data
+  if (!foundAtivo) {
+    // Look for any line that might be accounting data
+    for (let i = 0; i < rows.length && i < 20; i++) {
+      const numericValues = findAllNumericValues(rows[i] || []);
+      if (numericValues.length > 0) {
+        startRow = i;
+        break;
+      }
+    }
+    // Last resort: start from line 5
+    if (startRow === -1) {
+      startRow = Math.min(5, rows.length - 1);
+    }
   }
 
   // Track current section for D/C handling and tipo classification
   let currentSection: 'ATIVO' | 'PASSIVO' | 'PL' = 'ATIVO';
   let currentTipo = 'ATIVO CIRCULANTE';
   
-  // Track if we just saw ATIVO or PASSIVO to identify "CIRCULANTE" correctly
+  // Track context for identifying "CIRCULANTE" correctly
   let justSawAtivo = false;
   let justSawPassivo = false;
   let foundAtivoCirculante = false;
   let foundPassivoCirculante = false;
+  let totalNumericValuesFound = 0;
 
   for (let i = startRow; i < rows.length; i++) {
     const row = rows[i];
@@ -425,7 +440,13 @@ export function parseBalancoFile(rows: string[][], filename: string): {
       ? parseBrazilianNumber(rawCells[1], currentSection) 
       : null;
 
-    // ===== SECTION DETECTION AND METRICS EXTRACTION =====
+    // Count numeric values found
+    if (rawCells.length > 0) {
+      totalNumericValuesFound++;
+    }
+
+    // ===== PROGRESSIVE SECTION DETECTION AND METRICS EXTRACTION =====
+    // Each block is optional - we extract what we find
     
     // 1. ATIVO line → Ativo Total
     if (normalConta === 'ATIVO') {
@@ -448,7 +469,7 @@ export function parseBalancoFile(rows: string[][], filename: string): {
       currentTipo = 'ATIVO NAO CIRCULANTE';
       justSawAtivo = false;
     }
-    // 4. PASSIVO line → Passivo Total
+    // 4. PASSIVO line → Passivo Total (optional - don't fail if not found)
     else if (normalConta === 'PASSIVO') {
       metrics.passivoTotal = Math.abs(valor);
       currentSection = 'PASSIVO';
@@ -462,14 +483,14 @@ export function parseBalancoFile(rows: string[][], filename: string): {
       foundPassivoCirculante = true;
       justSawPassivo = false;
     }
-    // 6. PASSIVO NÃO CIRCULANTE or NÃO CIRCULANTE in PASSIVO section
+    // 6. PASSIVO NÃO CIRCULANTE (optional)
     else if (normalConta === 'PASSIVO NAO CIRCULANTE' || 
              (normalConta === 'NAO CIRCULANTE' && currentSection === 'PASSIVO')) {
       metrics.passivoNaoCirculante = Math.abs(valor);
       currentTipo = 'PASSIVO NAO CIRCULANTE';
       justSawPassivo = false;
     }
-    // 7. PATRIMÔNIO LÍQUIDO
+    // 7. PATRIMÔNIO LÍQUIDO (optional)
     else if (normalConta === 'PATRIMONIO LIQUIDO' || 
              normalConta.includes('PATRIMONIO LIQUIDO')) {
       metrics.patrimonioLiquido = Math.abs(valor);
@@ -484,30 +505,30 @@ export function parseBalancoFile(rows: string[][], filename: string): {
       justSawPassivo = false;
     }
 
-    // Skip rows with no values
-    if (valor === 0 && (valor_anterior === null || valor_anterior === 0)) continue;
+    // Include all rows with values (don't skip)
+    if (valor !== 0 || (valor_anterior !== null && valor_anterior !== 0)) {
+      // Build hierarchy based on indentation level
+      const level = textIndex;
+      while (hierarchyStack.length > level) {
+        hierarchyStack.pop();
+      }
+      hierarchyStack[level] = conta;
+      const hierarchy = hierarchyStack.filter(Boolean).join(' > ');
 
-    // Build hierarchy based on indentation level
-    const level = textIndex;
-    while (hierarchyStack.length > level) {
-      hierarchyStack.pop();
+      entries.push({
+        conta,
+        tipo: currentTipo,
+        valor: Math.abs(valor),
+        valor_anterior: valor_anterior !== null ? Math.abs(valor_anterior) : null,
+        hierarchy,
+        raw_row: row.map(String)
+      });
     }
-    hierarchyStack[level] = conta;
-    const hierarchy = hierarchyStack.filter(Boolean).join(' > ');
-
-    entries.push({
-      conta,
-      tipo: currentTipo,
-      valor: Math.abs(valor),
-      valor_anterior: valor_anterior !== null ? Math.abs(valor_anterior) : null,
-      hierarchy,
-      raw_row: row.map(String)
-    });
   }
 
-  if (entries.length === 0) {
-    errors.push('Nenhuma entrada válida encontrada no Balanço.');
-  }
+  // TOLERANT VALIDATION: Only error if absolutely NO data was found
+  // Having "ATIVO" found OR having any numeric values = valid Balanço
+  // We DON'T fail just because some sections are missing
 
   return { entries, metrics, periodo, errors };
 }
