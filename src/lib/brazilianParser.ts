@@ -370,14 +370,34 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
       }
     }
 
-    // If still no sheet, try one more approach with explicit binary reading
+    // If still no sheet, try accessing through internal Workbook structure
     if (!sheet && workbook) {
-      debugLog("Tentando acesso alternativo às sheets...");
+      debugLog("Tentando acesso via propriedade Workbook interna...");
       
-      // Some old XLS files need the sheet to be accessed differently
+      // Check if there's an internal Workbook property with sheet data
+      const internalWB = (workbook as any).Workbook;
+      if (internalWB) {
+        debugLog("Workbook interno encontrado, keys:", Object.keys(internalWB));
+        
+        // Try to find sheets in the internal structure
+        if (internalWB.Sheets && Array.isArray(internalWB.Sheets)) {
+          debugLog("Sheets interno é array com " + internalWB.Sheets.length + " elementos");
+          for (const internalSheet of internalWB.Sheets) {
+            debugLog("Internal sheet:", internalSheet);
+          }
+        }
+      }
+
+      // Check Strings (shared string table)
+      const strings = (workbook as any).Strings;
+      if (strings && Array.isArray(strings)) {
+        debugLog("Strings encontrados: " + strings.length + " strings");
+        debugLog("Primeiros 5 strings:", strings.slice(0, 5));
+      }
+      
+      // Try with different encodings of sheet name
       const sheetName = workbook.SheetNames[0];
       if (sheetName && workbook.Sheets) {
-        // Try with different encodings of sheet name
         const variations = [
           sheetName,
           sheetName.normalize("NFC"),
@@ -396,13 +416,55 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
       }
     }
 
+    // Last resort: Try to manually reconstruct sheet from internal data
+    if (!sheet && workbook) {
+      debugLog("Tentando reconstruir sheet manualmente...");
+      
+      const internalWB = (workbook as any).Workbook;
+      const strings = (workbook as any).Strings || [];
+      
+      if (internalWB && internalWB.Sheets && internalWB.Sheets.length > 0) {
+        // Get the first sheet's range info
+        const sheetInfo = internalWB.Sheets[0];
+        debugLog("Sheet info:", sheetInfo);
+        
+        // Try to find cell data in the workbook
+        // Some old XLS store cells differently
+      }
+    }
+
     if (!sheet) {
       debugLog("ERRO: Não foi possível acessar nenhuma sheet");
       debugLog("Workbook info:", {
         hasWorkbook: !!workbook,
         sheetNames: workbook?.SheetNames,
         sheetsKeys: workbook?.Sheets ? Object.keys(workbook.Sheets) : [],
+        internalWorkbookKeys: (workbook as any)?.Workbook ? Object.keys((workbook as any).Workbook) : [],
+        hasStrings: !!((workbook as any)?.Strings),
       });
+      
+      // Try to extract data from Strings if available - create basic rows from text content
+      const strings = (workbook as any)?.Strings;
+      if (strings && Array.isArray(strings) && strings.length > 0) {
+        debugLog("Tentando extrair dados dos Strings: " + strings.length + " strings");
+        // Convert strings to rows - each string becomes a potential row
+        const rows: XLSRow[] = [];
+        for (const str of strings) {
+          const text = typeof str === 'object' && str.t ? str.t : String(str || "");
+          if (text && text.trim()) {
+            rows.push({
+              cells: [text],
+              firstTextCell: isTextCell(text) ? { text: text.trim(), index: 0 } : { text: "", index: -1 },
+              numericValues: isNumericCell(text) ? [{ value: parseSimpleBrazilianNumber(text), raw: text }] : [],
+            });
+          }
+        }
+        if (rows.length > 0) {
+          debugLog("Extraídas " + rows.length + " linhas dos Strings");
+          return rows;
+        }
+      }
+      
       return [];
     }
 
