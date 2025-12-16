@@ -1,11 +1,11 @@
-import { supabase } from '@/integrations/supabase/client';
-import { 
-  parseDREFileAuto, 
+import { supabase } from "@/integrations/supabase/client";
+import {
+  parseDREFileAuto,
   parseBalancoFileAuto,
   ParsedDREEntry,
   ParsedBalancoEntry,
-  BalancoMetrics
-} from './brazilianParser';
+  BalancoMetrics,
+} from "./brazilianParser";
 
 export interface UploadResult {
   success: boolean;
@@ -17,17 +17,13 @@ export interface UploadResult {
   balanco_metrics?: BalancoMetrics;
 }
 
-export async function uploadAndProcessFiles(
-  dreFile: File,
-  balancoFile: File,
-  userId: string
-): Promise<UploadResult> {
+export async function uploadAndProcessFiles(dreFile: File, balancoFile: File, userId: string): Promise<UploadResult> {
   const errors: string[] = [];
 
   try {
     // Clear previous entries for this user
-    await supabase.from('dre_entries').delete().eq('user_id', userId);
-    await supabase.from('balanco_entries').delete().eq('user_id', userId);
+    await supabase.from("dre_entries").delete().eq("user_id", userId);
+    await supabase.from("balanco_entries").delete().eq("user_id", userId);
 
     // Parse DRE file - uses AUTO detection (CSV vs XLS/XLSX)
     const dreResult = await parseDREFileAuto(dreFile);
@@ -42,6 +38,12 @@ export async function uploadAndProcessFiles(
     // - Dependa da flag `parsed` para saber se houve leitura/interpretação real
     const dreParsed = !!dreResult.parsed;
     const balancoParsed = !!balancoResult.parsed;
+    // === XLS SAFE: identifica se EXISTEM valores numéricos válidos ===
+    // Para XLS, `parsed === true` já significa leitura correta,
+    // mesmo que não existam entries estruturadas.
+    const dreHasNumeric = dreParsed === true;
+
+    const balancoHasNumeric = balancoParsed === true || balancoResult.metrics?.ativoTotal !== 0;
 
     // Log de diagnóstico (temporário)
     console.log("Resumo XLS:", {
@@ -54,20 +56,17 @@ export async function uploadAndProcessFiles(
 
     // Validação tolerante: só bloqueia se NENHUM dado foi encontrado
     // XLS com números, mesmo sem estrutura perfeita, não será bloqueado
-    if (
-      !dreParsed &&
-      !balancoParsed &&
-      dreResult.entries.length === 0 &&
-      balancoResult.entries.length === 0 &&
-      balancoResult.metrics.ativoTotal === 0
-    ) {
+    const hasAnyValidData =
+      dreHasNumeric || balancoHasNumeric || dreResult.entries.length > 0 || balancoResult.entries.length > 0;
+
+    if (!hasAnyValidData) {
       return {
         success: false,
         inserted_dre: 0,
         inserted_balanco: 0,
         errors: [
-          'Não foi possível interpretar a estrutura dos arquivos enviados. Verifique se são arquivos válidos da contabilidade.'
-        ]
+          "Não foi possível interpretar a estrutura dos arquivos enviados. Verifique se são arquivos válidos da contabilidade.",
+        ],
       };
     }
 
@@ -75,15 +74,15 @@ export async function uploadAndProcessFiles(
     let insertedDre = 0;
     const dreBatches = chunkArray(dreResult.entries, 500);
     for (const batch of dreBatches) {
-      const { error } = await supabase.from('dre_entries').insert(
-        batch.map(entry => ({
+      const { error } = await supabase.from("dre_entries").insert(
+        batch.map((entry) => ({
           user_id: userId,
           periodo: dreResult.periodo,
           descricao: entry.descricao,
           valor: entry.valor,
           valor_anterior: entry.valor_anterior,
-          raw_row: entry.raw_row
-        }))
+          raw_row: entry.raw_row,
+        })),
       );
       if (error) {
         errors.push(`Erro ao inserir DRE: ${error.message}`);
@@ -96,8 +95,8 @@ export async function uploadAndProcessFiles(
     let insertedBalanco = 0;
     const balancoBatches = chunkArray(balancoResult.entries, 500);
     for (const batch of balancoBatches) {
-      const { error } = await supabase.from('balanco_entries').insert(
-        batch.map(entry => ({
+      const { error } = await supabase.from("balanco_entries").insert(
+        batch.map((entry) => ({
           user_id: userId,
           periodo: balancoResult.periodo,
           conta: entry.conta,
@@ -105,8 +104,8 @@ export async function uploadAndProcessFiles(
           valor: entry.valor,
           valor_anterior: entry.valor_anterior,
           hierarchy: entry.hierarchy,
-          raw_row: entry.raw_row
-        }))
+          raw_row: entry.raw_row,
+        })),
       );
       if (error) {
         errors.push(`Erro ao inserir Balanço: ${error.message}`);
@@ -116,20 +115,20 @@ export async function uploadAndProcessFiles(
     }
 
     return {
-      success: insertedDre > 0 || insertedBalanco > 0,
+      success: insertedDre > 0 || insertedBalanco > 0 || dreParsed || balancoParsed,
       inserted_dre: insertedDre,
       inserted_balanco: insertedBalanco,
       errors,
       dre_entries: dreResult.entries,
       balanco_entries: balancoResult.entries,
-      balanco_metrics: balancoResult.metrics
+      balanco_metrics: balancoResult.metrics,
     };
   } catch (error) {
     return {
       success: false,
       inserted_dre: 0,
       inserted_balanco: 0,
-      errors: [error instanceof Error ? error.message : 'Erro desconhecido ao processar arquivos.']
+      errors: [error instanceof Error ? error.message : "Erro desconhecido ao processar arquivos."],
     };
   }
 }
@@ -144,9 +143,9 @@ function chunkArray<T>(array: T[], size: number): T[][] {
 
 // Generate downloadable JSON
 export function generateDownloadableJSON(data: unknown, filename: string): void {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
+  const a = document.createElement("a");
   a.href = url;
   a.download = filename;
   document.body.appendChild(a);
