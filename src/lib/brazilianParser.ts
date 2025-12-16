@@ -105,18 +105,21 @@ export function parseSimpleBrazilianNumber(value: string | number | undefined | 
  * Check if a cell value looks like a number (with Brazilian format)
  */
 function isNumericCell(value: string | number): boolean {
-  if (typeof value === "number") return true;
-  if (!value || value.toString().trim() === "") return false;
+  // XLS: se já é número, é válido
+  if (typeof value === "number" && !isNaN(value)) return true;
+
+  if (!value) return false;
 
   const cleaned = value
     .toString()
     .trim()
-    .replace(/^[\"']|[\"']$/g, "");
-  const hasDigits = /\d/.test(cleaned);
-  const isNumericPattern =
-    /^[R$\s]*[\d.,()R$\s-]+[dcDC]?$/.test(cleaned) || /^[R$\s]*\d+(\.\d+)?[dcDC]?$/.test(cleaned);
+    .replace(/^[\"']|[\"']$/g, "")
+    .replace(/\s/g, "");
 
-  return hasDigits && isNumericPattern;
+  // XLS pode trazer "1234", "1234.56", "1234,56", "(1234,56)"
+  const parsed = parseSimpleBrazilianNumber(cleaned);
+
+  return !isNaN(parsed) && parsed !== 0;
 }
 
 /**
@@ -728,8 +731,15 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
   // - rows.length > 0 (arquivo foi lido)
   // - E (hasAnyNumeric OU entries.length > 0)
   // 📌 NÃO exigir "ATIVO", "PASSIVO", "RECEITA" como critério obrigatório para XLS
-  const hasAnyNumeric = (rows || []).some((r) => safeGetNumericValuesFromXLSRow(r).length > 0);
-  const parsed = rows.length > 0 && (hasAnyNumeric || entries.length > 0);
+  const hasAnyNumeric = (rows || []).some((r) => {
+    const values = safeGetNumericValuesFromXLSRow(r);
+    return values.some((v) => !isNaN(v.value));
+  });
+
+  // XLS é considerado parseado se:
+  // - o arquivo foi lido
+  // - existe pelo menos UM número válido
+  const parsed = rows.length > 0 && hasAnyNumeric;
 
   return { entries, metrics, periodo, errors, parsed };
 }
