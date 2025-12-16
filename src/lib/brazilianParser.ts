@@ -1,14 +1,19 @@
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 
+// ============= DEBUG LOGGING =============
+const DEBUG = true;
+
+function debugLog(message: string, data?: unknown) {
+  if (DEBUG) {
+    console.log(`[PROCONT Parser] ${message}`, data !== undefined ? data : '');
+  }
+}
+
+// ============= NUMBER PARSING =============
+
 /**
  * Parse Brazilian number format with D/C (Debit/Credit) handling
- * 
- * Examples:
- * - "1.234,56" → 1234.56
- * - "1.234,56D" → +1234.56 (for ATIVO) or -1234.56 (for PASSIVO/PL)
- * - "1.234,56C" → -1234.56 (for ATIVO) or +1234.56 (for PASSIVO/PL)
- * - "(1.234,56)" → -1234.56
  */
 export function parseBrazilianNumber(
   value: string | number | undefined | null,
@@ -20,7 +25,7 @@ export function parseBrazilianNumber(
   let cleaned = value.toString().trim();
   
   // Remove quotes
-  cleaned = cleaned.replace(/^["']|["']$/g, '');
+  cleaned = cleaned.replace(/^[\"']|[\"']$/g, '');
   
   // Remove R$ and currency symbols
   cleaned = cleaned.replace(/R\$\s*/gi, '');
@@ -74,14 +79,14 @@ export function parseBrazilianNumber(
 }
 
 /**
- * Simple number parser without D/C context (for basic extraction)
+ * Simple number parser without D/C context
  */
 export function parseSimpleBrazilianNumber(value: string | number | undefined | null): number {
   if (value === undefined || value === null || value === '') return 0;
   if (typeof value === 'number') return value;
   
   let cleaned = value.toString().trim();
-  cleaned = cleaned.replace(/^["']|["']$/g, '');
+  cleaned = cleaned.replace(/^[\"']|[\"']$/g, '');
   cleaned = cleaned.replace(/R\$\s*/gi, '');
   cleaned = cleaned.replace(/[dcDC]$/i, '');
   
@@ -101,9 +106,12 @@ export function parseSimpleBrazilianNumber(value: string | number | undefined | 
  */
 function isNumericCell(value: string): boolean {
   if (!value || value.trim() === '') return false;
-  const cleaned = value.trim().replace(/^["']|["']$/g, '');
-  // Match Brazilian number patterns with optional D/C suffix
-  return /^[\d.,()R$\s-]+[dcDC]?$/.test(cleaned);
+  const cleaned = value.trim().replace(/^[\"']|[\"']$/g, '');
+  // Match Brazilian number patterns: digits, dots, commas, optional D/C suffix
+  // Examples: "1.234,56", "1234,56D", "(1.234,56)", "R$ 1.234,56"
+  const hasDigits = /\d/.test(cleaned);
+  const isNumericPattern = /^[R$\s]*[\d.,()R$\s-]+[dcDC]?$/.test(cleaned);
+  return hasDigits && isNumericPattern;
 }
 
 /**
@@ -112,35 +120,8 @@ function isNumericCell(value: string): boolean {
 function isTextCell(value: string): boolean {
   if (!value || value.trim() === '') return false;
   const cleaned = value.trim();
-  // Not a numeric cell
-  return !isNumericCell(cleaned) && cleaned.length >= 2;
-}
-
-/**
- * Find the first non-empty text cell in a row
- */
-function findFirstTextCell(row: string[]): { text: string; index: number } {
-  for (let i = 0; i < row.length; i++) {
-    const cell = String(row[i] || '').trim();
-    if (isTextCell(cell)) {
-      return { text: cell, index: i };
-    }
-  }
-  return { text: '', index: -1 };
-}
-
-/**
- * Find all numeric values in a row (from all cells)
- */
-function findAllNumericValues(row: string[]): number[] {
-  const values: number[] = [];
-  for (let i = 0; i < row.length; i++) {
-    const cell = String(row[i] || '').trim();
-    if (isNumericCell(cell)) {
-      values.push(parseSimpleBrazilianNumber(cell));
-    }
-  }
-  return values;
+  // Must have at least 2 chars and contain letters
+  return cleaned.length >= 2 && /[a-zA-ZÀ-ú]/.test(cleaned) && !isNumericCell(cleaned);
 }
 
 /**
@@ -154,72 +135,7 @@ function normalizeText(text: string): string {
     .trim();
 }
 
-/**
- * Parse file to 2D array - always use first sheet for XLS/XLSX
- */
-export async function parseFileToArray(file: File): Promise<string[][]> {
-  const extension = file.name.split('.').pop()?.toLowerCase();
-  
-  if (extension === 'csv') {
-    return new Promise((resolve, reject) => {
-      // First try with comma delimiter
-      Papa.parse(file, {
-        delimiter: ',',
-        skipEmptyLines: false,
-        complete: (results) => {
-          const data = results.data as string[][];
-          if (data.length > 0 && data[0].length > 1) {
-            resolve(data);
-          } else {
-            // Try semicolon as fallback
-            Papa.parse(file, {
-              delimiter: ';',
-              skipEmptyLines: false,
-              complete: (results2) => {
-                resolve(results2.data as string[][]);
-              },
-              error: reject
-            });
-          }
-        },
-        error: reject
-      });
-    });
-  } else if (extension === 'xls' || extension === 'xlsx') {
-    const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: 'array', raw: false });
-    // Always use first sheet (sheet[0])
-    const firstSheetName = workbook.SheetNames[0];
-    const firstSheet = workbook.Sheets[firstSheetName];
-    // Read all cells as text initially
-    const data = XLSX.utils.sheet_to_json(firstSheet, { 
-      header: 1, 
-      raw: false,  // Read as text
-      defval: '' 
-    }) as string[][];
-    return data;
-  }
-  
-  throw new Error('Formato não suportado. Use CSV, XLS ou XLSX.');
-}
-
-/**
- * Extract period from filename or content
- */
-export function extractPeriod(filename: string, rows: string[][]): string {
-  // Try filename first
-  const dateMatch = filename.match(/(\d{2}\/\d{2}\/\d{4}|\d{4})/);
-  if (dateMatch) return dateMatch[1];
-
-  // Try content in first 15 rows
-  for (const row of rows.slice(0, 15)) {
-    const text = row.join(' ');
-    const match = text.match(/(\d{2}\/\d{2}\/\d{4}|\d{4})/);
-    if (match) return match[1];
-  }
-
-  return new Date().getFullYear().toString();
-}
+// ============= INTERFACES =============
 
 export interface ParsedDREEntry {
   descricao: string;
@@ -237,10 +153,6 @@ export interface ParsedBalancoEntry {
   raw_row: string[];
 }
 
-/**
- * Extracted metrics from Balanço Patrimonial
- * These are read directly from summary lines, NOT calculated
- */
 export interface BalancoMetrics {
   ativoTotal: number;
   ativoCirculante: number;
@@ -251,115 +163,156 @@ export interface BalancoMetrics {
   patrimonioLiquido: number;
 }
 
-/**
- * Parse DRE file following Domínio Sistemas format
- * 
- * TOLERANT RULES:
- * 1. Try to find "DEMONSTRAÇÃO DO RESULTADO DO EXERCÍCIO" to start
- * 2. Fallback: look for "RECEITA" if main header not found
- * 3. DRE is valid if at least one monetary value was processed
- * 4. Never abort - process whatever data is found
- */
-export function parseDREFile(rows: string[][], filename: string): {
-  entries: ParsedDREEntry[];
-  periodo: string;
-  errors: string[];
-} {
-  const periodo = extractPeriod(filename, rows);
-  const entries: ParsedDREEntry[] = [];
-  const errors: string[] = [];
+export interface DREMetrics {
+  receitaOperacional: number;
+  despesasOperacionais: number;
+  lucroBruto: number;
+  lucroLiquido: number;
+}
 
-  // Find start of DRE data with multiple fallback strategies
-  let startRow = 0;
-  let foundDREHeader = false;
+// ============= FILE TYPE DETECTION =============
 
-  // Strategy 1: Look for "DEMONSTRAÇÃO DO RESULTADO"
-  for (let i = 0; i < rows.length && i < 30; i++) {
-    const rowText = normalizeText(rows[i]?.join(' ') || '');
-    if (rowText.includes('DEMONSTRACAO DO RESULTADO') || 
-        rowText.includes('DEMONSTRAÇÃO DO RESULTADO')) {
-      startRow = i + 1;
-      foundDREHeader = true;
-      break;
-    }
-  }
+function getFileExtension(filename: string): string {
+  return filename.split('.').pop()?.toLowerCase() || '';
+}
 
-  // Strategy 2: Fallback - look for "RECEITA" if main header not found
-  if (!foundDREHeader) {
-    for (let i = 0; i < rows.length && i < 30; i++) {
-      const { text } = findFirstTextCell(rows[i] || []);
-      const normalText = normalizeText(text);
-      if (normalText.includes('RECEITA')) {
-        startRow = i;
-        foundDREHeader = true;
-        break;
-      }
-    }
-  }
+// ============= CSV PARSING (Separate Flow) =============
 
-  // Strategy 3: Last fallback - start from line 5
-  if (!foundDREHeader) {
-    startRow = Math.min(5, rows.length - 1);
-  }
-
-  // Process all rows from startRow
-  for (let i = startRow; i < rows.length; i++) {
-    const row = rows[i];
-    if (!row || row.length === 0) continue;
-
-    const { text: descricao } = findFirstTextCell(row);
-    if (!descricao || descricao.length < 2) continue;
-
-    // Skip header-like rows
-    const normalDesc = normalizeText(descricao);
-    if (normalDesc.includes('DESCRICAO') || normalDesc === 'CONTA') continue;
-
-    // Find numeric values
-    const numericValues = findAllNumericValues(row);
-
-    // Skip if no values - but don't abort the entire process
-    if (numericValues.length === 0) continue;
-
-    // First value = current, second value = previous (if exists)
-    const valor = numericValues[0] || 0;
-    const valor_anterior = numericValues.length > 1 ? numericValues[1] : null;
-
-    entries.push({
-      descricao,
-      valor,
-      valor_anterior,
-      raw_row: row.map(String)
-    });
-  }
-
-  // Only show warning, never block - DRE is valid if at least one entry was found
-  // Even if no entries, we don't block - maybe only Balanço has data
+async function parseCSVFile(file: File): Promise<string[][]> {
+  debugLog('Usando fluxo CSV para:', file.name);
   
-  return { entries, periodo, errors };
+  return new Promise((resolve, reject) => {
+    // First try with comma delimiter
+    Papa.parse(file, {
+      delimiter: ',',
+      skipEmptyLines: false,
+      complete: (results) => {
+        const data = results.data as string[][];
+        debugLog('CSV parsing - linhas lidas:', data.length);
+        if (data.length > 0 && data[0].length > 1) {
+          resolve(data);
+        } else {
+          // Try semicolon as fallback
+          Papa.parse(file, {
+            delimiter: ';',
+            skipEmptyLines: false,
+            complete: (results2) => {
+              const data2 = results2.data as string[][];
+              debugLog('CSV parsing (semicolon) - linhas lidas:', data2.length);
+              resolve(data2);
+            },
+            error: reject
+          });
+        }
+      },
+      error: reject
+    });
+  });
+}
+
+// ============= XLS/XLSX PARSING (Completely Separate Flow) =============
+
+interface XLSRow {
+  cells: string[];
+  firstTextCell: { text: string; index: number };
+  numericValues: { value: number; raw: string }[];
 }
 
 /**
- * Parse Balanço Patrimonial file
- * 
- * TOLERANT RULES (CRITICAL):
- * 1. Balanço is VALID if "ATIVO" is found - don't require all blocks
- * 2. Read totals from key lines progressively (what's found, not what's missing)
- * 3. Missing fields = null/0, NOT errors
- * 4. Never abort - process whatever data is found
- * 5. Only error if NO numeric values at all
+ * Parse XLS/XLSX file - reads cell by cell, NOT using CSV logic
  */
-export function parseBalancoFile(rows: string[][], filename: string): {
+async function parseXLSFile(file: File): Promise<XLSRow[]> {
+  const extension = getFileExtension(file.name);
+  debugLog('Usando fluxo XLS/XLSX para:', file.name);
+  debugLog('Extensão detectada:', extension);
+  
+  const buffer = await file.arrayBuffer();
+  const workbook = XLSX.read(buffer, { type: 'array', raw: false });
+  
+  // Always use first sheet
+  const firstSheetName = workbook.SheetNames[0];
+  debugLog('Primeira aba:', firstSheetName);
+  
+  const sheet = workbook.Sheets[firstSheetName];
+  
+  // Get sheet range
+  const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
+  debugLog('Range da planilha:', { 
+    startRow: range.s.r, 
+    endRow: range.e.r, 
+    startCol: range.s.c, 
+    endCol: range.e.c 
+  });
+  
+  const rows: XLSRow[] = [];
+  let totalNumericCells = 0;
+  
+  // Iterate row by row, then cell by cell
+  for (let rowIdx = range.s.r; rowIdx <= range.e.r; rowIdx++) {
+    const cells: string[] = [];
+    let firstText: { text: string; index: number } = { text: '', index: -1 };
+    const numericValues: { value: number; raw: string }[] = [];
+    
+    // Read each cell in the row
+    for (let colIdx = range.s.c; colIdx <= range.e.c; colIdx++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: rowIdx, c: colIdx });
+      const cell = sheet[cellAddress];
+      
+      // Convert cell to string - read as text initially
+      let cellValue = '';
+      if (cell) {
+        // Use formatted value if available, otherwise raw value
+        cellValue = cell.w !== undefined ? String(cell.w) : 
+                    cell.v !== undefined ? String(cell.v) : '';
+      }
+      
+      cells.push(cellValue);
+      
+      // Find first text cell (from left to right)
+      if (firstText.index === -1 && isTextCell(cellValue)) {
+        firstText = { text: cellValue.trim(), index: colIdx };
+      }
+      
+      // Collect all numeric values
+      if (isNumericCell(cellValue)) {
+        const parsedValue = parseSimpleBrazilianNumber(cellValue);
+        numericValues.push({ value: parsedValue, raw: cellValue });
+        totalNumericCells++;
+      }
+    }
+    
+    rows.push({
+      cells,
+      firstTextCell: firstText,
+      numericValues
+    });
+  }
+  
+  debugLog('Total de linhas lidas:', rows.length);
+  debugLog('Total de células numéricas encontradas:', totalNumericCells);
+  
+  return rows;
+}
+
+// ============= BALANÇO PATRIMONIAL PARSING =============
+
+export interface BalancoParseResult {
   entries: ParsedBalancoEntry[];
   metrics: BalancoMetrics;
   periodo: string;
   errors: string[];
-} {
-  const periodo = extractPeriod(filename, rows);
+}
+
+/**
+ * Parse Balanço from XLS/XLSX - cell by cell approach
+ */
+function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResult {
+  debugLog('=== Iniciando parseBalancoFromXLS ===');
+  
   const entries: ParsedBalancoEntry[] = [];
   const errors: string[] = [];
-  const hierarchyStack: string[] = [];
-
-  // Metrics extracted from key lines - default to 0, not error
+  const periodo = extractPeriodFromRows(rows.map(r => r.cells), filename);
+  
   const metrics: BalancoMetrics = {
     ativoTotal: 0,
     ativoCirculante: 0,
@@ -369,86 +322,214 @@ export function parseBalancoFile(rows: string[][], filename: string): {
     passivoNaoCirculante: 0,
     patrimonioLiquido: 0
   };
-
-  // Find first occurrence of "ATIVO" - this marks a valid Balanço
+  
+  // Find "ATIVO" to start - this marks valid Balanço
   let startRow = -1;
   let foundAtivo = false;
   
   for (let i = 0; i < rows.length; i++) {
-    const { text } = findFirstTextCell(rows[i] || []);
+    const { text } = rows[i].firstTextCell;
     const normalText = normalizeText(text);
     if (normalText === 'ATIVO') {
       startRow = i;
       foundAtivo = true;
+      debugLog('Encontrado ATIVO na linha:', i);
       break;
     }
   }
-
-  // Fallback: if "ATIVO" not found, try to find any accounting data
+  
+  // Fallback: if "ATIVO" not found, look for any numeric data
   if (!foundAtivo) {
-    // Look for any line that might be accounting data
-    for (let i = 0; i < rows.length && i < 20; i++) {
-      const numericValues = findAllNumericValues(rows[i] || []);
-      if (numericValues.length > 0) {
+    debugLog('ATIVO não encontrado, buscando dados numéricos...');
+    for (let i = 0; i < rows.length && i < 30; i++) {
+      if (rows[i].numericValues.length > 0) {
         startRow = i;
+        debugLog('Dados numéricos encontrados na linha:', i);
         break;
       }
     }
-    // Last resort: start from line 5
     if (startRow === -1) {
       startRow = Math.min(5, rows.length - 1);
     }
   }
-
-  // Track current section for D/C handling and tipo classification
+  
+  // Track section context
   let currentSection: 'ATIVO' | 'PASSIVO' | 'PL' = 'ATIVO';
   let currentTipo = 'ATIVO CIRCULANTE';
-  
-  // Track context for identifying "CIRCULANTE" correctly
   let justSawAtivo = false;
   let justSawPassivo = false;
   let foundAtivoCirculante = false;
   let foundPassivoCirculante = false;
-  let totalNumericValuesFound = 0;
+  const hierarchyStack: string[] = [];
+  
+  for (let i = startRow; i < rows.length; i++) {
+    const row = rows[i];
+    const { text: conta, index: textIndex } = row.firstTextCell;
+    
+    if (!conta || conta.length < 2) continue;
+    
+    const normalConta = normalizeText(conta);
+    
+    // Skip header rows
+    if (normalConta.includes('DESCRICAO') || normalConta === 'CONTA') continue;
+    
+    // Get values with D/C context
+    const rawCells = row.numericValues;
+    const valor = rawCells.length > 0 
+      ? parseBrazilianNumber(rawCells[0].raw, currentSection) 
+      : 0;
+    const valor_anterior = rawCells.length > 1 
+      ? parseBrazilianNumber(rawCells[1].raw, currentSection) 
+      : null;
+    
+    // === PROGRESSIVE METRICS EXTRACTION ===
+    
+    if (normalConta === 'ATIVO') {
+      metrics.ativoTotal = Math.abs(valor);
+      currentSection = 'ATIVO';
+      currentTipo = 'ATIVO CIRCULANTE';
+      justSawAtivo = true;
+      justSawPassivo = false;
+      debugLog('ATIVO Total:', metrics.ativoTotal);
+    }
+    else if (normalConta === 'CIRCULANTE' && justSawAtivo && !foundAtivoCirculante) {
+      metrics.ativoCirculante = Math.abs(valor);
+      foundAtivoCirculante = true;
+      justSawAtivo = false;
+      debugLog('Ativo Circulante:', metrics.ativoCirculante);
+    }
+    else if (normalConta === 'ATIVO NAO CIRCULANTE' || 
+             (normalConta === 'NAO CIRCULANTE' && currentSection === 'ATIVO')) {
+      metrics.ativoNaoCirculante = Math.abs(valor);
+      currentTipo = 'ATIVO NAO CIRCULANTE';
+      justSawAtivo = false;
+      debugLog('Ativo Não Circulante:', metrics.ativoNaoCirculante);
+    }
+    else if (normalConta === 'PASSIVO') {
+      metrics.passivoTotal = Math.abs(valor);
+      currentSection = 'PASSIVO';
+      currentTipo = 'PASSIVO CIRCULANTE';
+      justSawPassivo = true;
+      justSawAtivo = false;
+      debugLog('PASSIVO Total:', metrics.passivoTotal);
+    }
+    else if (normalConta === 'CIRCULANTE' && justSawPassivo && !foundPassivoCirculante) {
+      metrics.passivoCirculante = Math.abs(valor);
+      foundPassivoCirculante = true;
+      justSawPassivo = false;
+      debugLog('Passivo Circulante:', metrics.passivoCirculante);
+    }
+    else if (normalConta === 'PASSIVO NAO CIRCULANTE' || 
+             (normalConta === 'NAO CIRCULANTE' && currentSection === 'PASSIVO')) {
+      metrics.passivoNaoCirculante = Math.abs(valor);
+      currentTipo = 'PASSIVO NAO CIRCULANTE';
+      justSawPassivo = false;
+      debugLog('Passivo Não Circulante:', metrics.passivoNaoCirculante);
+    }
+    else if (normalConta === 'PATRIMONIO LIQUIDO' || normalConta.includes('PATRIMONIO LIQUIDO')) {
+      metrics.patrimonioLiquido = Math.abs(valor);
+      currentSection = 'PL';
+      currentTipo = 'PATRIMONIO LIQUIDO';
+      justSawAtivo = false;
+      justSawPassivo = false;
+      debugLog('Patrimônio Líquido:', metrics.patrimonioLiquido);
+    }
+    else {
+      justSawAtivo = false;
+      justSawPassivo = false;
+    }
+    
+    // Add entry if has value
+    if (valor !== 0 || (valor_anterior !== null && valor_anterior !== 0)) {
+      const level = textIndex >= 0 ? textIndex : 0;
+      while (hierarchyStack.length > level) {
+        hierarchyStack.pop();
+      }
+      hierarchyStack[level] = conta;
+      const hierarchy = hierarchyStack.filter(Boolean).join(' > ');
+      
+      entries.push({
+        conta,
+        tipo: currentTipo,
+        valor: Math.abs(valor),
+        valor_anterior: valor_anterior !== null ? Math.abs(valor_anterior) : null,
+        hierarchy,
+        raw_row: row.cells
+      });
+    }
+  }
+  
+  debugLog('Total de entries do Balanço:', entries.length);
+  debugLog('Metrics extraídas:', metrics);
+  
+  return { entries, metrics, periodo, errors };
+}
 
+/**
+ * Parse Balanço from CSV
+ */
+function parseBalancoFromCSV(rows: string[][], filename: string): BalancoParseResult {
+  debugLog('=== Iniciando parseBalancoFromCSV ===');
+  
+  const entries: ParsedBalancoEntry[] = [];
+  const errors: string[] = [];
+  const periodo = extractPeriodFromRows(rows, filename);
+  
+  const metrics: BalancoMetrics = {
+    ativoTotal: 0,
+    ativoCirculante: 0,
+    ativoNaoCirculante: 0,
+    passivoTotal: 0,
+    passivoCirculante: 0,
+    passivoNaoCirculante: 0,
+    patrimonioLiquido: 0
+  };
+  
+  // Find "ATIVO"
+  let startRow = -1;
+  for (let i = 0; i < rows.length; i++) {
+    const rowText = rows[i]?.join(' ') || '';
+    if (normalizeText(rowText).includes('ATIVO') && !normalizeText(rowText).includes('NAO CIRCULANTE')) {
+      const firstText = findFirstTextInRow(rows[i]);
+      if (normalizeText(firstText) === 'ATIVO') {
+        startRow = i;
+        break;
+      }
+    }
+  }
+  
+  if (startRow === -1) {
+    // Fallback: start from line 9 (Domínio format)
+    startRow = Math.min(8, rows.length - 1);
+  }
+  
+  let currentSection: 'ATIVO' | 'PASSIVO' | 'PL' = 'ATIVO';
+  let currentTipo = 'ATIVO CIRCULANTE';
+  let justSawAtivo = false;
+  let justSawPassivo = false;
+  let foundAtivoCirculante = false;
+  let foundPassivoCirculante = false;
+  const hierarchyStack: string[] = [];
+  
   for (let i = startRow; i < rows.length; i++) {
     const row = rows[i];
     if (!row || row.length === 0) continue;
-
-    const { text: conta, index: textIndex } = findFirstTextCell(row);
-    if (!conta || conta.length < 2) continue;
-
-    const normalConta = normalizeText(conta);
-
-    // Skip header-like rows
-    if (normalConta.includes('DESCRICAO') || normalConta === 'CONTA') continue;
-
-    // Find raw cell values to preserve D/C suffixes
-    const rawCells: string[] = [];
-    for (let j = 0; j < row.length; j++) {
-      const cell = String(row[j] || '').trim();
-      if (isNumericCell(cell)) {
-        rawCells.push(cell);
-      }
-    }
-
-    // Parse values with D/C context
-    const valor = rawCells.length > 0 
-      ? parseBrazilianNumber(rawCells[0], currentSection) 
-      : 0;
-    const valor_anterior = rawCells.length > 1 
-      ? parseBrazilianNumber(rawCells[1], currentSection) 
-      : null;
-
-    // Count numeric values found
-    if (rawCells.length > 0) {
-      totalNumericValuesFound++;
-    }
-
-    // ===== PROGRESSIVE SECTION DETECTION AND METRICS EXTRACTION =====
-    // Each block is optional - we extract what we find
     
-    // 1. ATIVO line → Ativo Total
+    const conta = findFirstTextInRow(row);
+    if (!conta || conta.length < 2) continue;
+    
+    const normalConta = normalizeText(conta);
+    if (normalConta.includes('DESCRICAO') || normalConta === 'CONTA') continue;
+    
+    const numericValues = findNumericValuesInRow(row);
+    const valor = numericValues.length > 0 
+      ? parseBrazilianNumber(numericValues[0], currentSection) 
+      : 0;
+    const valor_anterior = numericValues.length > 1 
+      ? parseBrazilianNumber(numericValues[1], currentSection) 
+      : null;
+    
+    // Same metrics extraction logic as XLS
     if (normalConta === 'ATIVO') {
       metrics.ativoTotal = Math.abs(valor);
       currentSection = 'ATIVO';
@@ -456,20 +537,17 @@ export function parseBalancoFile(rows: string[][], filename: string): {
       justSawAtivo = true;
       justSawPassivo = false;
     }
-    // 2. CIRCULANTE immediately after ATIVO → Ativo Circulante
     else if (normalConta === 'CIRCULANTE' && justSawAtivo && !foundAtivoCirculante) {
       metrics.ativoCirculante = Math.abs(valor);
       foundAtivoCirculante = true;
       justSawAtivo = false;
     }
-    // 3. ATIVO NÃO CIRCULANTE or NÃO CIRCULANTE in ATIVO section
     else if (normalConta === 'ATIVO NAO CIRCULANTE' || 
              (normalConta === 'NAO CIRCULANTE' && currentSection === 'ATIVO')) {
       metrics.ativoNaoCirculante = Math.abs(valor);
       currentTipo = 'ATIVO NAO CIRCULANTE';
       justSawAtivo = false;
     }
-    // 4. PASSIVO line → Passivo Total (optional - don't fail if not found)
     else if (normalConta === 'PASSIVO') {
       metrics.passivoTotal = Math.abs(valor);
       currentSection = 'PASSIVO';
@@ -477,22 +555,18 @@ export function parseBalancoFile(rows: string[][], filename: string): {
       justSawPassivo = true;
       justSawAtivo = false;
     }
-    // 5. CIRCULANTE immediately after PASSIVO → Passivo Circulante
     else if (normalConta === 'CIRCULANTE' && justSawPassivo && !foundPassivoCirculante) {
       metrics.passivoCirculante = Math.abs(valor);
       foundPassivoCirculante = true;
       justSawPassivo = false;
     }
-    // 6. PASSIVO NÃO CIRCULANTE (optional)
     else if (normalConta === 'PASSIVO NAO CIRCULANTE' || 
              (normalConta === 'NAO CIRCULANTE' && currentSection === 'PASSIVO')) {
       metrics.passivoNaoCirculante = Math.abs(valor);
       currentTipo = 'PASSIVO NAO CIRCULANTE';
       justSawPassivo = false;
     }
-    // 7. PATRIMÔNIO LÍQUIDO (optional)
-    else if (normalConta === 'PATRIMONIO LIQUIDO' || 
-             normalConta.includes('PATRIMONIO LIQUIDO')) {
+    else if (normalConta === 'PATRIMONIO LIQUIDO' || normalConta.includes('PATRIMONIO LIQUIDO')) {
       metrics.patrimonioLiquido = Math.abs(valor);
       currentSection = 'PL';
       currentTipo = 'PATRIMONIO LIQUIDO';
@@ -500,21 +574,19 @@ export function parseBalancoFile(rows: string[][], filename: string): {
       justSawPassivo = false;
     }
     else {
-      // Reset "just saw" flags for any other line
       justSawAtivo = false;
       justSawPassivo = false;
     }
-
-    // Include all rows with values (don't skip)
+    
     if (valor !== 0 || (valor_anterior !== null && valor_anterior !== 0)) {
-      // Build hierarchy based on indentation level
-      const level = textIndex;
+      const textIndex = findTextIndexInRow(row);
+      const level = textIndex >= 0 ? textIndex : 0;
       while (hierarchyStack.length > level) {
         hierarchyStack.pop();
       }
       hierarchyStack[level] = conta;
       const hierarchy = hierarchyStack.filter(Boolean).join(' > ');
-
+      
       entries.push({
         conta,
         tipo: currentTipo,
@@ -525,30 +597,278 @@ export function parseBalancoFile(rows: string[][], filename: string): {
       });
     }
   }
-
-  // TOLERANT VALIDATION: Only error if absolutely NO data was found
-  // Having "ATIVO" found OR having any numeric values = valid Balanço
-  // We DON'T fail just because some sections are missing
-
+  
+  debugLog('Total de entries do Balanço (CSV):', entries.length);
+  
   return { entries, metrics, periodo, errors };
 }
 
+// ============= DRE PARSING =============
+
+export interface DREParseResult {
+  entries: ParsedDREEntry[];
+  periodo: string;
+  errors: string[];
+}
+
 /**
- * Extracted metrics from DRE
+ * Parse DRE from XLS/XLSX
  */
-export interface DREMetrics {
-  receitaOperacional: number;
-  despesasOperacionais: number;
-  lucroBruto: number;
-  lucroLiquido: number;
+function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
+  debugLog('=== Iniciando parseDREFromXLS ===');
+  
+  const entries: ParsedDREEntry[] = [];
+  const errors: string[] = [];
+  const periodo = extractPeriodFromRows(rows.map(r => r.cells), filename);
+  
+  // Find start - "DEMONSTRAÇÃO DO RESULTADO" or fallback to "RECEITA"
+  let startRow = 0;
+  let found = false;
+  
+  for (let i = 0; i < rows.length && i < 30; i++) {
+    const rowText = normalizeText(rows[i].cells.join(' '));
+    if (rowText.includes('DEMONSTRACAO DO RESULTADO') || 
+        rowText.includes('DEMONSTRAÇÃO DO RESULTADO')) {
+      startRow = i + 1;
+      found = true;
+      debugLog('Encontrado header DRE na linha:', i);
+      break;
+    }
+  }
+  
+  // Fallback: look for "RECEITA"
+  if (!found) {
+    for (let i = 0; i < rows.length && i < 30; i++) {
+      const { text } = rows[i].firstTextCell;
+      if (normalizeText(text).includes('RECEITA')) {
+        startRow = i;
+        found = true;
+        debugLog('Fallback: encontrado RECEITA na linha:', i);
+        break;
+      }
+    }
+  }
+  
+  if (!found) {
+    startRow = Math.min(5, rows.length - 1);
+    debugLog('Usando linha padrão:', startRow);
+  }
+  
+  for (let i = startRow; i < rows.length; i++) {
+    const row = rows[i];
+    const { text: descricao } = row.firstTextCell;
+    
+    if (!descricao || descricao.length < 2) continue;
+    
+    const normalDesc = normalizeText(descricao);
+    if (normalDesc.includes('DESCRICAO') || normalDesc === 'CONTA') continue;
+    
+    const numericValues = row.numericValues;
+    if (numericValues.length === 0) continue;
+    
+    const valor = numericValues[0]?.value || 0;
+    const valor_anterior = numericValues.length > 1 ? numericValues[1].value : null;
+    
+    entries.push({
+      descricao,
+      valor,
+      valor_anterior,
+      raw_row: row.cells
+    });
+  }
+  
+  debugLog('Total de entries DRE:', entries.length);
+  
+  return { entries, periodo, errors };
+}
+
+/**
+ * Parse DRE from CSV
+ */
+function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
+  debugLog('=== Iniciando parseDREFromCSV ===');
+  
+  const entries: ParsedDREEntry[] = [];
+  const errors: string[] = [];
+  const periodo = extractPeriodFromRows(rows, filename);
+  
+  // Find start
+  let startRow = 0;
+  let found = false;
+  
+  for (let i = 0; i < rows.length && i < 30; i++) {
+    const rowText = normalizeText(rows[i]?.join(' ') || '');
+    if (rowText.includes('DEMONSTRACAO DO RESULTADO') || 
+        rowText.includes('DEMONSTRAÇÃO DO RESULTADO')) {
+      startRow = i + 1;
+      found = true;
+      break;
+    }
+  }
+  
+  if (!found) {
+    for (let i = 0; i < rows.length && i < 30; i++) {
+      const firstText = findFirstTextInRow(rows[i] || []);
+      if (normalizeText(firstText).includes('RECEITA')) {
+        startRow = i;
+        found = true;
+        break;
+      }
+    }
+  }
+  
+  if (!found) {
+    // Domínio format: skip first 7 lines
+    startRow = Math.min(7, rows.length - 1);
+  }
+  
+  for (let i = startRow; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.length === 0) continue;
+    
+    const descricao = findFirstTextInRow(row);
+    if (!descricao || descricao.length < 2) continue;
+    
+    const normalDesc = normalizeText(descricao);
+    if (normalDesc.includes('DESCRICAO') || normalDesc === 'CONTA') continue;
+    
+    const numericValues = findNumericValuesInRow(row);
+    if (numericValues.length === 0) continue;
+    
+    const valor = parseSimpleBrazilianNumber(numericValues[0]);
+    const valor_anterior = numericValues.length > 1 ? parseSimpleBrazilianNumber(numericValues[1]) : null;
+    
+    entries.push({
+      descricao,
+      valor,
+      valor_anterior,
+      raw_row: row.map(String)
+    });
+  }
+  
+  debugLog('Total de entries DRE (CSV):', entries.length);
+  
+  return { entries, periodo, errors };
+}
+
+// ============= HELPER FUNCTIONS =============
+
+function findFirstTextInRow(row: string[]): string {
+  for (const cell of row) {
+    const cleaned = String(cell || '').trim();
+    if (isTextCell(cleaned)) {
+      return cleaned;
+    }
+  }
+  return '';
+}
+
+function findTextIndexInRow(row: string[]): number {
+  for (let i = 0; i < row.length; i++) {
+    const cleaned = String(row[i] || '').trim();
+    if (isTextCell(cleaned)) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function findNumericValuesInRow(row: string[]): string[] {
+  const values: string[] = [];
+  for (const cell of row) {
+    const cleaned = String(cell || '').trim();
+    if (isNumericCell(cleaned)) {
+      values.push(cleaned);
+    }
+  }
+  return values;
+}
+
+function extractPeriodFromRows(rows: string[][], filename: string): string {
+  // Try filename first
+  const dateMatch = filename.match(/(\d{2}\/\d{2}\/\d{4}|\d{4})/);
+  if (dateMatch) return dateMatch[1];
+
+  // Try content in first 15 rows
+  for (const row of rows.slice(0, 15)) {
+    const text = row.join(' ');
+    const match = text.match(/(\d{2}\/\d{2}\/\d{4}|\d{4})/);
+    if (match) return match[1];
+  }
+
+  return new Date().getFullYear().toString();
+}
+
+// ============= MAIN EXPORT FUNCTIONS =============
+
+/**
+ * Parse file to array - ONLY for backward compatibility
+ * New code should use parseBalancoFile and parseDREFile directly
+ */
+export async function parseFileToArray(file: File): Promise<string[][]> {
+  const extension = getFileExtension(file.name);
+  
+  if (extension === 'csv') {
+    return parseCSVFile(file);
+  } else if (extension === 'xls' || extension === 'xlsx') {
+    const xlsRows = await parseXLSFile(file);
+    return xlsRows.map(r => r.cells);
+  }
+  
+  throw new Error('Formato não suportado. Use CSV, XLS ou XLSX.');
+}
+
+/**
+ * Parse DRE file - main entry point
+ * Automatically detects file type and uses appropriate parser
+ */
+export async function parseDREFileAuto(file: File): Promise<DREParseResult> {
+  const extension = getFileExtension(file.name);
+  debugLog('Tipo de arquivo detectado para DRE:', extension);
+  debugLog('Fluxo utilizado:', extension === 'csv' ? 'CSV' : 'XLS/XLSX');
+  
+  if (extension === 'csv') {
+    const rows = await parseCSVFile(file);
+    return parseDREFromCSV(rows, file.name);
+  } else if (extension === 'xls' || extension === 'xlsx') {
+    const xlsRows = await parseXLSFile(file);
+    return parseDREFromXLS(xlsRows, file.name);
+  }
+  
+  throw new Error('Formato não suportado. Use CSV, XLS ou XLSX.');
+}
+
+/**
+ * Parse Balanço file - main entry point
+ * Automatically detects file type and uses appropriate parser
+ */
+export async function parseBalancoFileAuto(file: File): Promise<BalancoParseResult> {
+  const extension = getFileExtension(file.name);
+  debugLog('Tipo de arquivo detectado para Balanço:', extension);
+  debugLog('Fluxo utilizado:', extension === 'csv' ? 'CSV' : 'XLS/XLSX');
+  
+  if (extension === 'csv') {
+    const rows = await parseCSVFile(file);
+    return parseBalancoFromCSV(rows, file.name);
+  } else if (extension === 'xls' || extension === 'xlsx') {
+    const xlsRows = await parseXLSFile(file);
+    return parseBalancoFromXLS(xlsRows, file.name);
+  }
+  
+  throw new Error('Formato não suportado. Use CSV, XLS ou XLSX.');
+}
+
+// Keep old functions for backward compatibility
+export function parseDREFile(rows: string[][], filename: string): DREParseResult {
+  return parseDREFromCSV(rows, filename);
+}
+
+export function parseBalancoFile(rows: string[][], filename: string): BalancoParseResult {
+  return parseBalancoFromCSV(rows, filename);
 }
 
 /**
  * Calculate DRE metrics from entries
- * 
- * Rules:
- * - Receita Operacional: sum lines below "Receita Operacional" until "Impostos sobre Vendas"
- * - Despesas Operacionais: sum after "Lucro Bruto" until "Despesas Financeiras"
  */
 export function calculateDREMetrics(entries: ParsedDREEntry[]): DREMetrics {
   const metrics: DREMetrics = {
@@ -565,11 +885,9 @@ export function calculateDREMetrics(entries: ParsedDREEntry[]): DREMetrics {
     const normalDesc = normalizeText(entry.descricao);
     const valor = Math.abs(entry.valor);
 
-    // Detect section markers
     if (normalDesc.includes('RECEITA OPERACIONAL') || 
         normalDesc.includes('RECEITA BRUTA') ||
         normalDesc.includes('RECEITA LIQUIDA')) {
-      // If this line has a value, it's the total, not just a header
       if (valor > 0) {
         metrics.receitaOperacional = valor;
       } else {
@@ -603,7 +921,6 @@ export function calculateDREMetrics(entries: ParsedDREEntry[]): DREMetrics {
       continue;
     }
 
-    // Accumulate values based on section
     if (inReceitaSection && valor > 0) {
       metrics.receitaOperacional += valor;
     }
@@ -615,4 +932,9 @@ export function calculateDREMetrics(entries: ParsedDREEntry[]): DREMetrics {
   }
 
   return metrics;
+}
+
+// For backward compatibility
+export function extractPeriod(filename: string, rows: string[][]): string {
+  return extractPeriodFromRows(rows, filename);
 }
