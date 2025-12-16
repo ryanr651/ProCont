@@ -337,19 +337,25 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
       const numericValues: { value: number; raw: string }[] = [];
 
       // Read each cell in the row
- let cellValue = "";
+      for (let colIdx = range.s.c; colIdx <= range.e.c; colIdx++) {
+        const cellAddress = XLSX.utils.encode_cell({ r: rowIdx, c: colIdx });
+        const cell = sheet[cellAddress];
 
-if (cell) {
-  if (typeof cell.v === "number") {
-    // XLS numérico puro (MAIS IMPORTANTE)
-    cellValue = String(cell.v);
-  } else if (typeof cell.w === "string") {
-    // Valor formatado
-    cellValue = cell.w;
-  } else if (cell.v !== undefined) {
-    cellValue = String(cell.v);
-  }
-}
+        let cellValue = "";
+
+        if (cell) {
+          // PRIORITIZE numeric values for XLS (essential for accounting files)
+          if (typeof cell.v === "number") {
+            // XLS numérico puro - converter para string
+            cellValue = String(cell.v);
+          } else if (typeof cell.w === "string" && cell.w.trim() !== "") {
+            // Valor formatado como fallback
+            cellValue = cell.w;
+          } else if (cell.v !== undefined && cell.v !== null) {
+            // Qualquer outro valor
+            cellValue = String(cell.v);
+          }
+        }
 
         cells.push(cellValue);
 
