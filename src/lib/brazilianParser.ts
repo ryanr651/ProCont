@@ -105,22 +105,17 @@ export function parseSimpleBrazilianNumber(value: string | number | undefined | 
  * Check if a cell value looks like a number (with Brazilian format)
  */
 function isNumericCell(value: string | number): boolean {
-  // XLS: se já é número, é válido (incluindo zero)
-  if (typeof value === "number" && !isNaN(value)) return true;
-
-  if (!value) return false;
+  if (typeof value === "number") return true;
+  if (!value || value.toString().trim() === "") return false;
 
   const cleaned = value
     .toString()
     .trim()
-    .replace(/^[\"']|[\"']$/g, "")
-    .replace(/\s/g, "");
+    .replace(/^[\"']|[\"']$/g, "");
+  const hasDigits = /\d/.test(cleaned);
+  const isNumericPattern = /^[R$\s]*[\d.,()R$\s-]+[dcDC]?$/.test(cleaned);
 
-  // XLS pode trazer "1234", "1234.56", "1234,56", "(1234,56)"
-  // Zero é permitido - planilhas reais têm zeros
-  const parsed = parseSimpleBrazilianNumber(cleaned);
-
-  return !isNaN(parsed);
+  return hasDigits && isNumericPattern;
 }
 
 /**
@@ -732,15 +727,8 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
   // - rows.length > 0 (arquivo foi lido)
   // - E (hasAnyNumeric OU entries.length > 0)
   // 📌 NÃO exigir "ATIVO", "PASSIVO", "RECEITA" como critério obrigatório para XLS
-  const hasAnyNumeric = (rows || []).some((r) => {
-    const values = safeGetNumericValuesFromXLSRow(r);
-    return values.some((v) => !isNaN(v.value));
-  });
-
-  // XLS é considerado parseado se:
-  // - o arquivo foi lido
-  // - existe pelo menos UM número válido
-  const parsed = rows.length > 0 && hasAnyNumeric;
+  const hasAnyNumeric = (rows || []).some((r) => safeGetNumericValuesFromXLSRow(r).length > 0);
+  const parsed = rows.length > 0 && (hasAnyNumeric || entries.length > 0);
 
   return { entries, metrics, periodo, errors, parsed };
 }
@@ -975,13 +963,10 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
 
   // Para XLS, considere "parsed" true se:
   // - rows.length > 0 (arquivo foi lido)
-  // - existe pelo menos UM número válido
+  // - E (hasAnyNumeric OU entries.length > 0)
   // 📌 NÃO exigir "RECEITA" ou header como critério obrigatório para XLS
-  const hasAnyNumeric = (rows || []).some((r) => {
-    const values = safeGetNumericValuesFromXLSRow(r);
-    return values.some((v) => !isNaN(v.value));
-  });
-  const parsed = rows.length > 0 && hasAnyNumeric;
+  const hasAnyNumeric = (rows || []).some((r) => safeGetNumericValuesFromXLSRow(r).length > 0);
+  const parsed = rows.length > 0 && (hasAnyNumeric || entries.length > 0);
 
   return { entries, periodo, errors, parsed };
 }
