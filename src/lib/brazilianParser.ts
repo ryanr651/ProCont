@@ -254,16 +254,28 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
 
   try {
     const buffer = await file.arrayBuffer();
+    const uint8Array = new Uint8Array(buffer);
+    
+    // Convert to binary string for old XLS compatibility
+    let binaryString = "";
+    for (let i = 0; i < uint8Array.length; i++) {
+      binaryString += String.fromCharCode(uint8Array[i]);
+    }
 
     // Try multiple reading configurations for old XLS compatibility
+    // Key options: WTF for debugging, dense for memory efficiency, sheetStubs to force cell creation
     const readConfigs: XLSX.ParsingOptions[] = [
-      { type: "array", raw: true },
-      { type: "array", raw: false },
-      { type: "array", codepage: 1252 },
-      { type: "array", codepage: 65001 }, // UTF-8
-      { type: "array" },
-      { type: "buffer", raw: true },
+      { type: "binary", WTF: true, sheetStubs: true, cellStyles: true },
+      { type: "binary", sheetStubs: true, dense: true },
+      { type: "binary", raw: true, sheetStubs: true },
+      { type: "binary", WTF: true },
       { type: "binary" },
+      { type: "array", sheetStubs: true, cellStyles: true },
+      { type: "array", raw: true, sheetStubs: true },
+      { type: "array", WTF: true },
+      { type: "array", codepage: 1252 },
+      { type: "array" },
+      { type: "buffer", raw: true, sheetStubs: true },
     ];
 
     let workbook: XLSX.WorkBook | null = null;
@@ -274,15 +286,9 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
         let inputData: ArrayBuffer | Uint8Array | string = buffer;
         
         if (opts.type === "buffer") {
-          inputData = new Uint8Array(buffer);
+          inputData = uint8Array;
         } else if (opts.type === "binary") {
-          // Convert ArrayBuffer to binary string
-          const bytes = new Uint8Array(buffer);
-          let binary = "";
-          for (let i = 0; i < bytes.length; i++) {
-            binary += String.fromCharCode(bytes[i]);
-          }
-          inputData = binary;
+          inputData = binaryString;
         }
 
         workbook = XLSX.read(inputData, opts);
@@ -294,12 +300,23 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
         debugLog("Workbook lido com opções:", opts);
         debugLog("SheetNames:", workbook.SheetNames);
         
+        // Debug: Check workbook structure
+        debugLog("Workbook keys:", Object.keys(workbook));
+        
         // Check if Sheets object has content
         const sheetsObj = workbook.Sheets;
         if (!sheetsObj) {
           debugLog("Sheets object é null/undefined");
           continue;
         }
+
+        // Debug: Check Sheets object structure
+        debugLog("Sheets type:", typeof sheetsObj);
+        debugLog("Sheets is array:", Array.isArray(sheetsObj));
+        const sheetKeys = Object.keys(sheetsObj);
+        const sheetOwnProps = Object.getOwnPropertyNames(sheetsObj);
+        debugLog("Chaves em Sheets (keys):", sheetKeys);
+        debugLog("Chaves em Sheets (getOwnPropertyNames):", sheetOwnProps);
 
         // Try to access first sheet
         const sheetName = workbook.SheetNames[0];
@@ -311,17 +328,33 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
           break;
         }
 
-        // Method 2: Check all keys in Sheets
-        const sheetKeys = Object.keys(sheetsObj);
-        debugLog("Chaves em Sheets:", sheetKeys);
-        
-        if (sheetKeys.length > 0) {
-          sheet = sheetsObj[sheetKeys[0]];
-          debugLog("Sheet encontrada pela primeira chave:", sheetKeys[0]);
-          break;
+        // Method 2: Try with different string encoding
+        for (const key of sheetOwnProps) {
+          if (key) {
+            sheet = sheetsObj[key];
+            if (sheet && (sheet["!ref"] || Object.keys(sheet).length > 0)) {
+              debugLog("Sheet encontrada por propriedade:", key);
+              break;
+            }
+          }
         }
+        
+        if (sheet) break;
 
-        // Method 3: Try to get sheet by index using XLSX utility
+        // Method 3: Check if Sheets is a Map or has forEach
+        if (typeof (sheetsObj as any).forEach === 'function') {
+          debugLog("Sheets tem forEach, iterando...");
+          (sheetsObj as any).forEach((s: XLSX.WorkSheet, name: string) => {
+            if (!sheet && s) {
+              sheet = s;
+              debugLog("Sheet encontrada via forEach:", name);
+            }
+          });
+        }
+        
+        if (sheet) break;
+
+        // Method 4: Try to get sheet by index using XLSX utility
         for (const name of workbook.SheetNames) {
           if (sheetsObj[name]) {
             sheet = sheetsObj[name];
