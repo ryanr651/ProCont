@@ -327,6 +327,11 @@ export interface BalancoParseResult {
   metrics: BalancoMetrics;
   periodo: string;
   errors: string[];
+  /**
+   * Indica se o parser conseguiu "tentar" interpretar a estrutura do arquivo.
+   * (Não depende de entries > 0; útil para XLS tolerante.)
+   */
+  parsed: boolean;
 }
 
 // ============= SAFE XLS ROW ACCESS HELPERS =============
@@ -400,6 +405,11 @@ export interface BalancoParseResult {
   metrics: BalancoMetrics;
   periodo: string;
   errors: string[];
+  /**
+   * Indica se o parser conseguiu "tentar" interpretar a estrutura do arquivo.
+   * (Não depende de entries > 0; útil para XLS tolerante.)
+   */
+  parsed: boolean;
 }
 
 /**
@@ -429,7 +439,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
   // Validate rows array
   if (!rows || !Array.isArray(rows) || rows.length === 0) {
     debugLog('AVISO: Array de linhas vazio ou inválido');
-    return { entries, metrics, periodo, errors };
+    return { entries, metrics, periodo, errors, parsed: false };
   }
   
   // Find "ATIVO" to start - this marks valid Balanço
@@ -579,8 +589,14 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
   
   debugLog('Total de entries do Balanço:', entries.length);
   debugLog('Metrics extraídas:', metrics);
-  
-  return { entries, metrics, periodo, errors };
+
+  // Para XLS, considere "parsed" true se pelo menos achamos algum sinal de estrutura
+  // (ex.: encontrou ATIVO ou alguma célula numérica em qualquer linha).
+  const hasAnyNumeric = (rows || []).some((r) => safeGetNumericValuesFromXLSRow(r).length > 0);
+  const { text: firstFoundText } = safeGetFirstTextFromXLSRow(rows?.[startRow]);
+  const parsed = foundAtivo || hasAnyNumeric || !!firstFoundText;
+
+  return { entries, metrics, periodo, errors, parsed };
 }
 
 /**
@@ -718,7 +734,7 @@ function parseBalancoFromCSV(rows: string[][], filename: string): BalancoParseRe
   
   debugLog('Total de entries do Balanço (CSV):', entries.length);
   
-  return { entries, metrics, periodo, errors };
+  return { entries, metrics, periodo, errors, parsed: true };
 }
 
 // ============= DRE PARSING =============
@@ -727,6 +743,11 @@ export interface DREParseResult {
   entries: ParsedDREEntry[];
   periodo: string;
   errors: string[];
+  /**
+   * Indica se o parser conseguiu "tentar" interpretar a estrutura do arquivo.
+   * (Não depende de entries > 0; útil para XLS tolerante.)
+   */
+  parsed: boolean;
 }
 
 /**
@@ -746,7 +767,7 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
   // Validate rows array
   if (!rows || !Array.isArray(rows) || rows.length === 0) {
     debugLog('AVISO: Array de linhas vazio ou inválido');
-    return { entries, periodo, errors };
+    return { entries, periodo, errors, parsed: false };
   }
   
   // Find start - "DEMONSTRAÇÃO DO RESULTADO" or fallback to "RECEITA"
@@ -813,8 +834,13 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
   }
   
   debugLog('Total de entries DRE:', entries.length);
-  
-  return { entries, periodo, errors };
+
+  // Para XLS, considere "parsed" true se o arquivo tem qualquer célula numérica
+  // ou se encontramos algum texto relevante (header/receita/startRow).
+  const hasAnyNumeric = (rows || []).some((r) => safeGetNumericValuesFromXLSRow(r).length > 0);
+  const parsed = found || hasAnyNumeric;
+
+  return { entries, periodo, errors, parsed };
 }
 
 /**
@@ -883,7 +909,7 @@ function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
   
   debugLog('Total de entries DRE (CSV):', entries.length);
   
-  return { entries, periodo, errors };
+  return { entries, periodo, errors, parsed: true };
 }
 
 // ============= HELPER FUNCTIONS =============
@@ -967,7 +993,9 @@ export async function parseDREFileAuto(file: File): Promise<DREParseResult> {
     return parseDREFromCSV(rows, file.name);
   } else if (extension === 'xls' || extension === 'xlsx') {
     const xlsRows = await parseXLSFile(file);
-    return parseDREFromXLS(xlsRows, file.name);
+    const result = parseDREFromXLS(xlsRows, file.name);
+    // Se não leu nenhuma linha do XLS, marque como não interpretado
+    return { ...result, parsed: result.parsed && xlsRows.length > 0 };
   }
   
   throw new Error('Formato não suportado. Use CSV, XLS ou XLSX.');
@@ -987,7 +1015,9 @@ export async function parseBalancoFileAuto(file: File): Promise<BalancoParseResu
     return parseBalancoFromCSV(rows, file.name);
   } else if (extension === 'xls' || extension === 'xlsx') {
     const xlsRows = await parseXLSFile(file);
-    return parseBalancoFromXLS(xlsRows, file.name);
+    const result = parseBalancoFromXLS(xlsRows, file.name);
+    // Se não leu nenhuma linha do XLS, marque como não interpretado
+    return { ...result, parsed: result.parsed && xlsRows.length > 0 };
   }
   
   throw new Error('Formato não suportado. Use CSV, XLS ou XLSX.');
