@@ -229,48 +229,85 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
   
   try {
     const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: 'array', raw: false });
+    
+    // Try multiple reading options for better compatibility with old XLS files
+    let workbook: XLSX.WorkBook | null = null;
+    const readOptions: XLSX.ParsingOptions[] = [
+      { type: 'array', raw: false },
+      { type: 'array', raw: false, codepage: 1252 }, // Windows Latin-1
+      { type: 'array', raw: true },
+      { type: 'array' }
+    ];
+    
+    for (const opts of readOptions) {
+      try {
+        workbook = XLSX.read(buffer, opts);
+        if (workbook && workbook.SheetNames && workbook.SheetNames.length > 0) {
+          debugLog('Workbook lido com opções:', opts);
+          break;
+        }
+      } catch (e) {
+        debugLog('Tentativa falhou com opções: ' + JSON.stringify(opts));
+      }
+    }
     
     // Validate workbook has sheets
     if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
       debugLog('ERRO: Workbook não contém abas');
-      return []; // Return empty array, not undefined
+      return [];
     }
     
     // Always start with first sheet name
     const desiredSheetName = workbook.SheetNames[0];
     debugLog('Primeira aba:', desiredSheetName);
+    
+    // Log all available sheet keys for debugging
+    const sheetsObj = workbook.Sheets;
+    const sheetKeys = sheetsObj ? Object.keys(sheetsObj) : [];
+    debugLog('Chaves disponíveis em Sheets:', sheetKeys);
 
-    // Some real-world XLS exports have mismatched keys between SheetNames and Sheets.
-    // Be defensive: try direct access, then normalized match, then first available sheet.
-    const sheet = (() => {
-      const sheetsObj = workbook.Sheets as Record<string, XLSX.WorkSheet> | undefined;
-      if (!sheetsObj) return undefined;
-
-      const direct = sheetsObj[desiredSheetName];
-      if (direct) return direct;
-
-      const desiredNorm = normalizeText(String(desiredSheetName || '')).replace(/\s+/g, ' ').trim();
-      const keys = Object.keys(sheetsObj);
-      const normalizedMatchKey = keys.find((k) =>
-        normalizeText(String(k || '')).replace(/\s+/g, ' ').trim() === desiredNorm
-      );
-      if (normalizedMatchKey) return sheetsObj[normalizedMatchKey];
-
-      return keys.length > 0 ? sheetsObj[keys[0]] : undefined;
-    })();
+    // Defensive sheet access - try multiple approaches
+    let sheet: XLSX.WorkSheet | undefined;
+    
+    // 1. Direct access
+    if (sheetsObj && sheetsObj[desiredSheetName]) {
+      sheet = sheetsObj[desiredSheetName];
+      debugLog('Sheet encontrada por acesso direto');
+    }
+    
+    // 2. Try with normalized text comparison
+    if (!sheet && sheetsObj) {
+      const desiredNorm = normalizeText(String(desiredSheetName || '')).replace(/\s+/g, '').trim();
+      for (const key of sheetKeys) {
+        const keyNorm = normalizeText(String(key || '')).replace(/\s+/g, '').trim();
+        if (keyNorm === desiredNorm) {
+          sheet = sheetsObj[key];
+          debugLog('Sheet encontrada por match normalizado:', key);
+          break;
+        }
+      }
+    }
+    
+    // 3. Try first available sheet as last resort
+    if (!sheet && sheetsObj && sheetKeys.length > 0) {
+      sheet = sheetsObj[sheetKeys[0]];
+      debugLog('Sheet encontrada usando primeira chave disponível:', sheetKeys[0]);
+    }
 
     // Validate sheet exists
     if (!sheet) {
-      debugLog('ERRO: Sheet não encontrada:', desiredSheetName);
-      return []; // Return empty array, not undefined
+      debugLog('ERRO: Nenhuma sheet encontrada');
+      
+      // FALLBACK: Use sheet_to_json approach
+      debugLog('Tentando fallback com sheet_to_json...');
+      return parseXLSFallback(workbook);
     }
     
     // Validate sheet has ref property
     const sheetRef = sheet['!ref'];
     if (!sheetRef) {
-      debugLog('ERRO: Sheet não tem propriedade !ref (planilha vazia?)');
-      return []; // Return empty array, not undefined
+      debugLog('Sheet sem !ref, tentando fallback...');
+      return parseXLSFallback(workbook);
     }
     
     // Get sheet range
@@ -333,6 +370,76 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
   } catch (error) {
     debugLog('ERRO ao processar arquivo XLS:', error);
     // ALWAYS return array, never undefined
+    return [];
+  }
+}
+
+/**
+ * Fallback parser using sheet_to_json when direct cell access fails
+ */
+function parseXLSFallback(workbook: XLSX.WorkBook): XLSRow[] {
+  debugLog('=== Usando parseXLSFallback ===');
+  
+  try {
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[Object.keys(workbook.Sheets)[0]] || workbook.Sheets[sheetName];
+    
+    if (!sheet) {
+      debugLog('Fallback: Nenhuma sheet disponível');
+      return [];
+    }
+    
+    // Use sheet_to_json with header: 1 to get 2D array
+    const jsonData = XLSX.utils.sheet_to_json<unknown[]>(sheet, { 
+      header: 1, 
+      defval: '',
+      raw: false 
+    }) as unknown[][];
+    
+    debugLog('Fallback: Linhas obtidas via sheet_to_json:', jsonData?.length || 0);
+    
+    if (!jsonData || jsonData.length === 0) {
+      return [];
+    }
+    
+    const rows: XLSRow[] = [];
+    let totalNumericCells = 0;
+    
+    for (const rowData of jsonData) {
+      const cells: string[] = [];
+      let firstText: { text: string; index: number } = { text: '', index: -1 };
+      const numericValues: { value: number; raw: string }[] = [];
+      
+      if (!Array.isArray(rowData)) continue;
+      
+      for (let colIdx = 0; colIdx < rowData.length; colIdx++) {
+        const cellValue = String(rowData[colIdx] ?? '');
+        cells.push(cellValue);
+        
+        if (firstText.index === -1 && isTextCell(cellValue)) {
+          firstText = { text: cellValue.trim(), index: colIdx };
+        }
+        
+        if (isNumericCell(cellValue)) {
+          const parsedValue = parseSimpleBrazilianNumber(cellValue);
+          numericValues.push({ value: parsedValue, raw: cellValue });
+          totalNumericCells++;
+        }
+      }
+      
+      rows.push({
+        cells,
+        firstTextCell: firstText,
+        numericValues
+      });
+    }
+    
+    debugLog('Fallback: Total de linhas processadas:', rows.length);
+    debugLog('Fallback: Total de células numéricas:', totalNumericCells);
+    
+    return rows;
+  } catch (error) {
+    debugLog('Fallback ERRO:', error);
     return [];
   }
 }
