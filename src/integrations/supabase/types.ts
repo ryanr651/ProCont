@@ -14,7 +14,135 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      balanco_entries: {
+        Row: {
+          conta: string
+          created_at: string
+          hierarchy: string
+          id: string
+          periodo: string
+          raw_row: Json | null
+          tipo: string
+          user_id: string
+          valor: number
+          valor_anterior: number | null
+        }
+        Insert: {
+          conta: string
+          created_at?: string
+          hierarchy?: string
+          id?: string
+          periodo: string
+          raw_row?: Json | null
+          tipo: string
+          user_id: string
+          valor?: number
+          valor_anterior?: number | null
+        }
+        Update: {
+          conta?: string
+          created_at?: string
+          hierarchy?: string
+          id?: string
+          periodo?: string
+          raw_row?: Json | null
+          tipo?: string
+          user_id?: string
+          valor?: number
+          valor_anterior?: number | null
+        }
+        Relationships: []
+      }
+      dre_entries: {
+        Row: {
+          created_at: string
+          descricao: string
+          id: string
+          periodo: string
+          raw_row: Json | null
+          user_id: string
+          valor: number
+          valor_anterior: number | null
+        }
+        Insert: {
+          created_at?: string
+          descricao: string
+          id?: string
+          periodo: string
+          raw_row?: Json | null
+          user_id: string
+          valor?: number
+          valor_anterior?: number | null
+        }
+        Update: {
+          created_at?: string
+          descricao?: string
+          id?: string
+          periodo?: string
+          raw_row?: Json | null
+          user_id?: string
+          valor?: number
+          valor_anterior?: number | null
+        }
+        Relationships: []
+      }
+      empresas: {
+        Row: {
+          cnae: string
+          cnpj: string
+          contexto: string | null
+          created_at: string
+          id: string
+          nome: string
+          regime_tributario: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cnae: string
+          cnpj: string
+          contexto?: string | null
+          created_at?: string
+          id?: string
+          nome: string
+          regime_tributario: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cnae?: string
+          cnpj?: string
+          contexto?: string | null
+          created_at?: string
+          id?: string
+          nome?: string
+          regime_tributario?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_logins: {
+        Row: {
+          created_at: string
+          id: string
+          ip_address: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
