@@ -299,9 +299,26 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
 
         debugLog("Workbook lido com opções:", opts);
         debugLog("SheetNames:", workbook.SheetNames);
-        
-        // Debug: Check workbook structure
         debugLog("Workbook keys:", Object.keys(workbook));
+        
+        // IMMEDIATE DEBUG: Check internal structure
+        const internalWB = (workbook as any).Workbook;
+        const strings = (workbook as any).Strings;
+        
+        if (internalWB) {
+          debugLog("Workbook interno keys:", Object.keys(internalWB));
+          if (internalWB.Sheets) {
+            debugLog("Workbook.Sheets:", JSON.stringify(internalWB.Sheets).slice(0, 500));
+          }
+          if (internalWB.WBProps) {
+            debugLog("Workbook.WBProps:", internalWB.WBProps);
+          }
+        }
+        
+        if (strings) {
+          debugLog("Strings length:", strings.length);
+          debugLog("Primeiros 3 strings:", JSON.stringify(strings.slice(0, 3)));
+        }
         
         // Check if Sheets object has content
         const sheetsObj = workbook.Sheets;
