@@ -329,15 +329,92 @@ export interface BalancoParseResult {
   errors: string[];
 }
 
+// ============= SAFE XLS ROW ACCESS HELPERS =============
+
 /**
- * Parse Balanço from XLS/XLSX - cell by cell approach
+ * Safely get first text from an XLS row - NEVER throws
+ */
+function safeGetFirstTextFromXLSRow(row: XLSRow | undefined | null): { text: string; index: number } {
+  if (!row) {
+    return { text: '', index: -1 };
+  }
+  
+  // Try firstTextCell first
+  if (row.firstTextCell && row.firstTextCell.text) {
+    return row.firstTextCell;
+  }
+  
+  // Fallback: scan cells manually
+  if (row.cells && Array.isArray(row.cells)) {
+    for (let i = 0; i < row.cells.length; i++) {
+      const cell = row.cells[i];
+      if (typeof cell === 'string' && cell.trim() !== '' && isTextCell(cell)) {
+        return { text: cell.trim(), index: i };
+      }
+    }
+  }
+  
+  return { text: '', index: -1 };
+}
+
+/**
+ * Safely get numeric values from an XLS row - NEVER throws
+ */
+function safeGetNumericValuesFromXLSRow(row: XLSRow | undefined | null): { value: number; raw: string }[] {
+  if (!row) {
+    return [];
+  }
+  
+  // Try numericValues first
+  if (row.numericValues && Array.isArray(row.numericValues)) {
+    return row.numericValues;
+  }
+  
+  // Fallback: scan cells manually
+  const values: { value: number; raw: string }[] = [];
+  if (row.cells && Array.isArray(row.cells)) {
+    for (const cell of row.cells) {
+      if (typeof cell === 'string' && isNumericCell(cell)) {
+        values.push({ value: parseSimpleBrazilianNumber(cell), raw: cell });
+      }
+    }
+  }
+  
+  return values;
+}
+
+/**
+ * Safely get cells array from an XLS row
+ */
+function safeGetCellsFromXLSRow(row: XLSRow | undefined | null): string[] {
+  if (!row || !row.cells || !Array.isArray(row.cells)) {
+    return [];
+  }
+  return row.cells;
+}
+
+// ============= BALANÇO PATRIMONIAL PARSING =============
+
+export interface BalancoParseResult {
+  entries: ParsedBalancoEntry[];
+  metrics: BalancoMetrics;
+  periodo: string;
+  errors: string[];
+}
+
+/**
+ * Parse Balanço from XLS/XLSX - cell by cell approach with SAFE access
  */
 function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResult {
   debugLog('=== Iniciando parseBalancoFromXLS ===');
+  debugLog('Total de linhas recebidas:', rows?.length || 0);
   
   const entries: ParsedBalancoEntry[] = [];
   const errors: string[] = [];
-  const periodo = extractPeriodFromRows(rows.map(r => r.cells), filename);
+  
+  // Safe periodo extraction
+  const safeRows = (rows || []).map(r => safeGetCellsFromXLSRow(r));
+  const periodo = extractPeriodFromRows(safeRows, filename);
   
   const metrics: BalancoMetrics = {
     ativoTotal: 0,
@@ -349,12 +426,20 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
     patrimonioLiquido: 0
   };
   
+  // Validate rows array
+  if (!rows || !Array.isArray(rows) || rows.length === 0) {
+    debugLog('AVISO: Array de linhas vazio ou inválido');
+    return { entries, metrics, periodo, errors };
+  }
+  
   // Find "ATIVO" to start - this marks valid Balanço
   let startRow = -1;
   let foundAtivo = false;
   
   for (let i = 0; i < rows.length; i++) {
-    const { text } = rows[i].firstTextCell;
+    const { text } = safeGetFirstTextFromXLSRow(rows[i]);
+    if (!text) continue; // Skip empty rows
+    
     const normalText = normalizeText(text);
     if (normalText === 'ATIVO') {
       startRow = i;
@@ -368,7 +453,8 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
   if (!foundAtivo) {
     debugLog('ATIVO não encontrado, buscando dados numéricos...');
     for (let i = 0; i < rows.length && i < 30; i++) {
-      if (rows[i].numericValues.length > 0) {
+      const numericValues = safeGetNumericValuesFromXLSRow(rows[i]);
+      if (numericValues.length > 0) {
         startRow = i;
         debugLog('Dados numéricos encontrados na linha:', i);
         break;
@@ -390,17 +476,23 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
   
   for (let i = startRow; i < rows.length; i++) {
     const row = rows[i];
-    const { text: conta, index: textIndex } = row.firstTextCell;
     
-    if (!conta || conta.length < 2) continue;
+    // SAFE access - never assume row properties exist
+    const { text: conta, index: textIndex } = safeGetFirstTextFromXLSRow(row);
+    
+    // Skip rows without text
+    if (!conta || conta.length < 2) {
+      debugLog('Linha ignorada (sem texto):', i);
+      continue;
+    }
     
     const normalConta = normalizeText(conta);
     
     // Skip header rows
     if (normalConta.includes('DESCRICAO') || normalConta === 'CONTA') continue;
     
-    // Get values with D/C context
-    const rawCells = row.numericValues;
+    // Get values with D/C context - SAFE access
+    const rawCells = safeGetNumericValuesFromXLSRow(row);
     const valor = rawCells.length > 0 
       ? parseBrazilianNumber(rawCells[0].raw, currentSection) 
       : 0;
@@ -480,7 +572,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         valor: Math.abs(valor),
         valor_anterior: valor_anterior !== null ? Math.abs(valor_anterior) : null,
         hierarchy,
-        raw_row: row.cells
+        raw_row: safeGetCellsFromXLSRow(row)
       });
     }
   }
@@ -638,21 +730,32 @@ export interface DREParseResult {
 }
 
 /**
- * Parse DRE from XLS/XLSX
+ * Parse DRE from XLS/XLSX - with SAFE access
  */
 function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
   debugLog('=== Iniciando parseDREFromXLS ===');
+  debugLog('Total de linhas recebidas:', rows?.length || 0);
   
   const entries: ParsedDREEntry[] = [];
   const errors: string[] = [];
-  const periodo = extractPeriodFromRows(rows.map(r => r.cells), filename);
+  
+  // Safe periodo extraction
+  const safeRows = (rows || []).map(r => safeGetCellsFromXLSRow(r));
+  const periodo = extractPeriodFromRows(safeRows, filename);
+  
+  // Validate rows array
+  if (!rows || !Array.isArray(rows) || rows.length === 0) {
+    debugLog('AVISO: Array de linhas vazio ou inválido');
+    return { entries, periodo, errors };
+  }
   
   // Find start - "DEMONSTRAÇÃO DO RESULTADO" or fallback to "RECEITA"
   let startRow = 0;
   let found = false;
   
   for (let i = 0; i < rows.length && i < 30; i++) {
-    const rowText = normalizeText(rows[i].cells.join(' '));
+    const cells = safeGetCellsFromXLSRow(rows[i]);
+    const rowText = normalizeText(cells.join(' '));
     if (rowText.includes('DEMONSTRACAO DO RESULTADO') || 
         rowText.includes('DEMONSTRAÇÃO DO RESULTADO')) {
       startRow = i + 1;
@@ -665,8 +768,8 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
   // Fallback: look for "RECEITA"
   if (!found) {
     for (let i = 0; i < rows.length && i < 30; i++) {
-      const { text } = rows[i].firstTextCell;
-      if (normalizeText(text).includes('RECEITA')) {
+      const { text } = safeGetFirstTextFromXLSRow(rows[i]);
+      if (text && normalizeText(text).includes('RECEITA')) {
         startRow = i;
         found = true;
         debugLog('Fallback: encontrado RECEITA na linha:', i);
@@ -682,14 +785,20 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
   
   for (let i = startRow; i < rows.length; i++) {
     const row = rows[i];
-    const { text: descricao } = row.firstTextCell;
     
-    if (!descricao || descricao.length < 2) continue;
+    // SAFE access
+    const { text: descricao } = safeGetFirstTextFromXLSRow(row);
+    
+    if (!descricao || descricao.length < 2) {
+      debugLog('Linha ignorada (sem texto):', i);
+      continue;
+    }
     
     const normalDesc = normalizeText(descricao);
     if (normalDesc.includes('DESCRICAO') || normalDesc === 'CONTA') continue;
     
-    const numericValues = row.numericValues;
+    // SAFE access for numeric values
+    const numericValues = safeGetNumericValuesFromXLSRow(row);
     if (numericValues.length === 0) continue;
     
     const valor = numericValues[0]?.value || 0;
@@ -699,7 +808,7 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
       descricao,
       valor,
       valor_anterior,
-      raw_row: row.cells
+      raw_row: safeGetCellsFromXLSRow(row)
     });
   }
   
