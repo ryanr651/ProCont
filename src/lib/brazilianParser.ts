@@ -113,7 +113,8 @@ function isNumericCell(value: string | number): boolean {
     .trim()
     .replace(/^[\"']|[\"']$/g, "");
   const hasDigits = /\d/.test(cleaned);
-  const isNumericPattern = /^[R$\s]*[\d.,()R$\s-]+[dcDC]?$/.test(cleaned);
+  const isNumericPattern =
+    /^[R$\s]*[\d.,()R$\s-]+[dcDC]?$/.test(cleaned) || /^[R$\s]*\d+(\.\d+)?[dcDC]?$/.test(cleaned);
 
   return hasDigits && isNumericPattern;
 }
