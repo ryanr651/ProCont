@@ -337,16 +337,19 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
       const numericValues: { value: number; raw: string }[] = [];
 
       // Read each cell in the row
-      for (let colIdx = range.s.c; colIdx <= range.e.c; colIdx++) {
-        const cellAddress = XLSX.utils.encode_cell({ r: rowIdx, c: colIdx });
-        const cell = sheet[cellAddress];
+ let cellValue = "";
 
-        // Convert cell to string - read as text initially
-        let cellValue = "";
-        if (cell) {
-          // Use formatted value if available, otherwise raw value
-          cellValue = cell.w !== undefined ? String(cell.w) : cell.v !== undefined ? String(cell.v) : "";
-        }
+if (cell) {
+  if (typeof cell.v === "number") {
+    // XLS numérico puro (MAIS IMPORTANTE)
+    cellValue = String(cell.v);
+  } else if (typeof cell.w === "string") {
+    // Valor formatado
+    cellValue = cell.w;
+  } else if (cell.v !== undefined) {
+    cellValue = String(cell.v);
+  }
+}
 
         cells.push(cellValue);
 
