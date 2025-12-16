@@ -44,9 +44,14 @@ export function parseBrazilianNumber(
   // Remove spaces
   cleaned = cleaned.replace(/\s/g, "");
 
-  // Brazilian format: dots for thousands, comma for decimal
-  // 1.234.567,89 -> 1234567.89
-  cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+  // Check if it's a pure numeric string (XLS format: 12345.67)
+  const isPureNumeric = /^-?\d+(\.\d+)?$/.test(cleaned);
+  
+  if (!isPureNumeric) {
+    // Brazilian format: dots for thousands, comma for decimal
+    // 1.234.567,89 -> 1234567.89
+    cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+  }
 
   let num = parseFloat(cleaned);
   if (isNaN(num)) return 0;
@@ -93,7 +98,15 @@ export function parseSimpleBrazilianNumber(value: string | number | undefined | 
   const isNegativeParens = cleaned.includes("(") && cleaned.includes(")");
   cleaned = cleaned.replace(/[()]/g, "");
   cleaned = cleaned.replace(/\s/g, "");
-  cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+
+  // Check if it's a pure numeric string (XLS format: 12345.67)
+  const isPureNumeric = /^-?\d+(\.\d+)?$/.test(cleaned);
+  
+  if (!isPureNumeric) {
+    // Brazilian format: dots for thousands, comma for decimal
+    // 1.234.567,89 -> 1234567.89
+    cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+  }
 
   let num = parseFloat(cleaned);
   if (isNaN(num)) return 0;
@@ -112,10 +125,18 @@ function isNumericCell(value: string | number): boolean {
     .toString()
     .trim()
     .replace(/^[\"']|[\"']$/g, "");
+  
+  // Must have digits
   const hasDigits = /\d/.test(cleaned);
-  const isNumericPattern = /^[R$\s]*[\d.,()R$\s-]+[dcDC]?$/.test(cleaned);
+  if (!hasDigits) return false;
+  
+  // Brazilian format: 1.234,56 or 1234,56 with optional D/C suffix
+  const isBrazilianPattern = /^[R$\s]*[\d.,()R$\s-]+[dcDC]?$/.test(cleaned);
+  
+  // Pure numeric (from XLS): 12345.67 or -12345.67
+  const isPureNumeric = /^-?\d+(\.\d+)?$/.test(cleaned);
 
-  return hasDigits && isNumericPattern;
+  return isBrazilianPattern || isPureNumeric;
 }
 
 /**
@@ -228,18 +249,18 @@ interface XLSRow {
  */
 async function parseXLSFile(file: File): Promise<XLSRow[]> {
   const extension = getFileExtension(file.name);
-  debugLog("Usando fluxo XLS/XLSX para:", file.name);
+  debugLog("=== Usando fluxo XLS/XLSX para:", file.name);
   debugLog("Extensão detectada:", extension);
 
   try {
     const buffer = await file.arrayBuffer();
 
-    // Try multiple reading options for better compatibility with old XLS files
+    // Read workbook with raw: true to preserve numeric values
     let workbook: XLSX.WorkBook | null = null;
     const readOptions: XLSX.ParsingOptions[] = [
-      { type: "array", raw: false },
-      { type: "array", raw: false, codepage: 1252 }, // Windows Latin-1
+      { type: "array", raw: true, cellText: false, cellDates: false },
       { type: "array", raw: true },
+      { type: "array", codepage: 1252 }, // Windows Latin-1 for old XLS
       { type: "array" },
     ];
 
@@ -251,7 +272,7 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
           break;
         }
       } catch (e) {
-        debugLog("Tentativa falhou com opções: " + JSON.stringify(opts));
+        debugLog("Tentativa falhou com opções:", JSON.stringify(opts));
       }
     }
 
@@ -261,33 +282,27 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
       return [];
     }
 
-    // Always start with first sheet name
-    const desiredSheetName = workbook.SheetNames[0];
-    debugLog("Primeira aba:", desiredSheetName);
+    // Get first sheet
+    const sheetName = workbook.SheetNames[0];
+    debugLog("Primeira aba:", sheetName);
 
-    // Log all available sheet keys for debugging
     const sheetsObj = workbook.Sheets;
     const sheetKeys = sheetsObj ? Object.keys(sheetsObj) : [];
     debugLog("Chaves disponíveis em Sheets:", sheetKeys);
 
-    // Defensive sheet access - try multiple approaches
+    // Find the sheet
     let sheet: XLSX.WorkSheet | undefined;
-
-    // 1. Direct access
-    if (sheetsObj && sheetsObj[desiredSheetName]) {
-      sheet = sheetsObj[desiredSheetName];
+    
+    if (sheetsObj && sheetsObj[sheetName]) {
+      sheet = sheetsObj[sheetName];
       debugLog("Sheet encontrada por acesso direto");
     }
 
-    // 2. Try with normalized text comparison
+    // Try normalized text comparison
     if (!sheet && sheetsObj) {
-      const desiredNorm = normalizeText(String(desiredSheetName || ""))
-        .replace(/\s+/g, "")
-        .trim();
+      const desiredNorm = normalizeText(String(sheetName || "")).replace(/\s+/g, "").trim();
       for (const key of sheetKeys) {
-        const keyNorm = normalizeText(String(key || ""))
-          .replace(/\s+/g, "")
-          .trim();
+        const keyNorm = normalizeText(String(key || "")).replace(/\s+/g, "").trim();
         if (keyNorm === desiredNorm) {
           sheet = sheetsObj[key];
           debugLog("Sheet encontrada por match normalizado:", key);
@@ -296,29 +311,46 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
       }
     }
 
-    // 3. Try first available sheet as last resort
+    // Use first available sheet as last resort
     if (!sheet && sheetsObj && sheetKeys.length > 0) {
       sheet = sheetsObj[sheetKeys[0]];
       debugLog("Sheet encontrada usando primeira chave disponível:", sheetKeys[0]);
     }
 
-    // Validate sheet exists
     if (!sheet) {
       debugLog("ERRO: Nenhuma sheet encontrada");
-
-      // FALLBACK: Use sheet_to_json approach
-      debugLog("Tentando fallback com sheet_to_json...");
       return parseXLSFallback(workbook);
     }
 
-    // Validate sheet has ref property
+    // PRIMARY METHOD: Use sheet_to_json with raw: true
+    // This is MORE RELIABLE than cell-by-cell iteration for accounting files
+    debugLog("Usando sheet_to_json com raw: true (método primário)");
+    
+    const jsonData = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+      header: 1,
+      defval: null,
+      raw: true, // CRITICAL: Get raw numbers, not formatted strings
+      blankrows: false,
+    }) as unknown[][];
+
+    debugLog("Linhas obtidas via sheet_to_json:", jsonData?.length || 0);
+
+    if (jsonData && jsonData.length > 0) {
+      const rows = processXLSRawRows(jsonData);
+      if (rows.length > 0) {
+        return rows;
+      }
+    }
+
+    // FALLBACK: Try cell-by-cell if sheet_to_json failed
+    debugLog("sheet_to_json não retornou dados, tentando leitura célula por célula...");
+    
     const sheetRef = sheet["!ref"];
     if (!sheetRef) {
-      debugLog("Sheet sem !ref, tentando fallback...");
-      return parseXLSFallback(workbook);
+      debugLog("Sheet sem !ref");
+      return [];
     }
 
-    // Get sheet range
     const range = XLSX.utils.decode_range(sheetRef);
     debugLog("Range da planilha:", {
       startRow: range.s.r,
@@ -330,53 +362,57 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
     const rows: XLSRow[] = [];
     let totalNumericCells = 0;
 
-    // Iterate row by row, then cell by cell
     for (let rowIdx = range.s.r; rowIdx <= range.e.r; rowIdx++) {
       const cells: string[] = [];
       let firstText: { text: string; index: number } = { text: "", index: -1 };
       const numericValues: { value: number; raw: string }[] = [];
 
-      // Read each cell in the row
       for (let colIdx = range.s.c; colIdx <= range.e.c; colIdx++) {
         const cellAddress = XLSX.utils.encode_cell({ r: rowIdx, c: colIdx });
         const cell = sheet[cellAddress];
 
         let cellValue = "";
+        let numericValue: number | null = null;
 
         if (cell) {
-          // PRIORITIZE numeric values for XLS (essential for accounting files)
+          // PRIORITIZE: If cell.v is a number, use it directly
           if (typeof cell.v === "number") {
-            // XLS numérico puro - converter para string
             cellValue = String(cell.v);
+            numericValue = cell.v;
           } else if (typeof cell.w === "string" && cell.w.trim() !== "") {
-            // Valor formatado como fallback
             cellValue = cell.w;
           } else if (cell.v !== undefined && cell.v !== null) {
-            // Qualquer outro valor
             cellValue = String(cell.v);
           }
         }
 
         cells.push(cellValue);
 
-        // Find first text cell (from left to right)
+        // Find first text cell
         if (firstText.index === -1 && isTextCell(cellValue)) {
           firstText = { text: cellValue.trim(), index: colIdx };
         }
 
-        // Collect all numeric values
-        if (isNumericCell(cellValue)) {
+        // Collect numeric values
+        if (numericValue !== null) {
+          numericValues.push({ value: numericValue, raw: cellValue });
+          totalNumericCells++;
+        } else if (cellValue && isNumericCell(cellValue)) {
           const parsedValue = parseSimpleBrazilianNumber(cellValue);
           numericValues.push({ value: parsedValue, raw: cellValue });
           totalNumericCells++;
         }
       }
 
-      rows.push({
-        cells,
-        firstTextCell: firstText,
-        numericValues,
-      });
+      // Skip completely empty rows
+      const hasContent = cells.some(c => c.trim() !== "") || numericValues.length > 0;
+      if (hasContent) {
+        rows.push({
+          cells,
+          firstTextCell: firstText,
+          numericValues,
+        });
+      }
     }
 
     debugLog("Total de linhas lidas:", rows.length);
@@ -385,13 +421,13 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
     return rows;
   } catch (error) {
     debugLog("ERRO ao processar arquivo XLS:", error);
-    // ALWAYS return array, never undefined
     return [];
   }
 }
 
 /**
  * Fallback parser using sheet_to_json when direct cell access fails
+ * Uses raw: true to get actual numeric values from XLS
  */
 function parseXLSFallback(workbook: XLSX.WorkBook): XLSRow[] {
   debugLog("=== Usando parseXLSFallback ===");
@@ -406,10 +442,12 @@ function parseXLSFallback(workbook: XLSX.WorkBook): XLSRow[] {
     }
 
     // Use sheet_to_json with header: 1 to get 2D array
+    // IMPORTANT: raw: true to get numeric values as numbers, not strings
     const jsonData = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
       header: 1,
-      defval: "",
-      raw: false,
+      defval: null,
+      raw: true, // CRITICAL: Get raw numbers, not formatted strings
+      blankrows: false,
     }) as unknown[][];
 
     debugLog("Fallback: Linhas obtidas via sheet_to_json:", jsonData?.length || 0);
@@ -418,46 +456,75 @@ function parseXLSFallback(workbook: XLSX.WorkBook): XLSRow[] {
       return [];
     }
 
-    const rows: XLSRow[] = [];
-    let totalNumericCells = 0;
-
-    for (const rowData of jsonData) {
-      const cells: string[] = [];
-      let firstText: { text: string; index: number } = { text: "", index: -1 };
-      const numericValues: { value: number; raw: string }[] = [];
-
-      if (!Array.isArray(rowData)) continue;
-
-      for (let colIdx = 0; colIdx < rowData.length; colIdx++) {
-        const cellValue = String(rowData[colIdx] ?? "");
-        cells.push(cellValue);
-
-        if (firstText.index === -1 && isTextCell(cellValue)) {
-          firstText = { text: cellValue.trim(), index: colIdx };
-        }
-
-        if (isNumericCell(cellValue)) {
-          const parsedValue = parseSimpleBrazilianNumber(cellValue);
-          numericValues.push({ value: parsedValue, raw: cellValue });
-          totalNumericCells++;
-        }
-      }
-
-      rows.push({
-        cells,
-        firstTextCell: firstText,
-        numericValues,
-      });
-    }
-
-    debugLog("Fallback: Total de linhas processadas:", rows.length);
-    debugLog("Fallback: Total de células numéricas:", totalNumericCells);
-
-    return rows;
+    return processXLSRawRows(jsonData);
   } catch (error) {
     debugLog("Fallback ERRO:", error);
     return [];
   }
+}
+
+/**
+ * Process raw XLS rows (from sheet_to_json with raw: true)
+ * Handles pure numbers directly without string conversion issues
+ */
+function processXLSRawRows(rawRows: unknown[][]): XLSRow[] {
+  const rows: XLSRow[] = [];
+  let totalNumericCells = 0;
+
+  for (const rowData of rawRows) {
+    if (!Array.isArray(rowData)) continue;
+
+    // Normalize: remove completely empty rows
+    const hasContent = rowData.some(cell => 
+      (typeof cell === 'string' && cell.trim().length > 0) ||
+      typeof cell === 'number'
+    );
+    if (!hasContent) continue;
+
+    const cells: string[] = [];
+    let firstText: { text: string; index: number } = { text: "", index: -1 };
+    const numericValues: { value: number; raw: string }[] = [];
+
+    for (let colIdx = 0; colIdx < rowData.length; colIdx++) {
+      const rawCell = rowData[colIdx];
+      
+      // CRITICAL: Handle pure numbers FIRST (XLS delivers numbers as numbers)
+      if (typeof rawCell === 'number') {
+        const cellValue = String(rawCell);
+        cells.push(cellValue);
+        numericValues.push({ value: rawCell, raw: cellValue });
+        totalNumericCells++;
+        continue;
+      }
+
+      // Handle strings
+      const cellValue = typeof rawCell === 'string' ? rawCell.trim() : String(rawCell ?? "");
+      cells.push(cellValue);
+
+      // Find first text cell (from left to right)
+      if (firstText.index === -1 && isTextCell(cellValue)) {
+        firstText = { text: cellValue.trim(), index: colIdx };
+      }
+
+      // Check for numeric strings (Brazilian format)
+      if (cellValue && isNumericCell(cellValue)) {
+        const parsedValue = parseSimpleBrazilianNumber(cellValue);
+        numericValues.push({ value: parsedValue, raw: cellValue });
+        totalNumericCells++;
+      }
+    }
+
+    rows.push({
+      cells,
+      firstTextCell: firstText,
+      numericValues,
+    });
+  }
+
+  debugLog("processXLSRawRows: Total de linhas processadas:", rows.length);
+  debugLog("processXLSRawRows: Total de células numéricas:", totalNumericCells);
+
+  return rows;
 }
 
 // ============= BALANÇO PATRIMONIAL PARSING =============
