@@ -237,15 +237,32 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
       return []; // Return empty array, not undefined
     }
     
-    // Always use first sheet
-    const firstSheetName = workbook.SheetNames[0];
-    debugLog('Primeira aba:', firstSheetName);
-    
-    const sheet = workbook.Sheets[firstSheetName];
-    
+    // Always start with first sheet name
+    const desiredSheetName = workbook.SheetNames[0];
+    debugLog('Primeira aba:', desiredSheetName);
+
+    // Some real-world XLS exports have mismatched keys between SheetNames and Sheets.
+    // Be defensive: try direct access, then normalized match, then first available sheet.
+    const sheet = (() => {
+      const sheetsObj = workbook.Sheets as Record<string, XLSX.WorkSheet> | undefined;
+      if (!sheetsObj) return undefined;
+
+      const direct = sheetsObj[desiredSheetName];
+      if (direct) return direct;
+
+      const desiredNorm = normalizeText(String(desiredSheetName || '')).replace(/\s+/g, ' ').trim();
+      const keys = Object.keys(sheetsObj);
+      const normalizedMatchKey = keys.find((k) =>
+        normalizeText(String(k || '')).replace(/\s+/g, ' ').trim() === desiredNorm
+      );
+      if (normalizedMatchKey) return sheetsObj[normalizedMatchKey];
+
+      return keys.length > 0 ? sheetsObj[keys[0]] : undefined;
+    })();
+
     // Validate sheet exists
     if (!sheet) {
-      debugLog('ERRO: Sheet não encontrada:', firstSheetName);
+      debugLog('ERRO: Sheet não encontrada:', desiredSheetName);
       return []; // Return empty array, not undefined
     }
     
