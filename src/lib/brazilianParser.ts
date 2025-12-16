@@ -255,81 +255,132 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
   try {
     const buffer = await file.arrayBuffer();
 
-    // Read workbook with raw: true to preserve numeric values
-    let workbook: XLSX.WorkBook | null = null;
-    const readOptions: XLSX.ParsingOptions[] = [
-      { type: "array", raw: true, cellText: false, cellDates: false },
+    // Try multiple reading configurations for old XLS compatibility
+    const readConfigs: XLSX.ParsingOptions[] = [
       { type: "array", raw: true },
-      { type: "array", codepage: 1252 }, // Windows Latin-1 for old XLS
+      { type: "array", raw: false },
+      { type: "array", codepage: 1252 },
+      { type: "array", codepage: 65001 }, // UTF-8
       { type: "array" },
+      { type: "buffer", raw: true },
+      { type: "binary" },
     ];
 
-    for (const opts of readOptions) {
+    let workbook: XLSX.WorkBook | null = null;
+    let sheet: XLSX.WorkSheet | null = null;
+
+    for (const opts of readConfigs) {
       try {
-        workbook = XLSX.read(buffer, opts);
-        if (workbook && workbook.SheetNames && workbook.SheetNames.length > 0) {
-          debugLog("Workbook lido com opções:", opts);
+        let inputData: ArrayBuffer | Uint8Array | string = buffer;
+        
+        if (opts.type === "buffer") {
+          inputData = new Uint8Array(buffer);
+        } else if (opts.type === "binary") {
+          // Convert ArrayBuffer to binary string
+          const bytes = new Uint8Array(buffer);
+          let binary = "";
+          for (let i = 0; i < bytes.length; i++) {
+            binary += String.fromCharCode(bytes[i]);
+          }
+          inputData = binary;
+        }
+
+        workbook = XLSX.read(inputData, opts);
+        
+        if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
+          continue;
+        }
+
+        debugLog("Workbook lido com opções:", opts);
+        debugLog("SheetNames:", workbook.SheetNames);
+        
+        // Check if Sheets object has content
+        const sheetsObj = workbook.Sheets;
+        if (!sheetsObj) {
+          debugLog("Sheets object é null/undefined");
+          continue;
+        }
+
+        // Try to access first sheet
+        const sheetName = workbook.SheetNames[0];
+        
+        // Method 1: Direct access by name
+        if (sheetsObj[sheetName]) {
+          sheet = sheetsObj[sheetName];
+          debugLog("Sheet encontrada por nome direto:", sheetName);
           break;
         }
+
+        // Method 2: Check all keys in Sheets
+        const sheetKeys = Object.keys(sheetsObj);
+        debugLog("Chaves em Sheets:", sheetKeys);
+        
+        if (sheetKeys.length > 0) {
+          sheet = sheetsObj[sheetKeys[0]];
+          debugLog("Sheet encontrada pela primeira chave:", sheetKeys[0]);
+          break;
+        }
+
+        // Method 3: Try to get sheet by index using XLSX utility
+        for (const name of workbook.SheetNames) {
+          if (sheetsObj[name]) {
+            sheet = sheetsObj[name];
+            debugLog("Sheet encontrada iterando SheetNames:", name);
+            break;
+          }
+        }
+
+        if (sheet) break;
+
       } catch (e) {
-        debugLog("Tentativa falhou com opções:", JSON.stringify(opts));
+        debugLog("Tentativa falhou com opções: " + JSON.stringify(opts));
       }
     }
 
-    // Validate workbook has sheets
-    if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
-      debugLog("ERRO: Workbook não contém abas");
-      return [];
-    }
-
-    // Get first sheet
-    const sheetName = workbook.SheetNames[0];
-    debugLog("Primeira aba:", sheetName);
-
-    const sheetsObj = workbook.Sheets;
-    const sheetKeys = sheetsObj ? Object.keys(sheetsObj) : [];
-    debugLog("Chaves disponíveis em Sheets:", sheetKeys);
-
-    // Find the sheet
-    let sheet: XLSX.WorkSheet | undefined;
-    
-    if (sheetsObj && sheetsObj[sheetName]) {
-      sheet = sheetsObj[sheetName];
-      debugLog("Sheet encontrada por acesso direto");
-    }
-
-    // Try normalized text comparison
-    if (!sheet && sheetsObj) {
-      const desiredNorm = normalizeText(String(sheetName || "")).replace(/\s+/g, "").trim();
-      for (const key of sheetKeys) {
-        const keyNorm = normalizeText(String(key || "")).replace(/\s+/g, "").trim();
-        if (keyNorm === desiredNorm) {
-          sheet = sheetsObj[key];
-          debugLog("Sheet encontrada por match normalizado:", key);
-          break;
+    // If still no sheet, try one more approach with explicit binary reading
+    if (!sheet && workbook) {
+      debugLog("Tentando acesso alternativo às sheets...");
+      
+      // Some old XLS files need the sheet to be accessed differently
+      const sheetName = workbook.SheetNames[0];
+      if (sheetName && workbook.Sheets) {
+        // Try with different encodings of sheet name
+        const variations = [
+          sheetName,
+          sheetName.normalize("NFC"),
+          sheetName.normalize("NFD"),
+          sheetName.replace(/\s+/g, " "),
+          sheetName.trim(),
+        ];
+        
+        for (const variant of variations) {
+          if (workbook.Sheets[variant]) {
+            sheet = workbook.Sheets[variant];
+            debugLog("Sheet encontrada com variante:", variant);
+            break;
+          }
         }
       }
-    }
-
-    // Use first available sheet as last resort
-    if (!sheet && sheetsObj && sheetKeys.length > 0) {
-      sheet = sheetsObj[sheetKeys[0]];
-      debugLog("Sheet encontrada usando primeira chave disponível:", sheetKeys[0]);
     }
 
     if (!sheet) {
-      debugLog("ERRO: Nenhuma sheet encontrada");
-      return parseXLSFallback(workbook);
+      debugLog("ERRO: Não foi possível acessar nenhuma sheet");
+      debugLog("Workbook info:", {
+        hasWorkbook: !!workbook,
+        sheetNames: workbook?.SheetNames,
+        sheetsKeys: workbook?.Sheets ? Object.keys(workbook.Sheets) : [],
+      });
+      return [];
     }
 
-    // PRIMARY METHOD: Use sheet_to_json with raw: true
-    // This is MORE RELIABLE than cell-by-cell iteration for accounting files
-    debugLog("Usando sheet_to_json com raw: true (método primário)");
+    // Now extract data from sheet
+    debugLog("Extraindo dados da sheet...");
     
+    // Use sheet_to_json with raw: true for numeric values
     const jsonData = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
       header: 1,
       defval: null,
-      raw: true, // CRITICAL: Get raw numbers, not formatted strings
+      raw: true,
       blankrows: false,
     }) as unknown[][];
 
@@ -337,28 +388,20 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
 
     if (jsonData && jsonData.length > 0) {
       const rows = processXLSRawRows(jsonData);
-      if (rows.length > 0) {
-        return rows;
-      }
+      debugLog("Linhas processadas:", rows.length);
+      return rows;
     }
 
-    // FALLBACK: Try cell-by-cell if sheet_to_json failed
-    debugLog("sheet_to_json não retornou dados, tentando leitura célula por célula...");
-    
+    // Fallback: cell-by-cell reading
     const sheetRef = sheet["!ref"];
     if (!sheetRef) {
-      debugLog("Sheet sem !ref");
+      debugLog("Sheet sem !ref, retornando vazio");
       return [];
     }
 
+    debugLog("Usando leitura célula por célula...");
     const range = XLSX.utils.decode_range(sheetRef);
-    debugLog("Range da planilha:", {
-      startRow: range.s.r,
-      endRow: range.e.r,
-      startCol: range.s.c,
-      endCol: range.e.c,
-    });
-
+    
     const rows: XLSRow[] = [];
     let totalNumericCells = 0;
 
@@ -375,7 +418,6 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
         let numericValue: number | null = null;
 
         if (cell) {
-          // PRIORITIZE: If cell.v is a number, use it directly
           if (typeof cell.v === "number") {
             cellValue = String(cell.v);
             numericValue = cell.v;
@@ -388,12 +430,10 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
 
         cells.push(cellValue);
 
-        // Find first text cell
         if (firstText.index === -1 && isTextCell(cellValue)) {
           firstText = { text: cellValue.trim(), index: colIdx };
         }
 
-        // Collect numeric values
         if (numericValue !== null) {
           numericValues.push({ value: numericValue, raw: cellValue });
           totalNumericCells++;
@@ -404,23 +444,18 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
         }
       }
 
-      // Skip completely empty rows
       const hasContent = cells.some(c => c.trim() !== "") || numericValues.length > 0;
       if (hasContent) {
-        rows.push({
-          cells,
-          firstTextCell: firstText,
-          numericValues,
-        });
+        rows.push({ cells, firstTextCell: firstText, numericValues });
       }
     }
 
     debugLog("Total de linhas lidas:", rows.length);
-    debugLog("Total de células numéricas encontradas:", totalNumericCells);
+    debugLog("Total de células numéricas:", totalNumericCells);
 
     return rows;
   } catch (error) {
-    debugLog("ERRO ao processar arquivo XLS:", error);
+    debugLog("ERRO GERAL ao processar XLS:", error);
     return [];
   }
 }
