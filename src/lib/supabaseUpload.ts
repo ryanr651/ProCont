@@ -52,7 +52,15 @@ export async function uploadAndProcessFiles(
       balancoParsed,
     });
 
-    if (!dreParsed && !balancoParsed) {
+    // Validação tolerante: só bloqueia se NENHUM dado foi encontrado
+    // XLS com números, mesmo sem estrutura perfeita, não será bloqueado
+    if (
+      !dreParsed &&
+      !balancoParsed &&
+      dreResult.entries.length === 0 &&
+      balancoResult.entries.length === 0 &&
+      balancoResult.metrics.ativoTotal === 0
+    ) {
       return {
         success: false,
         inserted_dre: 0,
