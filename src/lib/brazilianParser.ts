@@ -593,7 +593,16 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
   // Para XLS, considere "parsed" true se pelo menos achamos algum sinal de estrutura
   // (ex.: encontrou ATIVO ou alguma célula numérica em qualquer linha).
   const hasAnyNumeric = (rows || []).some((r) => safeGetNumericValuesFromXLSRow(r).length > 0);
-  const { text: firstFoundText } = safeGetFirstTextFromXLSRow(rows?.[startRow]);
+
+  const safeStartRow =
+    typeof startRow === 'number' &&
+    startRow >= 0 &&
+    startRow < rows.length
+      ? rows[startRow]
+      : undefined;
+
+  const firstFoundText = safeGetFirstTextFromXLSRow(safeStartRow).text;
+
   const parsed = foundAtivo || hasAnyNumeric || !!firstFoundText;
 
   return { entries, metrics, periodo, errors, parsed };
