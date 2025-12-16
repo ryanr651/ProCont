@@ -1,8 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { 
-  parseFileToArray, 
-  parseDREFile, 
-  parseBalancoFile,
+  parseDREFileAuto, 
+  parseBalancoFileAuto,
   ParsedDREEntry,
   ParsedBalancoEntry,
   BalancoMetrics
@@ -30,14 +29,12 @@ export async function uploadAndProcessFiles(
     await supabase.from('dre_entries').delete().eq('user_id', userId);
     await supabase.from('balanco_entries').delete().eq('user_id', userId);
 
-    // Parse DRE file
-    const dreRows = await parseFileToArray(dreFile);
-    const dreResult = parseDREFile(dreRows, dreFile.name);
+    // Parse DRE file - uses AUTO detection (CSV vs XLS/XLSX)
+    const dreResult = await parseDREFileAuto(dreFile);
     errors.push(...dreResult.errors);
 
-    // Parse Balanço file
-    const balancoRows = await parseFileToArray(balancoFile);
-    const balancoResult = parseBalancoFile(balancoRows, balancoFile.name);
+    // Parse Balanço file - uses AUTO detection (CSV vs XLS/XLSX)
+    const balancoResult = await parseBalancoFileAuto(balancoFile);
     errors.push(...balancoResult.errors);
 
     // TOLERANT VALIDATION: Process whatever data was found
