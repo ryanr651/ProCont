@@ -37,18 +37,29 @@ export async function uploadAndProcessFiles(
     const balancoResult = await parseBalancoFileAuto(balancoFile);
     errors.push(...balancoResult.errors);
 
-    // TOLERANT VALIDATION: Process whatever data was found
-    // Only fail if absolutely NO data could be extracted from BOTH files
-    const hasAnyDreData = dreResult.entries.length > 0;
-    const hasAnyBalancoData = balancoResult.entries.length > 0 || 
-                               balancoResult.metrics.ativoTotal > 0;
+    // TOLERANT VALIDATION (especialmente para XLS):
+    // - Não use `entries.length === 0` como critério único
+    // - Dependa da flag `parsed` para saber se houve leitura/interpretação real
+    const dreParsed = !!dreResult.parsed;
+    const balancoParsed = !!balancoResult.parsed;
 
-    if (!hasAnyDreData && !hasAnyBalancoData) {
+    // Log de diagnóstico (temporário)
+    console.log("Resumo XLS:", {
+      dre_entries: dreResult.entries.length,
+      balanco_entries: balancoResult.entries.length,
+      ativoTotal: balancoResult.metrics.ativoTotal,
+      dreParsed,
+      balancoParsed,
+    });
+
+    if (!dreParsed && !balancoParsed) {
       return {
         success: false,
         inserted_dre: 0,
         inserted_balanco: 0,
-        errors: ['Não foi possível identificar nenhum valor contábil nos arquivos enviados. Verifique se os arquivos contêm dados numéricos.']
+        errors: [
+          'Não foi possível interpretar a estrutura dos arquivos enviados. Verifique se são arquivos válidos da contabilidade.'
+        ]
       };
     }
 
