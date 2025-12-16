@@ -220,78 +220,104 @@ interface XLSRow {
 
 /**
  * Parse XLS/XLSX file - reads cell by cell, NOT using CSV logic
+ * ALWAYS returns a valid array, never undefined
  */
 async function parseXLSFile(file: File): Promise<XLSRow[]> {
   const extension = getFileExtension(file.name);
   debugLog('Usando fluxo XLS/XLSX para:', file.name);
   debugLog('Extensão detectada:', extension);
   
-  const buffer = await file.arrayBuffer();
-  const workbook = XLSX.read(buffer, { type: 'array', raw: false });
-  
-  // Always use first sheet
-  const firstSheetName = workbook.SheetNames[0];
-  debugLog('Primeira aba:', firstSheetName);
-  
-  const sheet = workbook.Sheets[firstSheetName];
-  
-  // Get sheet range
-  const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
-  debugLog('Range da planilha:', { 
-    startRow: range.s.r, 
-    endRow: range.e.r, 
-    startCol: range.s.c, 
-    endCol: range.e.c 
-  });
-  
-  const rows: XLSRow[] = [];
-  let totalNumericCells = 0;
-  
-  // Iterate row by row, then cell by cell
-  for (let rowIdx = range.s.r; rowIdx <= range.e.r; rowIdx++) {
-    const cells: string[] = [];
-    let firstText: { text: string; index: number } = { text: '', index: -1 };
-    const numericValues: { value: number; raw: string }[] = [];
+  try {
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: 'array', raw: false });
     
-    // Read each cell in the row
-    for (let colIdx = range.s.c; colIdx <= range.e.c; colIdx++) {
-      const cellAddress = XLSX.utils.encode_cell({ r: rowIdx, c: colIdx });
-      const cell = sheet[cellAddress];
-      
-      // Convert cell to string - read as text initially
-      let cellValue = '';
-      if (cell) {
-        // Use formatted value if available, otherwise raw value
-        cellValue = cell.w !== undefined ? String(cell.w) : 
-                    cell.v !== undefined ? String(cell.v) : '';
-      }
-      
-      cells.push(cellValue);
-      
-      // Find first text cell (from left to right)
-      if (firstText.index === -1 && isTextCell(cellValue)) {
-        firstText = { text: cellValue.trim(), index: colIdx };
-      }
-      
-      // Collect all numeric values
-      if (isNumericCell(cellValue)) {
-        const parsedValue = parseSimpleBrazilianNumber(cellValue);
-        numericValues.push({ value: parsedValue, raw: cellValue });
-        totalNumericCells++;
-      }
+    // Validate workbook has sheets
+    if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
+      debugLog('ERRO: Workbook não contém abas');
+      return []; // Return empty array, not undefined
     }
     
-    rows.push({
-      cells,
-      firstTextCell: firstText,
-      numericValues
+    // Always use first sheet
+    const firstSheetName = workbook.SheetNames[0];
+    debugLog('Primeira aba:', firstSheetName);
+    
+    const sheet = workbook.Sheets[firstSheetName];
+    
+    // Validate sheet exists
+    if (!sheet) {
+      debugLog('ERRO: Sheet não encontrada:', firstSheetName);
+      return []; // Return empty array, not undefined
+    }
+    
+    // Validate sheet has ref property
+    const sheetRef = sheet['!ref'];
+    if (!sheetRef) {
+      debugLog('ERRO: Sheet não tem propriedade !ref (planilha vazia?)');
+      return []; // Return empty array, not undefined
+    }
+    
+    // Get sheet range
+    const range = XLSX.utils.decode_range(sheetRef);
+    debugLog('Range da planilha:', { 
+      startRow: range.s.r, 
+      endRow: range.e.r, 
+      startCol: range.s.c, 
+      endCol: range.e.c 
     });
+    
+    const rows: XLSRow[] = [];
+    let totalNumericCells = 0;
+    
+    // Iterate row by row, then cell by cell
+    for (let rowIdx = range.s.r; rowIdx <= range.e.r; rowIdx++) {
+      const cells: string[] = [];
+      let firstText: { text: string; index: number } = { text: '', index: -1 };
+      const numericValues: { value: number; raw: string }[] = [];
+      
+      // Read each cell in the row
+      for (let colIdx = range.s.c; colIdx <= range.e.c; colIdx++) {
+        const cellAddress = XLSX.utils.encode_cell({ r: rowIdx, c: colIdx });
+        const cell = sheet[cellAddress];
+        
+        // Convert cell to string - read as text initially
+        let cellValue = '';
+        if (cell) {
+          // Use formatted value if available, otherwise raw value
+          cellValue = cell.w !== undefined ? String(cell.w) : 
+                      cell.v !== undefined ? String(cell.v) : '';
+        }
+        
+        cells.push(cellValue);
+        
+        // Find first text cell (from left to right)
+        if (firstText.index === -1 && isTextCell(cellValue)) {
+          firstText = { text: cellValue.trim(), index: colIdx };
+        }
+        
+        // Collect all numeric values
+        if (isNumericCell(cellValue)) {
+          const parsedValue = parseSimpleBrazilianNumber(cellValue);
+          numericValues.push({ value: parsedValue, raw: cellValue });
+          totalNumericCells++;
+        }
+      }
+      
+      rows.push({
+        cells,
+        firstTextCell: firstText,
+        numericValues
+      });
+    }
+    
+    debugLog('Total de linhas lidas:', rows.length);
+    debugLog('Total de células numéricas encontradas:', totalNumericCells);
+    
+    return rows;
+  } catch (error) {
+    debugLog('ERRO ao processar arquivo XLS:', error);
+    // ALWAYS return array, never undefined
+    return [];
   }
-  
-  debugLog('Total de linhas lidas:', rows.length);
-  debugLog('Total de células numéricas encontradas:', totalNumericCells);
-  
-  return rows;
 }
 
 // ============= BALANÇO PATRIMONIAL PARSING =============
