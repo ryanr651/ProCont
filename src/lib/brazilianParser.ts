@@ -105,7 +105,7 @@ export function parseSimpleBrazilianNumber(value: string | number | undefined | 
  * Check if a cell value looks like a number (with Brazilian format)
  */
 function isNumericCell(value: string | number): boolean {
-  // XLS: se já é número, é válido
+  // XLS: se já é número, é válido (incluindo zero)
   if (typeof value === "number" && !isNaN(value)) return true;
 
   if (!value) return false;
@@ -117,9 +117,10 @@ function isNumericCell(value: string | number): boolean {
     .replace(/\s/g, "");
 
   // XLS pode trazer "1234", "1234.56", "1234,56", "(1234,56)"
+  // Zero é permitido - planilhas reais têm zeros
   const parsed = parseSimpleBrazilianNumber(cleaned);
 
-  return !isNaN(parsed) && parsed !== 0;
+  return !isNaN(parsed);
 }
 
 /**
@@ -974,10 +975,13 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
 
   // Para XLS, considere "parsed" true se:
   // - rows.length > 0 (arquivo foi lido)
-  // - E (hasAnyNumeric OU entries.length > 0)
+  // - existe pelo menos UM número válido
   // 📌 NÃO exigir "RECEITA" ou header como critério obrigatório para XLS
-  const hasAnyNumeric = (rows || []).some((r) => safeGetNumericValuesFromXLSRow(r).length > 0);
-  const parsed = rows.length > 0 && (hasAnyNumeric || entries.length > 0);
+  const hasAnyNumeric = (rows || []).some((r) => {
+    const values = safeGetNumericValuesFromXLSRow(r);
+    return values.some((v) => !isNaN(v.value));
+  });
+  const parsed = rows.length > 0 && hasAnyNumeric;
 
   return { entries, periodo, errors, parsed };
 }
