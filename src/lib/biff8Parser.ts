@@ -378,10 +378,37 @@ export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): 
   const numericCount = newCells.filter(c => c.type === "number").length;
   debugLog(`Cells created: ${newCells.length} (${numericCount} numeric from SST formatted strings)`);
   
-  // Se não conseguimos associar valores, logar aviso
+  // Se não conseguimos associar valores via SST formatado, fazer fallback IEEE
+  // (melhor do que quebrar o upload; ainda assim pode não ser perfeito)
   if (numericCount === 0) {
-    debugLog("WARNING: Could not extract reliable numeric values from this legacy XLS file");
-    debugLog("The IEEE doubles found cannot be reliably associated with account rows");
+    debugLog("No formatted numeric strings found; using IEEE double scanner fallback (best-effort)");
+
+    const doublesWithOffset = scanForAccountingDoubles(uint8);
+    debugLog(`IEEE doubles found: ${doublesWithOffset.length}`);
+    if (doublesWithOffset.length > 0) {
+      debugLog(`Sample doubles (by offset): ${doublesWithOffset.slice(0, 20).map(d => d.value.toFixed(2)).join(", ")}`);
+    }
+
+    // Heurística: normalmente 1 (valor) ou 2 (valor + anterior) por conta
+    const ratio = accountNames.length > 0 ? doublesWithOffset.length / accountNames.length : 0;
+    const numPerRow = ratio >= 1.5 ? 2 : 1;
+    debugLog(`Building ${accountNames.length} rows with ${numPerRow} number(s) each (IEEE fallback)`);
+
+    let numIdx = 0;
+    for (let rowIdx = 0; rowIdx < accountNames.length; rowIdx++) {
+      for (let c = 0; c < numPerRow && numIdx < doublesWithOffset.length; c++) {
+        newCells.push({
+          row: rowIdx,
+          col: c + 1,
+          value: doublesWithOffset[numIdx].value,
+          type: "number",
+        });
+        numIdx++;
+      }
+    }
+
+    const fallbackCount = newCells.filter(c => c.type === "number").length;
+    debugLog(`IEEE fallback numeric cells created: ${fallbackCount}`);
   }
   
   return newCells;

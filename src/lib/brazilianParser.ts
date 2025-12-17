@@ -748,14 +748,17 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
       continue;
     }
 
-    // Get numeric values with D/C context
+    // Get numeric values WITHIN THIS ROW ONLY
+    // Regra: usar o valor mais à direita (último) como valor do período corrente
+    // e o anterior (penúltimo) como valor_anterior.
     const rawValues = safeGetNumericValues(row);
-    
-    const valor = rawValues.length > 0 
-      ? roundTo2Decimals(parseBrazilianNumber(rawValues[0].raw, currentSection))
+
+    const valor = rawValues.length > 0
+      ? roundTo2Decimals(parseBrazilianNumber(rawValues[rawValues.length - 1].raw, currentSection))
       : 0;
-    const valorAnterior = rawValues.length > 1 
-      ? roundTo2Decimals(parseBrazilianNumber(rawValues[1].raw, currentSection))
+
+    const valorAnterior = rawValues.length > 1
+      ? roundTo2Decimals(parseBrazilianNumber(rawValues[rawValues.length - 2].raw, currentSection))
       : null;
 
     let tipoEntry: BalancoTipoCompleto = currentTipo;
