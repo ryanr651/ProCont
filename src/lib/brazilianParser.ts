@@ -265,12 +265,15 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
     // Try multiple reading configurations for old XLS compatibility
     // Key options: WTF for debugging, dense for memory efficiency, sheetStubs to force cell creation
     const readConfigs: XLSX.ParsingOptions[] = [
+      // Try with bookVBA and bookFiles for complete file reading
+      { type: "binary", WTF: true, sheetStubs: true, cellStyles: true, bookVBA: true, bookFiles: true },
       { type: "binary", WTF: true, sheetStubs: true, cellStyles: true },
       { type: "binary", sheetStubs: true, dense: true },
       { type: "binary", raw: true, sheetStubs: true },
       { type: "binary", WTF: true },
+      { type: "binary", codepage: 1252 },  // Brazilian/Western European codepage
       { type: "binary" },
-      { type: "array", sheetStubs: true, cellStyles: true },
+      { type: "array", sheetStubs: true, cellStyles: true, bookVBA: true },
       { type: "array", raw: true, sheetStubs: true },
       { type: "array", WTF: true },
       { type: "array", codepage: 1252 },
@@ -304,6 +307,8 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
         // IMMEDIATE DEBUG: Check internal structure
         const internalWB = (workbook as any).Workbook;
         const strings = (workbook as any).Strings;
+        const ssf = (workbook as any).SSF;
+        const preamble = (workbook as any).Preamble;
         
         if (internalWB) {
           debugLog("Workbook interno keys:", Object.keys(internalWB));
@@ -313,11 +318,30 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
           if (internalWB.WBProps) {
             debugLog("Workbook.WBProps:", internalWB.WBProps);
           }
+          // Check for Names (defined names) which might contain data references
+          if (internalWB.Names) {
+            debugLog("Workbook.Names:", JSON.stringify(internalWB.Names).slice(0, 500));
+          }
+        }
+        
+        // Check SSF (number formats) - might indicate numeric data exists
+        if (ssf) {
+          debugLog("SSF (number formats):", Object.keys(ssf).length + " formatos");
+        }
+        
+        // Check Preamble for raw data
+        if (preamble) {
+          debugLog("Preamble length:", preamble.length);
         }
         
         if (strings) {
           debugLog("Strings length:", strings.length);
-          debugLog("Primeiros 3 strings:", JSON.stringify(strings.slice(0, 3)));
+          // Log ALL strings to see if numbers are stored as text
+          const allStringsText = strings.map((s: any, i: number) => {
+            const text = typeof s === 'object' && s.t ? s.t : String(s || "");
+            return `[${i}]${text}`;
+          }).join(" | ");
+          debugLog("TODOS OS STRINGS:", allStringsText);
         }
         
         // Check if Sheets object has content
@@ -460,26 +484,128 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
         hasStrings: !!((workbook as any)?.Strings),
       });
       
-      // Try to extract data from Strings if available - create basic rows from text content
+      // Try to extract data from Strings if available - reconstruct rows from shared string table
       const strings = (workbook as any)?.Strings;
       if (strings && Array.isArray(strings) && strings.length > 0) {
-        debugLog("Tentando extrair dados dos Strings: " + strings.length + " strings");
-        // Convert strings to rows - each string becomes a potential row
+        debugLog("Reconstruindo dados a partir de Strings: " + strings.length + " strings");
+        
+        // Log all strings for debugging
+        debugLog("Todos os Strings:", strings.map((s: any, i: number) => `[${i}] ${typeof s === 'object' && s.t ? s.t : String(s || "")}`).join(" | "));
+        
         const rows: XLSRow[] = [];
-        for (const str of strings) {
+        let currentRow: { cells: string[]; texts: string[]; numbers: { value: number; raw: string }[] } = {
+          cells: [],
+          texts: [],
+          numbers: [],
+        };
+
+        // Process all strings and group them into rows
+        // Strategy: look for patterns - typically a row starts with a text description
+        // followed by numeric values. When we see a new text after numbers, it's a new row.
+        let lastWasNumeric = false;
+
+        for (let i = 0; i < strings.length; i++) {
+          const str = strings[i];
           const text = typeof str === 'object' && str.t ? str.t : String(str || "");
-          if (text && text.trim()) {
-            rows.push({
-              cells: [text],
-              firstTextCell: isTextCell(text) ? { text: text.trim(), index: 0 } : { text: "", index: -1 },
-              numericValues: isNumericCell(text) ? [{ value: parseSimpleBrazilianNumber(text), raw: text }] : [],
+          
+          if (!text || text.trim() === "") continue;
+          
+          const trimmed = text.trim();
+          const isNumeric = isNumericCell(trimmed);
+          const isText = isTextCell(trimmed);
+          
+          // If we see a text cell after numeric cells, it's likely a new row
+          if (isText && lastWasNumeric && currentRow.cells.length > 0) {
+            // Flush current row
+            if (currentRow.texts.length > 0 || currentRow.numbers.length > 0) {
+              const firstText = currentRow.texts[0] || "";
+              rows.push({
+                cells: currentRow.cells,
+                firstTextCell: firstText ? { text: firstText, index: 0 } : { text: "", index: -1 },
+                numericValues: currentRow.numbers,
+              });
+            }
+            currentRow = { cells: [], texts: [], numbers: [] };
+          }
+          
+          currentRow.cells.push(trimmed);
+          
+          if (isNumeric) {
+            const numVal = parseSimpleBrazilianNumber(trimmed);
+            currentRow.numbers.push({ value: numVal, raw: trimmed });
+            lastWasNumeric = true;
+          } else if (isText) {
+            currentRow.texts.push(trimmed);
+            lastWasNumeric = false;
+          }
+        }
+        
+        // Flush last row
+        if (currentRow.cells.length > 0 && (currentRow.texts.length > 0 || currentRow.numbers.length > 0)) {
+          const firstText = currentRow.texts[0] || "";
+          rows.push({
+            cells: currentRow.cells,
+            firstTextCell: firstText ? { text: firstText, index: 0 } : { text: "", index: -1 },
+            numericValues: currentRow.numbers,
+          });
+        }
+        
+        debugLog("Linhas reconstruídas dos Strings: " + rows.length);
+        debugLog("Primeiras 5 linhas:", rows.slice(0, 5).map(r => ({ text: r.firstTextCell.text, nums: r.numericValues.length })));
+        
+        if (rows.length > 0) {
+          return rows;
+        }
+      }
+      
+      // TEXT FALLBACK: Try reading the file as raw text (some old XLS are actually text/CSV)
+      debugLog("Tentando fallback de leitura como texto...");
+      try {
+        const textDecoder = new TextDecoder('windows-1252'); // Brazilian/Western European
+        const rawText = textDecoder.decode(uint8Array);
+        const lines = rawText.split(/\r?\n/);
+        
+        debugLog("Texto bruto: " + lines.length + " linhas");
+        debugLog("Primeiras 5 linhas:", lines.slice(0, 5));
+        
+        // Try to parse as CSV/semicolon-separated
+        const textRows: XLSRow[] = [];
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          
+          // Try splitting by tab, semicolon, or comma
+          let cells = line.split('\t');
+          if (cells.length < 2) cells = line.split(';');
+          if (cells.length < 2) cells = line.split(',');
+          
+          const rowCells = cells.map(c => c.trim());
+          const numericValues: { value: number; raw: string }[] = [];
+          let firstText = { text: "", index: -1 };
+          
+          for (let i = 0; i < rowCells.length; i++) {
+            const cell = rowCells[i];
+            if (isNumericCell(cell)) {
+              numericValues.push({ value: parseSimpleBrazilianNumber(cell), raw: cell });
+            } else if (isTextCell(cell) && firstText.index === -1) {
+              firstText = { text: cell, index: i };
+            }
+          }
+          
+          if (firstText.text || numericValues.length > 0) {
+            textRows.push({
+              cells: rowCells,
+              firstTextCell: firstText,
+              numericValues,
             });
           }
         }
-        if (rows.length > 0) {
-          debugLog("Extraídas " + rows.length + " linhas dos Strings");
-          return rows;
+        
+        if (textRows.length > 0) {
+          debugLog("Extraídas " + textRows.length + " linhas via fallback de texto");
+          return textRows;
         }
+      } catch (textErr) {
+        debugLog("Fallback de texto falhou:", textErr);
       }
       
       return [];
