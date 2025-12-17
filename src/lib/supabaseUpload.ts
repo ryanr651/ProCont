@@ -133,6 +133,20 @@ export async function uploadAndProcessFiles(dreFile: File, balancoFile: File, us
       errors.push("Balanço foi lido, mas nenhuma linha foi materializada para persistência (entries=0).");
     }
 
+    // Salvar validação no banco para visualização posterior
+    if (balancoResult.validationRows && balancoResult.validationRows.length > 0) {
+      // Deletar validação anterior
+      await supabase.from("xls_validation_logs").delete().eq("user_id", userId).eq("tipo", "balanco");
+      
+      // Inserir nova validação
+      await supabase.from("xls_validation_logs").insert([{
+        user_id: userId,
+        tipo: "balanco" as const,
+        filename: balancoFile.name,
+        validation_rows: JSON.parse(JSON.stringify(balancoResult.validationRows)),
+      }]);
+    }
+
     return {
       success: dreParsed || balancoParsed,
       inserted_dre: insertedDre,

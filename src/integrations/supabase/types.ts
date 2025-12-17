@@ -143,6 +143,33 @@ export type Database = {
         }
         Relationships: []
       }
+      xls_validation_logs: {
+        Row: {
+          created_at: string
+          filename: string | null
+          id: string
+          tipo: string
+          user_id: string
+          validation_rows: Json
+        }
+        Insert: {
+          created_at?: string
+          filename?: string | null
+          id?: string
+          tipo: string
+          user_id: string
+          validation_rows?: Json
+        }
+        Update: {
+          created_at?: string
+          filename?: string | null
+          id?: string
+          tipo?: string
+          user_id?: string
+          validation_rows?: Json
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
