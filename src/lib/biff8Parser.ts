@@ -117,19 +117,60 @@ function isAccountName(text: string): boolean {
 }
 
 /**
- * Check if string looks like a Brazilian formatted number
+ * Scan binary data for IEEE 754 doubles that look like accounting values
+ * Returns filtered, deduplicated values
  */
-function looksLikeNumber(text: string): boolean {
-  if (!text) return false;
-  const t = text.trim();
+function scanForAccountingDoubles(data: Uint8Array): number[] {
+  const found: Set<string> = new Set();
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   
-  // Must have digits
-  if (!/\d/.test(t)) return false;
+  // Scan every 4 bytes (most values align at 4 bytes)
+  for (let i = 0; i + 8 <= data.byteLength; i += 4) {
+    try {
+      const val = view.getFloat64(i, true); // Little endian
+      
+      // Filter for reasonable accounting values
+      if (!Number.isFinite(val)) continue;
+      
+      const absVal = Math.abs(val);
+      
+      // Skip very small values (not accounting amounts)
+      if (absVal < 0.01) continue;
+      
+      // Skip unreasonably large values
+      if (absVal > 1e12) continue;
+      
+      // Skip powers of 2 (likely garbage/metadata)
+      const log2 = Math.log2(absVal);
+      if (Number.isInteger(log2) && absVal >= 256) continue;
+      
+      // Skip values that are exact large powers (likely garbage)
+      if (absVal >= 1e6 && absVal === Math.round(absVal) && String(absVal).match(/^[1-9]0{6,}$/)) continue;
+      
+      // Skip if exponent byte pattern looks like text (0x40-0x5A = @-Z)
+      const expByte = data[i + 7];
+      if (expByte >= 0x40 && expByte <= 0x5A) continue;
+      
+      // Round to 2 decimal places for deduplication
+      const rounded = Math.round(val * 100) / 100;
+      const key = rounded.toFixed(2);
+      
+      // Skip duplicates
+      if (found.has(key)) continue;
+      found.add(key);
+      
+    } catch {
+      continue;
+    }
+  }
   
-  // Brazilian number patterns
-  // 1.234,56 | 1234,56 | 1,234.56 | 1234.56 | 123 | with optional D/C suffix
-  const pattern = /^[R$\s]*[(]?[\d.,]+[)]?\s*[dcDC]?\s*$/;
-  return pattern.test(t);
+  // Convert to sorted array
+  const values = Array.from(found).map(s => parseFloat(s));
+  
+  // Sort by absolute value descending (larger values usually more relevant)
+  values.sort((a, b) => Math.abs(b) - Math.abs(a));
+  
+  return values;
 }
 
 function parseBIFFStream(stream: Uint8Array, strings: string[]): BIFFCell[] {
@@ -280,47 +321,40 @@ export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): 
     return cells;
   }
 
-  // FALLBACK: Analyze strings for account names and numbers
-  // The strings array from xlsx contains all text from the SST
-  // Some strings might be account names, others might be formatted numbers
-  debugLog("No BIFF numbers found, analyzing strings for account names and values...");
+  // FALLBACK: Use IEEE double scanner since numbers are in binary format
+  debugLog("No BIFF numbers found, using IEEE double scanner...");
   
+  // Extract account names from SST
   const accountNames: string[] = [];
-  const numberStrings: { value: number; raw: string }[] = [];
-  
   for (const str of strings) {
     const text = String(str || "").trim();
-    if (!text) continue;
-    
-    if (isAccountName(text)) {
+    if (text && isAccountName(text)) {
       accountNames.push(text);
-    } else if (looksLikeNumber(text)) {
-      const num = parseBrazilianNumberFromString(text);
-      if (num !== null && Math.abs(num) >= 0.01 && Math.abs(num) <= 1e12) {
-        numberStrings.push({ value: num, raw: text });
-      }
     }
   }
   
   debugLog(`Account names found: ${accountNames.length}`);
-  debugLog(`Number strings found: ${numberStrings.length}`);
+  debugLog(`First 10 account names: ${accountNames.slice(0, 10).join(" | ")}`);
   
   if (accountNames.length === 0) {
     debugLog("No account names found in strings");
     return cells;
   }
   
-  // Build cells: each account name gets a row
-  // Numbers are assigned to rows based on ratio (2 numbers per row typically: current + previous)
+  // Scan for IEEE doubles in the binary
+  const doubles = scanForAccountingDoubles(uint8);
+  debugLog(`IEEE doubles found: ${doubles.length}`);
+  
+  if (doubles.length > 0) {
+    debugLog(`Sample doubles: ${doubles.slice(0, 20).map(d => d.toFixed(2)).join(", ")}`);
+  }
+  
+  // Build cells: account names in col 0, numbers distributed per row
+  // Typical Brazilian reports have 1-2 value columns per row
   const newCells: BIFFCell[] = [];
-  const numPerRow = numberStrings.length > 0 ? Math.ceil(numberStrings.length / accountNames.length) : 0;
+  const numPerRow = doubles.length > 0 ? Math.max(1, Math.round(doubles.length / accountNames.length)) : 0;
   
   debugLog(`Building ${accountNames.length} rows with ~${numPerRow} numbers each`);
-  debugLog(`First 10 account names: ${accountNames.slice(0, 10).join(" | ")}`);
-  
-  if (numberStrings.length > 0) {
-    debugLog(`First 10 number strings: ${numberStrings.slice(0, 10).map(n => `${n.raw}=${n.value}`).join(" | ")}`);
-  }
   
   let numIdx = 0;
   for (let rowIdx = 0; rowIdx < accountNames.length; rowIdx++) {
@@ -330,18 +364,18 @@ export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): 
     newCells.push({ row: rowIdx, col: 0, value: name, type: "string" });
     
     // Add numbers in columns 1, 2, etc.
-    for (let c = 0; c < numPerRow && numIdx < numberStrings.length; c++) {
+    for (let c = 0; c < numPerRow && numIdx < doubles.length; c++) {
       newCells.push({ 
         row: rowIdx, 
         col: c + 1, 
-        value: numberStrings[numIdx].value, 
+        value: doubles[numIdx], 
         type: "number" 
       });
       numIdx++;
     }
   }
   
-  debugLog(`Cells created from strings: ${newCells.length} (${newCells.filter(c => c.type === "number").length} numeric)`);
+  debugLog(`Cells created: ${newCells.length} (${newCells.filter(c => c.type === "number").length} numeric)`);
   
   return newCells;
 }
