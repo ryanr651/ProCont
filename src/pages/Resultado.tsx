@@ -82,12 +82,22 @@ function normalizeText(text: string): string {
     .trim();
 }
 
+interface EquacaoPatrimonial {
+  ativoTotal: number;
+  passivoMaisPL: number;
+  diferenca: number;
+  percentualDiferenca: number;
+  status: 'ok' | 'warning' | 'error';
+  mensagem: string;
+}
+
 const Resultado = () => {
   const [loading, setLoading] = useState(true);
   const [dreData, setDreData] = useState<CalculatedDRE | null>(null);
   const [balancoData, setBalancoData] = useState<CalculatedBalanco | null>(null);
   const [insights, setInsights] = useState<string[]>([]);
   const [diagnosticLines, setDiagnosticLines] = useState<DiagnosticLine[]>([]);
+  const [equacaoPatrimonial, setEquacaoPatrimonial] = useState<EquacaoPatrimonial | null>(null);
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
 
@@ -136,6 +146,10 @@ const Resultado = () => {
       // Generate diagnostic lines for debugging
       const diagnostic = generateDiagnosticLines(balancoEntries as BalancoEntry[]);
       setDiagnosticLines(diagnostic);
+
+      // Validate equação patrimonial (Ativo = Passivo + PL)
+      const validacao = validateEquacaoPatrimonial(balanco);
+      setEquacaoPatrimonial(validacao);
 
       // Generate insights
       setInsights(generateInsights(dre, balanco));
@@ -359,6 +373,59 @@ const Resultado = () => {
     }
 
     return diagnostics;
+  };
+
+  /**
+   * Validate the accounting equation: Ativo = Passivo + Patrimônio Líquido
+   */
+  const validateEquacaoPatrimonial = (balanco: CalculatedBalanco): EquacaoPatrimonial => {
+    const ativoTotal = balanco.ativoTotal;
+    const passivoTotal = balanco.passivoTotal;
+    const patrimonioLiquido = balanco.patrimonioLiquido;
+    
+    // Passivo Total já deve incluir o PL em alguns casos, mas vamos verificar
+    // A equação contábil é: Ativo = Passivo + PL
+    // Se passivoTotal já inclui PL, usamos só passivoTotal
+    // Se não, somamos passivoTotal + patrimonioLiquido
+    
+    let passivoMaisPL = passivoTotal + patrimonioLiquido;
+    
+    // Se passivoTotal já é igual ao ativo, provavelmente já inclui o PL
+    if (Math.abs(passivoTotal - ativoTotal) < Math.abs(passivoMaisPL - ativoTotal)) {
+      passivoMaisPL = passivoTotal;
+    }
+    
+    const diferenca = Math.abs(ativoTotal - passivoMaisPL);
+    const percentualDiferenca = ativoTotal > 0 ? (diferenca / ativoTotal) * 100 : 0;
+    
+    let status: 'ok' | 'warning' | 'error' = 'ok';
+    let mensagem = '';
+    
+    if (ativoTotal === 0 && passivoMaisPL === 0) {
+      status = 'warning';
+      mensagem = 'Dados insuficientes para validar a equação patrimonial.';
+    } else if (percentualDiferenca <= 0.01) {
+      status = 'ok';
+      mensagem = 'Equação patrimonial validada. Ativo = Passivo + PL';
+    } else if (percentualDiferenca <= 1) {
+      status = 'warning';
+      mensagem = `Pequena diferença de ${diferenca.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} (${percentualDiferenca.toFixed(2)}%). Pode ser arredondamento.`;
+    } else if (percentualDiferenca <= 5) {
+      status = 'warning';
+      mensagem = `Diferença de ${diferenca.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} (${percentualDiferenca.toFixed(2)}%). Verifique a importação dos dados.`;
+    } else {
+      status = 'error';
+      mensagem = `Diferença significativa de ${diferenca.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} (${percentualDiferenca.toFixed(2)}%). A equação patrimonial não fecha. Verifique os dados importados.`;
+    }
+    
+    return {
+      ativoTotal,
+      passivoMaisPL,
+      diferenca,
+      percentualDiferenca,
+      status,
+      mensagem
+    };
   };
 
   const generateInsights = (dre: CalculatedDRE, balanco: CalculatedBalanco): string[] => {
@@ -598,6 +665,41 @@ const Resultado = () => {
               variant="accent"
             />
           </div>
+
+          {/* Validação da Equação Patrimonial */}
+          {equacaoPatrimonial && (
+            <div className={`p-4 rounded-lg border mb-8 ${
+              equacaoPatrimonial.status === 'ok' 
+                ? 'bg-green-500/10 border-green-500/30' 
+                : equacaoPatrimonial.status === 'warning'
+                  ? 'bg-yellow-500/10 border-yellow-500/30'
+                  : 'bg-red-500/10 border-red-500/30'
+            }`}>
+              <div className="flex items-start gap-3">
+                <span className="text-xl">
+                  {equacaoPatrimonial.status === 'ok' ? '✅' : equacaoPatrimonial.status === 'warning' ? '⚠️' : '🚨'}
+                </span>
+                <div className="flex-1">
+                  <h4 className={`font-semibold mb-1 ${
+                    equacaoPatrimonial.status === 'ok' 
+                      ? 'text-green-400' 
+                      : equacaoPatrimonial.status === 'warning'
+                        ? 'text-yellow-400'
+                        : 'text-red-400'
+                  }`}>
+                    Validação: Equação Patrimonial
+                  </h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    {equacaoPatrimonial.mensagem}
+                  </p>
+                  <div className="text-xs text-muted-foreground grid grid-cols-2 gap-2">
+                    <span>Ativo Total: {equacaoPatrimonial.ativoTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                    <span>Passivo + PL: {equacaoPatrimonial.passivoMaisPL.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="grid md:grid-cols-2 gap-6">
             {/* Ativo Breakdown */}
