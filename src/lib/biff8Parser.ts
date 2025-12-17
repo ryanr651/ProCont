@@ -278,8 +278,10 @@ export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): 
     return cells;
   }
 
-  // FALLBACK: Use IEEE double scanner since BIFF records didn't have numbers
-  debugLog("No BIFF numbers found, using IEEE double scanner...");
+  // FALLBACK: No BIFF number records found
+  // CRITICAL: Não distribuir IEEE doubles sequencialmente - isso causa valores errados!
+  // Retornar APENAS células de texto quando não temos posições reais de números
+  debugLog("No BIFF numbers found - returning TEXT-ONLY cells to prevent wrong value associations");
   
   // Extract account names from SST in order
   const accountNames: { name: string; index: number }[] = [];
@@ -297,47 +299,162 @@ export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): 
     debugLog("No account names found in strings");
     return cells;
   }
-  
-  // Scan for IEEE doubles in the binary (sorted by file offset to preserve order)
-  const doublesWithOffset = scanForAccountingDoubles(uint8);
-  debugLog(`IEEE doubles found: ${doublesWithOffset.length}`);
-  
-  if (doublesWithOffset.length > 0) {
-    debugLog(`Sample doubles (by offset): ${doublesWithOffset.slice(0, 20).map(d => d.value.toFixed(2)).join(", ")}`);
-  }
-  
-  // Build cells: account names in col 0, ONE number per row in col 1
-  // The key insight: in PROCONT files, the number that appears right after
-  // an account name in file order belongs to that account
-  const newCells: BIFFCell[] = [];
-  
-  // Calculate how many numbers per account (usually 1, sometimes 2 for valor_anterior)
-  const numPerRow = doublesWithOffset.length > 0 && accountNames.length > 0
-    ? Math.max(1, Math.ceil(doublesWithOffset.length / accountNames.length))
-    : 1;
-  
-  debugLog(`Building ${accountNames.length} rows with ~${numPerRow} numbers each`);
-  
-  let numIdx = 0;
-  for (let rowIdx = 0; rowIdx < accountNames.length; rowIdx++) {
-    const name = accountNames[rowIdx].name;
-    
-    // Add account name in column 0
-    newCells.push({ row: rowIdx, col: 0, value: name, type: "string" });
-    
-    // Add numbers in columns 1, 2, etc.
-    for (let c = 0; c < numPerRow && numIdx < doublesWithOffset.length; c++) {
-      newCells.push({ 
-        row: rowIdx, 
-        col: c + 1, 
-        value: doublesWithOffset[numIdx].value, 
-        type: "number" 
-      });
-      numIdx++;
+
+  // NOVA ESTRATÉGIA: Procurar números formatados como texto nas strings SST
+  // Alguns arquivos XLS antigos armazenam números como strings formatadas
+  const formattedNumbers: { value: number; index: number }[] = [];
+  for (let i = 0; i < strings.length; i++) {
+    const text = String(strings[i] || "").trim();
+    if (text && looksLikeFormattedNumber(text)) {
+      const parsed = parseBrazilianNumberFromString(text);
+      if (parsed !== null && Number.isFinite(parsed)) {
+        formattedNumbers.push({ value: parsed, index: i });
+      }
     }
   }
   
-  debugLog(`Cells created: ${newCells.length} (${newCells.filter(c => c.type === "number").length} numeric)`);
+  debugLog(`Formatted numbers in SST: ${formattedNumbers.length}`);
+  if (formattedNumbers.length > 0) {
+    debugLog(`Sample formatted: ${formattedNumbers.slice(0, 10).map(n => n.value.toFixed(2)).join(", ")}`);
+  }
+  
+  // Build cells: text only, sem números IEEE (que não têm posição confiável)
+  const newCells: BIFFCell[] = [];
+  
+  for (let rowIdx = 0; rowIdx < accountNames.length; rowIdx++) {
+    const name = accountNames[rowIdx].name;
+    newCells.push({ row: rowIdx, col: 0, value: name, type: "string" });
+  }
+  
+  // Se encontramos números formatados como strings, tentar associá-los
+  // Estratégia: números que aparecem LOGO APÓS um nome de conta na SST
+  // pertencem a essa conta
+  if (formattedNumbers.length > 0) {
+    let lastAccountRow = -1;
+    let numbersForCurrentAccount: number[] = [];
+    
+    for (let i = 0; i < strings.length; i++) {
+      const text = String(strings[i] || "").trim();
+      
+      // É um nome de conta?
+      const accountIdx = accountNames.findIndex(a => a.index === i);
+      if (accountIdx !== -1) {
+        // Salvar números pendentes da conta anterior
+        if (lastAccountRow >= 0 && numbersForCurrentAccount.length > 0) {
+          for (let c = 0; c < numbersForCurrentAccount.length && c < 2; c++) {
+            newCells.push({ 
+              row: lastAccountRow, 
+              col: c + 1, 
+              value: numbersForCurrentAccount[c], 
+              type: "number" 
+            });
+          }
+        }
+        lastAccountRow = accountIdx;
+        numbersForCurrentAccount = [];
+      }
+      // É um número formatado?
+      else if (looksLikeFormattedNumber(text)) {
+        const parsed = parseBrazilianNumberFromString(text);
+        if (parsed !== null && Number.isFinite(parsed)) {
+          numbersForCurrentAccount.push(parsed);
+        }
+      }
+    }
+    
+    // Não esquecer a última conta
+    if (lastAccountRow >= 0 && numbersForCurrentAccount.length > 0) {
+      for (let c = 0; c < numbersForCurrentAccount.length && c < 2; c++) {
+        newCells.push({ 
+          row: lastAccountRow, 
+          col: c + 1, 
+          value: numbersForCurrentAccount[c], 
+          type: "number" 
+        });
+      }
+    }
+  }
+  
+  const numericCount = newCells.filter(c => c.type === "number").length;
+  debugLog(`Cells created: ${newCells.length} (${numericCount} numeric from SST formatted strings)`);
+  
+  // Se não conseguimos associar valores, logar aviso
+  if (numericCount === 0) {
+    debugLog("WARNING: Could not extract reliable numeric values from this legacy XLS file");
+    debugLog("The IEEE doubles found cannot be reliably associated with account rows");
+  }
   
   return newCells;
+}
+
+/**
+ * Check if a string looks like a formatted number (not an account name)
+ */
+function looksLikeFormattedNumber(text: string): boolean {
+  if (!text || text.length < 1 || text.length > 30) return false;
+  
+  const t = text.trim();
+  
+  // Patterns for Brazilian formatted numbers:
+  // "1.234,56" or "1234,56" or "(1.234,56)" or "1.234,56 D" or "1.234,56 C"
+  // Also negative: "-1.234,56"
+  
+  // Must have digits
+  if (!/\d/.test(t)) return false;
+  
+  // Remove D/C suffix and parentheses for checking
+  const cleaned = t.replace(/\s*[DC]\s*$/i, '').replace(/[()]/g, '').trim();
+  
+  // Should be mostly digits, dots, commas, minus
+  const nonNumericChars = cleaned.replace(/[\d.,\-\s]/g, '');
+  if (nonNumericChars.length > 0) return false;
+  
+  // Should have comma as decimal separator (Brazilian format)
+  // or be a plain integer
+  if (cleaned.includes(',') || /^\-?\d+$/.test(cleaned)) {
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * Parse a Brazilian formatted number string
+ */
+function parseBrazilianNumberFromString(text: string): number | null {
+  if (!text) return null;
+  
+  let t = text.trim();
+  let sign = 1;
+  
+  // Handle D/C suffix (D = Débito = negative in some contexts, C = Crédito = positive)
+  if (/\s*D\s*$/i.test(t)) {
+    sign = -1;
+    t = t.replace(/\s*D\s*$/i, '');
+  } else if (/\s*C\s*$/i.test(t)) {
+    t = t.replace(/\s*C\s*$/i, '');
+  }
+  
+  // Handle parentheses (negative)
+  if (t.startsWith('(') && t.endsWith(')')) {
+    sign = -1;
+    t = t.slice(1, -1);
+  }
+  
+  // Handle leading minus
+  if (t.startsWith('-')) {
+    sign = -1;
+    t = t.slice(1);
+  }
+  
+  t = t.trim();
+  
+  // Brazilian format: 1.234,56 -> 1234.56
+  // Remove thousand separators (dots) and convert decimal comma to dot
+  const normalized = t.replace(/\./g, '').replace(',', '.');
+  
+  const num = parseFloat(normalized);
+  if (!Number.isFinite(num)) return null;
+  
+  return sign * num;
 }
