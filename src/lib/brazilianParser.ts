@@ -10,7 +10,7 @@ function debugLog(message: string, data?: unknown) {
   }
 }
 
-// ============= INTERFACES (Forward declaration) =============
+// ============= INTERFACES =============
 
 interface XLSRow {
   cells: string[];
@@ -18,320 +18,85 @@ interface XLSRow {
   numericValues: { value: number; raw: string }[];
 }
 
-// ============= BIFF8 MANUAL PARSER =============
-// For old XLS files where xlsx library fails to extract cells
-
-interface BIFFCell {
-  row: number;
-  col: number;
-  value: number | string;
-  type: "number" | "string";
+export interface ParsedDREEntry {
+  descricao: string;
+  valor: number;
+  valor_anterior: number | null;
+  raw_row: string[];
 }
 
-/**
- * Manually parse BIFF8 (Excel 97-2003) file to extract cell data
- * This is a fallback when xlsx library fails to read the Sheets properly
- */
-function parseBIFF8Manual(buffer: ArrayBuffer, strings: string[]): BIFFCell[] {
-  const data = new DataView(buffer);
-  const cells: BIFFCell[] = [];
-  const len = buffer.byteLength;
-  
-  debugLog("BIFF8 Manual Parser: buffer size = " + len + ", strings = " + strings.length);
-  
-  // Strategy 1: Scan for BIFF record structures
-  let offset = 0;
-  let recordCount = 0;
-  let numberCount = 0;
-  let labelCount = 0;
-  
-  // Find potential BIFF stream start (skip OLE header)
-  const isOLE = len > 4 && data.getUint32(0, false) === 0xD0CF11E0;
-  if (isOLE) {
-    debugLog("BIFF8: OLE compound document detected");
-    // Scan for BOF record (0x0809) or Workbook stream
-    for (let i = 512; i < Math.min(len - 4, 65536); i++) {
-      const val = data.getUint16(i, true);
-      if (val === 0x0809) { // BOF
-        const recLen = data.getUint16(i + 2, true);
-        if (recLen >= 8 && recLen <= 20) {
-          offset = i;
-          debugLog("BIFF8: BOF found at " + i);
-          break;
-        }
-      }
-    }
-  }
-  
-  // Parse BIFF records
-  while (offset < len - 4) {
-    try {
-      const recordType = data.getUint16(offset, true);
-      const recordLen = data.getUint16(offset + 2, true);
-      
-      if (recordLen > 8224 || offset + 4 + recordLen > len) {
-        offset++;
-        continue;
-      }
-      
-      recordCount++;
-      
-      // NUMBER record (0x0203)
-      if (recordType === 0x0203 && recordLen >= 14) {
-        const row = data.getUint16(offset + 4, true);
-        const col = data.getUint16(offset + 6, true);
-        const value = data.getFloat64(offset + 10, true);
-        
-        if (!isNaN(value) && isFinite(value) && row < 5000 && col < 50) {
-          cells.push({ row, col, value, type: "number" });
-          numberCount++;
-        }
-      }
-      
-      // RK record (0x027E)
-      else if (recordType === 0x027E && recordLen >= 10) {
-        const row = data.getUint16(offset + 4, true);
-        const col = data.getUint16(offset + 6, true);
-        const rkValue = data.getUint32(offset + 10, true);
-        const value = decodeRK(rkValue);
-        
-        if (!isNaN(value) && isFinite(value) && row < 5000 && col < 50) {
-          cells.push({ row, col, value, type: "number" });
-          numberCount++;
-        }
-      }
-      
-      // MULRK record (0x00BD)
-      else if (recordType === 0x00BD && recordLen >= 10) {
-        const row = data.getUint16(offset + 4, true);
-        const firstCol = data.getUint16(offset + 6, true);
-        const numValues = Math.floor((recordLen - 6) / 6);
-        
-        for (let i = 0; i < numValues && firstCol + i < 50; i++) {
-          const rkOffset = offset + 8 + (i * 6) + 2;
-          if (rkOffset + 4 <= offset + 4 + recordLen) {
-            const rkValue = data.getUint32(rkOffset, true);
-            const value = decodeRK(rkValue);
-            
-            if (!isNaN(value) && isFinite(value) && row < 5000) {
-              cells.push({ row, col: firstCol + i, value, type: "number" });
-              numberCount++;
-            }
-          }
-        }
-      }
-      
-      // LABELSST record (0x00FD)
-      else if (recordType === 0x00FD && recordLen >= 10) {
-        const row = data.getUint16(offset + 4, true);
-        const col = data.getUint16(offset + 6, true);
-        const sstIndex = data.getUint32(offset + 10, true);
-        
-        if (row < 5000 && col < 50 && sstIndex < strings.length) {
-          cells.push({ row, col, value: strings[sstIndex], type: "string" });
-          labelCount++;
-        }
-      }
-      
-      // EOF (0x000A)
-      if (recordType === 0x000A) {
-        debugLog("BIFF8: EOF at " + offset);
-        break;
-      }
-      
-      offset += 4 + recordLen;
-    } catch {
-      offset++;
-    }
-  }
-  
-  debugLog("BIFF8 records: " + recordCount + " total, " + numberCount + " numbers, " + labelCount + " labels");
-  
-  // Strategy 2: If no cells found via BIFF records, scan for IEEE 754 doubles directly
-  if (cells.length === 0 && strings.length > 0) {
-    debugLog("BIFF8: No cells from records, scanning for IEEE 754 doubles...");
-    
-    const doubles: { offset: number; value: number }[] = [];
-    
-    // Scan for valid IEEE 754 doubles that look like accounting values
-    for (let i = 0; i < len - 8; i++) {
-      try {
-        const value = data.getFloat64(i, true);
-        
-        // Filter for reasonable accounting values: non-zero, finite, in typical range
-        if (value !== 0 && isFinite(value) && !isNaN(value)) {
-          const absVal = Math.abs(value);
-          // Accept values between 0.01 and 10 billion (typical accounting range)
-          if (absVal >= 0.01 && absVal <= 10000000000) {
-            // Check if it looks like a nice number (not garbage)
-            // Numbers from accounting usually have at most 2 decimal places
-            const rounded = Math.round(value * 100) / 100;
-            if (Math.abs(value - rounded) < 0.001) {
-              doubles.push({ offset: i, value: rounded });
-            }
-          }
-        }
-      } catch {
-        // ignore
-      }
-    }
-    
-    debugLog("BIFF8: Found " + doubles.length + " candidate doubles");
-    
-    // Deduplicate (same value within 8 bytes = same cell)
-    const uniqueDoubles: { offset: number; value: number }[] = [];
-    for (const d of doubles) {
-      const isDupe = uniqueDoubles.some(u => Math.abs(u.offset - d.offset) < 8 && u.value === d.value);
-      if (!isDupe) {
-        uniqueDoubles.push(d);
-      }
-    }
-    
-    debugLog("BIFF8: " + uniqueDoubles.length + " unique doubles after dedup");
-    if (uniqueDoubles.length > 0) {
-      debugLog("BIFF8: First 10 doubles:", uniqueDoubles.slice(0, 10));
-    }
-    
-    // Now try to associate numbers with strings based on position patterns
-    // In BIFF files, cells are typically stored row by row
-    // We'll assign row numbers based on the order of values
-    
-    // First, identify text rows from strings (skip header strings)
-    const textStrings: { index: number; text: string }[] = [];
-    for (let i = 0; i < strings.length; i++) {
-      const str = strings[i];
-      // Skip headers, metadata, signatures
-      if (str.includes("Empresa:") || str.includes("C.N.P.J.") || str.includes("Período:") ||
-          str.includes("Folha:") || str.includes("CONSOLIDADO") || str.includes("DEMONSTRAÇÃO") ||
-          str.includes("BALANÇO") || str.includes("________") || str.includes("CPF:") ||
-          str.includes("CRC") || str.includes("GERENTE") || str.includes("LTDA-EPP") ||
-          str.includes("CNPJ") || !str.trim()) {
-        continue;
-      }
-      if (isTextCell(str)) {
-        textStrings.push({ index: i, text: str });
-      }
-    }
-    
-    debugLog("BIFF8: " + textStrings.length + " account name strings found");
-    
-    // Match numbers to account names
-    // Typically each account has 1-2 values (current and previous period)
-    if (textStrings.length > 0 && uniqueDoubles.length > 0) {
-      // Estimate number of values per row
-      const valuesPerRow = Math.ceil(uniqueDoubles.length / textStrings.length);
-      debugLog("BIFF8: Estimated " + valuesPerRow + " values per row");
-      
-      let doubleIndex = 0;
-      for (let rowIdx = 0; rowIdx < textStrings.length; rowIdx++) {
-        const { text } = textStrings[rowIdx];
-        
-        // Add the text cell
-        cells.push({ row: rowIdx, col: 0, value: text, type: "string" });
-        
-        // Add associated numeric values
-        const numVals = Math.min(valuesPerRow, uniqueDoubles.length - doubleIndex);
-        for (let i = 0; i < numVals && doubleIndex < uniqueDoubles.length; i++) {
-          cells.push({ row: rowIdx, col: 1 + i, value: uniqueDoubles[doubleIndex].value, type: "number" });
-          doubleIndex++;
-        }
-      }
-      
-      debugLog("BIFF8: Created " + cells.length + " cells from IEEE scan + strings");
-    }
-  }
-  
-  debugLog("BIFF8 total cells found:", cells.length);
-  if (cells.length > 0) {
-    debugLog("BIFF8 first 10 cells:", cells.slice(0, 10));
-  }
-  
-  return cells;
+export interface ParsedBalancoEntry {
+  conta: string;
+  tipo: string;
+  valor: number;
+  valor_anterior: number | null;
+  hierarchy: string;
+  raw_row: string[];
 }
 
-/**
- * Decode RK compressed number format
- */
-function decodeRK(rk: number): number {
-  let value: number;
-  if (rk & 0x02) {
-    // Integer value
-    value = (rk >> 2);
-    if (rk & 0x01) value /= 100;
-  } else {
-    // IEEE with modified mantissa
-    const ieee = new ArrayBuffer(8);
-    const view = new DataView(ieee);
-    view.setUint32(4, rk & 0xFFFFFFFC, true);
-    view.setUint32(0, 0, true);
-    value = view.getFloat64(0, true);
-    if (rk & 0x01) value /= 100;
-  }
-  return value;
+export interface BalancoMetrics {
+  ativoTotal: number;
+  ativoCirculante: number;
+  ativoNaoCirculante: number;
+  passivoTotal: number;
+  passivoCirculante: number;
+  passivoNaoCirculante: number;
+  patrimonioLiquido: number;
 }
 
-/**
- * Convert BIFF cells to XLSRow format
- */
-function biffCellsToXLSRows(cells: BIFFCell[]): XLSRow[] {
-  if (cells.length === 0) return [];
-  
-  // Group cells by row
-  const rowMap = new Map<number, BIFFCell[]>();
-  for (const cell of cells) {
-    if (!rowMap.has(cell.row)) {
-      rowMap.set(cell.row, []);
-    }
-    rowMap.get(cell.row)!.push(cell);
-  }
-  
-  // Sort rows
-  const sortedRows = Array.from(rowMap.entries()).sort((a, b) => a[0] - b[0]);
-  
-  const rows: XLSRow[] = [];
-  
-  for (const [rowNum, rowCells] of sortedRows) {
-    // Sort cells by column
-    rowCells.sort((a, b) => a.col - b.col);
-    
-    const xlsRow: XLSRow = {
-      cells: [],
-      firstTextCell: { text: "", index: -1 },
-      numericValues: [],
-    };
-    
-    for (const cell of rowCells) {
-      const cellStr = String(cell.value);
-      xlsRow.cells.push(cellStr);
-      
-      if (cell.type === "string" && xlsRow.firstTextCell.index === -1) {
-        xlsRow.firstTextCell = { text: cellStr, index: cell.col };
-      }
-      
-      if (cell.type === "number" && typeof cell.value === "number") {
-        xlsRow.numericValues.push({ value: cell.value, raw: cellStr });
-      }
-    }
-    
-    // Only add rows that have content
-    if (xlsRow.cells.length > 0 && (xlsRow.firstTextCell.text || xlsRow.numericValues.length > 0)) {
-      rows.push(xlsRow);
-    }
-  }
-  
-  debugLog("BIFF to XLSRow: converted " + rows.length + " rows");
-  
-  return rows;
+export interface DREMetrics {
+  receitaOperacional: number;
+  despesasOperacionais: number;
+  lucroBruto: number;
+  lucroLiquido: number;
 }
+
+export interface BalancoParseResult {
+  entries: ParsedBalancoEntry[];
+  metrics: BalancoMetrics;
+  periodo: string;
+  errors: string[];
+  parsed: boolean;
+}
+
+export interface DREParseResult {
+  entries: ParsedDREEntry[];
+  periodo: string;
+  errors: string[];
+  parsed: boolean;
+}
+
+// ============= TIPOS CONTÁBEIS PARA BALANÇO =============
+
+type BalancoSectionType = "ATIVO" | "PASSIVO" | "PL";
+type BalancoTipoCompleto = 
+  | "ATIVO_TOTAL"
+  | "ATIVO_CIRCULANTE"
+  | "ATIVO_NAO_CIRCULANTE"
+  | "PASSIVO_TOTAL"
+  | "PASSIVO_CIRCULANTE"
+  | "PASSIVO_NAO_CIRCULANTE"
+  | "PATRIMONIO_LIQUIDO";
+
+// Tipo usado para variável de estado (exclui totais)
+type BalancoTipoSubconta = 
+  | "ATIVO_CIRCULANTE"
+  | "ATIVO_NAO_CIRCULANTE"
+  | "PASSIVO_CIRCULANTE"
+  | "PASSIVO_NAO_CIRCULANTE"
+  | "PATRIMONIO_LIQUIDO";
 
 // ============= NUMBER PARSING =============
 
 /**
  * Parse Brazilian number format with D/C (Debit/Credit) handling
+ * REGRA CONTÁBIL:
+ * - ATIVO: D = soma (positivo), C = subtrai (negativo)
+ * - PASSIVO/PL: C = soma (positivo), D = subtrai (negativo)
  */
 export function parseBrazilianNumber(
   value: string | number | undefined | null,
-  context?: "ATIVO" | "PASSIVO" | "PL",
+  context?: BalancoSectionType,
 ): number {
   if (value === undefined || value === null || value === "") return 0;
   if (typeof value === "number") return value;
@@ -345,11 +110,11 @@ export function parseBrazilianNumber(
   cleaned = cleaned.replace(/R\$\s*/gi, "");
 
   // Check for D/C suffix BEFORE removing it
-  const hasDebitSuffix = /[dD]$/i.test(cleaned);
-  const hasCreditSuffix = /[cC]$/i.test(cleaned);
+  const hasDebitSuffix = /[dD]\s*$/i.test(cleaned);
+  const hasCreditSuffix = /[cC]\s*$/i.test(cleaned);
 
   // Remove 'd' or 'c' suffix
-  cleaned = cleaned.replace(/[dcDC]$/i, "");
+  cleaned = cleaned.replace(/\s*[dcDC]\s*$/i, "");
 
   // Handle parentheses as negative: (6.593,46) -> -6593.46
   const isNegativeParens = cleaned.includes("(") && cleaned.includes(")");
@@ -407,18 +172,15 @@ export function parseSimpleBrazilianNumber(value: string | number | undefined | 
   let cleaned = value.toString().trim();
   cleaned = cleaned.replace(/^[\"']|[\"']$/g, "");
   cleaned = cleaned.replace(/R\$\s*/gi, "");
-  cleaned = cleaned.replace(/[dcDC]$/i, "");
+  cleaned = cleaned.replace(/\s*[dcDC]\s*$/i, "");
 
   const isNegativeParens = cleaned.includes("(") && cleaned.includes(")");
   cleaned = cleaned.replace(/[()]/g, "");
   cleaned = cleaned.replace(/\s/g, "");
 
-  // Check if it's a pure numeric string (XLS format: 12345.67)
   const isPureNumeric = /^-?\d+(\.\d+)?$/.test(cleaned);
   
   if (!isPureNumeric) {
-    // Brazilian format: dots for thousands, comma for decimal
-    // 1.234.567,89 -> 1234567.89
     cleaned = cleaned.replace(/\./g, "").replace(",", ".");
   }
 
@@ -435,12 +197,8 @@ function isNumericCell(value: string | number): boolean {
   if (typeof value === "number") return true;
   if (!value || value.toString().trim() === "") return false;
 
-  const cleaned = value
-    .toString()
-    .trim()
-    .replace(/^[\"']|[\"']$/g, "");
+  const cleaned = value.toString().trim().replace(/^[\"']|[\"']$/g, "");
   
-  // Must have digits
   const hasDigits = /\d/.test(cleaned);
   if (!hasDigits) return false;
   
@@ -459,7 +217,6 @@ function isNumericCell(value: string | number): boolean {
 function isTextCell(value: string): boolean {
   if (!value || value.trim() === "") return false;
   const cleaned = value.trim();
-  // Must have at least 2 chars and contain letters
   return cleaned.length >= 2 && /[a-zA-ZÀ-ú]/.test(cleaned) && !isNumericCell(cleaned);
 }
 
@@ -474,71 +231,31 @@ function normalizeText(text: string): string {
     .trim();
 }
 
-// ============= INTERFACES =============
-
-export interface ParsedDREEntry {
-  descricao: string;
-  valor: number;
-  valor_anterior: number | null;
-  raw_row: string[];
-}
-
-export interface ParsedBalancoEntry {
-  conta: string;
-  tipo: string;
-  valor: number;
-  valor_anterior: number | null;
-  hierarchy: string;
-  raw_row: string[];
-}
-
-export interface BalancoMetrics {
-  ativoTotal: number;
-  ativoCirculante: number;
-  ativoNaoCirculante: number;
-  passivoTotal: number;
-  passivoCirculante: number;
-  passivoNaoCirculante: number;
-  patrimonioLiquido: number;
-}
-
-export interface DREMetrics {
-  receitaOperacional: number;
-  despesasOperacionais: number;
-  lucroBruto: number;
-  lucroLiquido: number;
-}
-
 // ============= FILE TYPE DETECTION =============
 
 function getFileExtension(filename: string): string {
   return filename.split(".").pop()?.toLowerCase() || "";
 }
 
-// ============= CSV PARSING (Separate Flow) =============
+// ============= CSV PARSING =============
 
 async function parseCSVFile(file: File): Promise<string[][]> {
   debugLog("Usando fluxo CSV para:", file.name);
 
   return new Promise((resolve, reject) => {
-    // First try with comma delimiter
     Papa.parse(file, {
       delimiter: ",",
       skipEmptyLines: false,
       complete: (results) => {
         const data = results.data as string[][];
-        debugLog("CSV parsing - linhas lidas:", data.length);
         if (data.length > 0 && data[0].length > 1) {
           resolve(data);
         } else {
-          // Try semicolon as fallback
           Papa.parse(file, {
             delimiter: ";",
             skipEmptyLines: false,
             complete: (results2) => {
-              const data2 = results2.data as string[][];
-              debugLog("CSV parsing (semicolon) - linhas lidas:", data2.length);
-              resolve(data2);
+              resolve(results2.data as string[][]);
             },
             error: reject,
           });
@@ -549,44 +266,29 @@ async function parseCSVFile(file: File): Promise<string[][]> {
   });
 }
 
-// ============= XLS/XLSX PARSING (Completely Separate Flow) =============
+// ============= XLS/XLSX PARSING =============
 
-/**
- * Parse XLS/XLSX file - reads cell by cell, NOT using CSV logic
- * ALWAYS returns a valid array, never undefined
- */
 async function parseXLSFile(file: File): Promise<XLSRow[]> {
   const extension = getFileExtension(file.name);
   debugLog("=== Usando fluxo XLS/XLSX para:", file.name);
-  debugLog("Extensão detectada:", extension);
 
   try {
     const buffer = await file.arrayBuffer();
     const uint8Array = new Uint8Array(buffer);
     
-    // Convert to binary string for old XLS compatibility
     let binaryString = "";
     for (let i = 0; i < uint8Array.length; i++) {
       binaryString += String.fromCharCode(uint8Array[i]);
     }
 
-    // Try multiple reading configurations for old XLS compatibility
-    // Key options: WTF for debugging, dense for memory efficiency, sheetStubs to force cell creation
     const readConfigs: XLSX.ParsingOptions[] = [
-      // Try with bookVBA and bookFiles for complete file reading
       { type: "binary", WTF: true, sheetStubs: true, cellStyles: true, bookVBA: true, bookFiles: true },
-      { type: "binary", WTF: true, sheetStubs: true, cellStyles: true },
       { type: "binary", sheetStubs: true, dense: true },
       { type: "binary", raw: true, sheetStubs: true },
-      { type: "binary", WTF: true },
-      { type: "binary", codepage: 1252 },  // Brazilian/Western European codepage
+      { type: "binary", codepage: 1252 },
       { type: "binary" },
-      { type: "array", sheetStubs: true, cellStyles: true, bookVBA: true },
-      { type: "array", raw: true, sheetStubs: true },
-      { type: "array", WTF: true },
-      { type: "array", codepage: 1252 },
+      { type: "array", sheetStubs: true, cellStyles: true },
       { type: "array" },
-      { type: "buffer", raw: true, sheetStubs: true },
     ];
 
     let workbook: XLSX.WorkBook | null = null;
@@ -608,344 +310,50 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
           continue;
         }
 
-        debugLog("Workbook lido com opções:", opts);
-        debugLog("SheetNames:", workbook.SheetNames);
-        debugLog("Workbook keys:", Object.keys(workbook));
-        
-        // IMMEDIATE DEBUG: Check internal structure
-        const internalWB = (workbook as any).Workbook;
-        const strings = (workbook as any).Strings;
-        const ssf = (workbook as any).SSF;
-        const preamble = (workbook as any).Preamble;
-        
-        if (internalWB) {
-          debugLog("Workbook interno keys:", Object.keys(internalWB));
-          if (internalWB.Sheets) {
-            debugLog("Workbook.Sheets:", JSON.stringify(internalWB.Sheets).slice(0, 500));
-          }
-          if (internalWB.WBProps) {
-            debugLog("Workbook.WBProps:", internalWB.WBProps);
-          }
-          // Check for Names (defined names) which might contain data references
-          if (internalWB.Names) {
-            debugLog("Workbook.Names:", JSON.stringify(internalWB.Names).slice(0, 500));
-          }
-        }
-        
-        // Check SSF (number formats) - might indicate numeric data exists
-        if (ssf) {
-          debugLog("SSF (number formats):", Object.keys(ssf).length + " formatos");
-        }
-        
-        // Check Preamble for raw data
-        if (preamble) {
-          debugLog("Preamble length:", preamble.length);
-        }
-        
-        if (strings) {
-          debugLog("Strings length:", strings.length);
-          // Log ALL strings to see if numbers are stored as text
-          const allStringsText = strings.map((s: any, i: number) => {
-            const text = typeof s === 'object' && s.t ? s.t : String(s || "");
-            return `[${i}]${text}`;
-          }).join(" | ");
-          debugLog("TODOS OS STRINGS:", allStringsText);
-        }
-        
-        // Check if Sheets object has content
-        const sheetsObj = workbook.Sheets;
-        if (!sheetsObj) {
-          debugLog("Sheets object é null/undefined");
-          continue;
-        }
-
-        // Debug: Check Sheets object structure
-        debugLog("Sheets type:", typeof sheetsObj);
-        debugLog("Sheets is array:", Array.isArray(sheetsObj));
-        const sheetKeys = Object.keys(sheetsObj);
-        const sheetOwnProps = Object.getOwnPropertyNames(sheetsObj);
-        debugLog("Chaves em Sheets (keys):", sheetKeys);
-        debugLog("Chaves em Sheets (getOwnPropertyNames):", sheetOwnProps);
-
-        // Try to access first sheet
         const sheetName = workbook.SheetNames[0];
         
-        // Method 1: Direct access by name
-        if (sheetsObj[sheetName]) {
-          sheet = sheetsObj[sheetName];
-          debugLog("Sheet encontrada por nome direto:", sheetName);
+        if (workbook.Sheets[sheetName]) {
+          sheet = workbook.Sheets[sheetName];
+          debugLog("Sheet encontrada:", sheetName);
           break;
         }
 
-        // Method 2: Try with different string encoding
-        for (const key of sheetOwnProps) {
-          if (key) {
-            sheet = sheetsObj[key];
-            if (sheet && (sheet["!ref"] || Object.keys(sheet).length > 0)) {
-              debugLog("Sheet encontrada por propriedade:", key);
-              break;
-            }
-          }
-        }
-        
-        if (sheet) break;
-
-        // Method 3: Check if Sheets is a Map or has forEach
-        if (typeof (sheetsObj as any).forEach === 'function') {
-          debugLog("Sheets tem forEach, iterando...");
-          (sheetsObj as any).forEach((s: XLSX.WorkSheet, name: string) => {
-            if (!sheet && s) {
-              sheet = s;
-              debugLog("Sheet encontrada via forEach:", name);
-            }
-          });
-        }
-        
-        if (sheet) break;
-
-        // Method 4: Try to get sheet by index using XLSX utility
-        for (const name of workbook.SheetNames) {
-          if (sheetsObj[name]) {
-            sheet = sheetsObj[name];
-            debugLog("Sheet encontrada iterando SheetNames:", name);
+        // Try any available sheet
+        const sheetKeys = Object.keys(workbook.Sheets);
+        for (const key of sheetKeys) {
+          if (workbook.Sheets[key]) {
+            sheet = workbook.Sheets[key];
+            debugLog("Sheet encontrada por key:", key);
             break;
           }
         }
-
+        
         if (sheet) break;
 
       } catch (e) {
-        debugLog("Tentativa falhou com opções: " + JSON.stringify(opts));
+        debugLog("Tentativa falhou");
       }
     }
 
-    // If still no sheet, try accessing through internal Workbook structure
     if (!sheet && workbook) {
-      debugLog("Tentando acesso via propriedade Workbook interna...");
+      // Try BIFF8 manual parsing with Strings
+      const strings = (workbook as any)?.Strings || [];
+      debugLog("Tentando reconstruir a partir de Strings:", strings.length);
       
-      // Check if there's an internal Workbook property with sheet data
-      const internalWB = (workbook as any).Workbook;
-      if (internalWB) {
-        debugLog("Workbook interno encontrado, keys:", Object.keys(internalWB));
-        
-        // Try to find sheets in the internal structure
-        if (internalWB.Sheets && Array.isArray(internalWB.Sheets)) {
-          debugLog("Sheets interno é array com " + internalWB.Sheets.length + " elementos");
-          for (const internalSheet of internalWB.Sheets) {
-            debugLog("Internal sheet:", internalSheet);
-          }
-        }
-      }
-
-      // Check Strings (shared string table)
-      const strings = (workbook as any).Strings;
-      if (strings && Array.isArray(strings)) {
-        debugLog("Strings encontrados: " + strings.length + " strings");
-        debugLog("Primeiros 5 strings:", strings.slice(0, 5));
-      }
-      
-      // Try with different encodings of sheet name
-      const sheetName = workbook.SheetNames[0];
-      if (sheetName && workbook.Sheets) {
-        const variations = [
-          sheetName,
-          sheetName.normalize("NFC"),
-          sheetName.normalize("NFD"),
-          sheetName.replace(/\s+/g, " "),
-          sheetName.trim(),
-        ];
-        
-        for (const variant of variations) {
-          if (workbook.Sheets[variant]) {
-            sheet = workbook.Sheets[variant];
-            debugLog("Sheet encontrada com variante:", variant);
-            break;
-          }
-        }
-      }
-    }
-
-    // Last resort: Try to manually reconstruct sheet from internal data
-    if (!sheet && workbook) {
-      debugLog("Tentando reconstruir sheet manualmente...");
-      
-      const internalWB = (workbook as any).Workbook;
-      const strings = (workbook as any).Strings || [];
-      
-      if (internalWB && internalWB.Sheets && internalWB.Sheets.length > 0) {
-        // Get the first sheet's range info
-        const sheetInfo = internalWB.Sheets[0];
-        debugLog("Sheet info:", sheetInfo);
-        
-        // Try to find cell data in the workbook
-        // Some old XLS store cells differently
-      }
-    }
-
-    if (!sheet) {
-      debugLog("ERRO: Não foi possível acessar nenhuma sheet via xlsx");
-      debugLog("Workbook info:", {
-        hasWorkbook: !!workbook,
-        sheetNames: workbook?.SheetNames,
-        sheetsKeys: workbook?.Sheets ? Object.keys(workbook.Sheets) : [],
-        internalWorkbookKeys: (workbook as any)?.Workbook ? Object.keys((workbook as any).Workbook) : [],
-        hasStrings: !!((workbook as any)?.Strings),
-      });
-      
-      // BIFF8 MANUAL PARSER FALLBACK
-      // Extract strings for text references
-      const stringsArray: string[] = [];
-      const strings = (workbook as any)?.Strings;
-      if (strings && Array.isArray(strings)) {
-        for (const str of strings) {
-          const text = typeof str === 'object' && str.t ? str.t : String(str || "");
-          stringsArray.push(text);
-        }
-        debugLog("Strings extraídos para BIFF parser:", stringsArray.length);
-      }
-      
-      // Try manual BIFF8 parsing
-      debugLog("Tentando parser BIFF8 manual...");
-      const biffCells = parseBIFF8Manual(buffer, stringsArray);
-      
-      if (biffCells.length > 0) {
-        const biffRows = biffCellsToXLSRows(biffCells);
-        if (biffRows.length > 0) {
-          debugLog("BIFF8 manual parser SUCCESS: " + biffRows.length + " rows");
-          return biffRows;
-        }
-      }
-      
-      // Fallback to Strings-only reconstruction
-      if (strings && Array.isArray(strings) && strings.length > 0) {
-        debugLog("Reconstruindo dados a partir de Strings: " + strings.length + " strings");
-        
-        // Log all strings for debugging
-        debugLog("Todos os Strings:", strings.map((s: any, i: number) => `[${i}] ${typeof s === 'object' && s.t ? s.t : String(s || "")}`).join(" | "));
-        
-        const rows: XLSRow[] = [];
-        let currentRow: { cells: string[]; texts: string[]; numbers: { value: number; raw: string }[] } = {
-          cells: [],
-          texts: [],
-          numbers: [],
-        };
-
-        // Process all strings and group them into rows
-        // Strategy: look for patterns - typically a row starts with a text description
-        // followed by numeric values. When we see a new text after numbers, it's a new row.
-        let lastWasNumeric = false;
-
-        for (let i = 0; i < strings.length; i++) {
-          const str = strings[i];
-          const text = typeof str === 'object' && str.t ? str.t : String(str || "");
-          
-          if (!text || text.trim() === "") continue;
-          
-          const trimmed = text.trim();
-          const isNumeric = isNumericCell(trimmed);
-          const isText = isTextCell(trimmed);
-          
-          // If we see a text cell after numeric cells, it's likely a new row
-          if (isText && lastWasNumeric && currentRow.cells.length > 0) {
-            // Flush current row
-            if (currentRow.texts.length > 0 || currentRow.numbers.length > 0) {
-              const firstText = currentRow.texts[0] || "";
-              rows.push({
-                cells: currentRow.cells,
-                firstTextCell: firstText ? { text: firstText, index: 0 } : { text: "", index: -1 },
-                numericValues: currentRow.numbers,
-              });
-            }
-            currentRow = { cells: [], texts: [], numbers: [] };
-          }
-          
-          currentRow.cells.push(trimmed);
-          
-          if (isNumeric) {
-            const numVal = parseSimpleBrazilianNumber(trimmed);
-            currentRow.numbers.push({ value: numVal, raw: trimmed });
-            lastWasNumeric = true;
-          } else if (isText) {
-            currentRow.texts.push(trimmed);
-            lastWasNumeric = false;
-          }
-        }
-        
-        // Flush last row
-        if (currentRow.cells.length > 0 && (currentRow.texts.length > 0 || currentRow.numbers.length > 0)) {
-          const firstText = currentRow.texts[0] || "";
-          rows.push({
-            cells: currentRow.cells,
-            firstTextCell: firstText ? { text: firstText, index: 0 } : { text: "", index: -1 },
-            numericValues: currentRow.numbers,
-          });
-        }
-        
-        debugLog("Linhas reconstruídas dos Strings: " + rows.length);
-        debugLog("Primeiras 5 linhas:", rows.slice(0, 5).map(r => ({ text: r.firstTextCell.text, nums: r.numericValues.length })));
-        
+      if (strings.length > 0) {
+        const rows = reconstructRowsFromStrings(strings);
         if (rows.length > 0) {
           return rows;
         }
       }
-      
-      // TEXT FALLBACK: Try reading the file as raw text (some old XLS are actually text/CSV)
-      debugLog("Tentando fallback de leitura como texto...");
-      try {
-        const textDecoder = new TextDecoder('windows-1252'); // Brazilian/Western European
-        const rawText = textDecoder.decode(uint8Array);
-        const lines = rawText.split(/\r?\n/);
-        
-        debugLog("Texto bruto: " + lines.length + " linhas");
-        debugLog("Primeiras 5 linhas:", lines.slice(0, 5));
-        
-        // Try to parse as CSV/semicolon-separated
-        const textRows: XLSRow[] = [];
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          
-          // Try splitting by tab, semicolon, or comma
-          let cells = line.split('\t');
-          if (cells.length < 2) cells = line.split(';');
-          if (cells.length < 2) cells = line.split(',');
-          
-          const rowCells = cells.map(c => c.trim());
-          const numericValues: { value: number; raw: string }[] = [];
-          let firstText = { text: "", index: -1 };
-          
-          for (let i = 0; i < rowCells.length; i++) {
-            const cell = rowCells[i];
-            if (isNumericCell(cell)) {
-              numericValues.push({ value: parseSimpleBrazilianNumber(cell), raw: cell });
-            } else if (isTextCell(cell) && firstText.index === -1) {
-              firstText = { text: cell, index: i };
-            }
-          }
-          
-          if (firstText.text || numericValues.length > 0) {
-            textRows.push({
-              cells: rowCells,
-              firstTextCell: firstText,
-              numericValues,
-            });
-          }
-        }
-        
-        if (textRows.length > 0) {
-          debugLog("Extraídas " + textRows.length + " linhas via fallback de texto");
-          return textRows;
-        }
-      } catch (textErr) {
-        debugLog("Fallback de texto falhou:", textErr);
-      }
-      
       return [];
     }
 
-    // Now extract data from sheet
-    debugLog("Extraindo dados da sheet...");
-    
-    // Use sheet_to_json with raw: true for numeric values
+    if (!sheet) {
+      return [];
+    }
+
+    // Extract data from sheet
     const jsonData = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
       header: 1,
       defval: null,
@@ -953,47 +361,37 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
       blankrows: false,
     }) as unknown[][];
 
-    debugLog("Linhas obtidas via sheet_to_json:", jsonData?.length || 0);
+    debugLog("Linhas obtidas:", jsonData?.length || 0);
 
     if (jsonData && jsonData.length > 0) {
-      const rows = processXLSRawRows(jsonData);
-      debugLog("Linhas processadas:", rows.length);
-      return rows;
+      return processXLSRawRows(jsonData);
     }
 
-    // Fallback: cell-by-cell reading
+    // Cell-by-cell fallback
     const sheetRef = sheet["!ref"];
-    if (!sheetRef) {
-      debugLog("Sheet sem !ref, retornando vazio");
-      return [];
-    }
+    if (!sheetRef) return [];
 
-    debugLog("Usando leitura célula por célula...");
     const range = XLSX.utils.decode_range(sheetRef);
-    
     const rows: XLSRow[] = [];
-    let totalNumericCells = 0;
 
     for (let rowIdx = range.s.r; rowIdx <= range.e.r; rowIdx++) {
       const cells: string[] = [];
-      let firstText: { text: string; index: number } = { text: "", index: -1 };
+      let firstText = { text: "", index: -1 };
       const numericValues: { value: number; raw: string }[] = [];
 
       for (let colIdx = range.s.c; colIdx <= range.e.c; colIdx++) {
-        const cellAddress = XLSX.utils.encode_cell({ r: rowIdx, c: colIdx });
-        const cell = sheet[cellAddress];
-
+        const addr = XLSX.utils.encode_cell({ r: rowIdx, c: colIdx });
+        const cell = sheet[addr];
+        
         let cellValue = "";
         let numericValue: number | null = null;
 
         if (cell) {
           if (typeof cell.v === "number") {
-            cellValue = String(cell.v);
             numericValue = cell.v;
-          } else if (typeof cell.w === "string" && cell.w.trim() !== "") {
-            cellValue = cell.w;
-          } else if (cell.v !== undefined && cell.v !== null) {
             cellValue = String(cell.v);
+          } else if (cell.v !== undefined && cell.v !== null) {
+            cellValue = String(cell.v).trim();
           }
         }
 
@@ -1005,80 +403,50 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
 
         if (numericValue !== null) {
           numericValues.push({ value: numericValue, raw: cellValue });
-          totalNumericCells++;
         } else if (cellValue && isNumericCell(cellValue)) {
-          const parsedValue = parseSimpleBrazilianNumber(cellValue);
-          numericValues.push({ value: parsedValue, raw: cellValue });
-          totalNumericCells++;
+          numericValues.push({ value: parseSimpleBrazilianNumber(cellValue), raw: cellValue });
         }
       }
 
-      const hasContent = cells.some(c => c.trim() !== "") || numericValues.length > 0;
-      if (hasContent) {
+      if (cells.some(c => c.trim() !== "") || numericValues.length > 0) {
         rows.push({ cells, firstTextCell: firstText, numericValues });
       }
     }
 
-    debugLog("Total de linhas lidas:", rows.length);
-    debugLog("Total de células numéricas:", totalNumericCells);
-
     return rows;
   } catch (error) {
-    debugLog("ERRO GERAL ao processar XLS:", error);
+    debugLog("ERRO ao processar XLS:", error);
     return [];
   }
 }
 
-/**
- * Fallback parser using sheet_to_json when direct cell access fails
- * Uses raw: true to get actual numeric values from XLS
- */
-function parseXLSFallback(workbook: XLSX.WorkBook): XLSRow[] {
-  debugLog("=== Usando parseXLSFallback ===");
-
-  try {
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[Object.keys(workbook.Sheets)[0]] || workbook.Sheets[sheetName];
-
-    if (!sheet) {
-      debugLog("Fallback: Nenhuma sheet disponível");
-      return [];
+function reconstructRowsFromStrings(strings: any[]): XLSRow[] {
+  const rows: XLSRow[] = [];
+  
+  for (const str of strings) {
+    const text = typeof str === 'object' && str.t ? str.t : String(str || "");
+    if (!text || text.trim() === "") continue;
+    
+    const trimmed = text.trim();
+    
+    if (isTextCell(trimmed)) {
+      rows.push({
+        cells: [trimmed],
+        firstTextCell: { text: trimmed, index: 0 },
+        numericValues: [],
+      });
     }
-
-    // Use sheet_to_json with header: 1 to get 2D array
-    // IMPORTANT: raw: true to get numeric values as numbers, not strings
-    const jsonData = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-      header: 1,
-      defval: null,
-      raw: true, // CRITICAL: Get raw numbers, not formatted strings
-      blankrows: false,
-    }) as unknown[][];
-
-    debugLog("Fallback: Linhas obtidas via sheet_to_json:", jsonData?.length || 0);
-
-    if (!jsonData || jsonData.length === 0) {
-      return [];
-    }
-
-    return processXLSRawRows(jsonData);
-  } catch (error) {
-    debugLog("Fallback ERRO:", error);
-    return [];
   }
+  
+  return rows;
 }
 
-/**
- * Process raw XLS rows (from sheet_to_json with raw: true)
- * Handles pure numbers directly without string conversion issues
- */
 function processXLSRawRows(rawRows: unknown[][]): XLSRow[] {
   const rows: XLSRow[] = [];
-  let totalNumericCells = 0;
 
   for (const rowData of rawRows) {
     if (!Array.isArray(rowData)) continue;
 
-    // Normalize: remove completely empty rows
     const hasContent = rowData.some(cell => 
       (typeof cell === 'string' && cell.trim().length > 0) ||
       typeof cell === 'number'
@@ -1086,35 +454,28 @@ function processXLSRawRows(rawRows: unknown[][]): XLSRow[] {
     if (!hasContent) continue;
 
     const cells: string[] = [];
-    let firstText: { text: string; index: number } = { text: "", index: -1 };
+    let firstText = { text: "", index: -1 };
     const numericValues: { value: number; raw: string }[] = [];
 
     for (let colIdx = 0; colIdx < rowData.length; colIdx++) {
       const rawCell = rowData[colIdx];
       
-      // CRITICAL: Handle pure numbers FIRST (XLS delivers numbers as numbers)
       if (typeof rawCell === 'number') {
         const cellValue = String(rawCell);
         cells.push(cellValue);
         numericValues.push({ value: rawCell, raw: cellValue });
-        totalNumericCells++;
         continue;
       }
 
-      // Handle strings
       const cellValue = typeof rawCell === 'string' ? rawCell.trim() : String(rawCell ?? "");
       cells.push(cellValue);
 
-      // Find first text cell (from left to right)
       if (firstText.index === -1 && isTextCell(cellValue)) {
         firstText = { text: cellValue.trim(), index: colIdx };
       }
 
-      // Check for numeric strings (Brazilian format)
       if (cellValue && isNumericCell(cellValue)) {
-        const parsedValue = parseSimpleBrazilianNumber(cellValue);
-        numericValues.push({ value: parsedValue, raw: cellValue });
-        totalNumericCells++;
+        numericValues.push({ value: parseSimpleBrazilianNumber(cellValue), raw: cellValue });
       }
     }
 
@@ -1125,43 +486,16 @@ function processXLSRawRows(rawRows: unknown[][]): XLSRow[] {
     });
   }
 
-  debugLog("processXLSRawRows: Total de linhas processadas:", rows.length);
-  debugLog("processXLSRawRows: Total de células numéricas:", totalNumericCells);
-
   return rows;
 }
 
-// ============= BALANÇO PATRIMONIAL PARSING =============
+// ============= SAFE ROW ACCESS HELPERS =============
 
-export interface BalancoParseResult {
-  entries: ParsedBalancoEntry[];
-  metrics: BalancoMetrics;
-  periodo: string;
-  errors: string[];
-  /**
-   * Indica se o parser conseguiu "tentar" interpretar a estrutura do arquivo.
-   * (Não depende de entries > 0; útil para XLS tolerante.)
-   */
-  parsed: boolean;
-}
-
-// ============= SAFE XLS ROW ACCESS HELPERS =============
-
-/**
- * Safely get first text from an XLS row - NEVER throws
- */
-function safeGetFirstTextFromXLSRow(row: XLSRow | undefined | null): { text: string; index: number } {
-  if (!row) {
-    return { text: "", index: -1 };
-  }
-
-  // Try firstTextCell first
-  if (row.firstTextCell && row.firstTextCell.text) {
-    return row.firstTextCell;
-  }
-
-  // Fallback: scan cells manually
-  if (row.cells && Array.isArray(row.cells)) {
+function safeGetFirstText(row: XLSRow | undefined | null): { text: string; index: number } {
+  if (!row) return { text: "", index: -1 };
+  if (row.firstTextCell?.text) return row.firstTextCell;
+  
+  if (row.cells) {
     for (let i = 0; i < row.cells.length; i++) {
       const cell = row.cells[i];
       if (typeof cell === "string" && cell.trim() !== "" && isTextCell(cell)) {
@@ -1169,73 +503,47 @@ function safeGetFirstTextFromXLSRow(row: XLSRow | undefined | null): { text: str
       }
     }
   }
-
+  
   return { text: "", index: -1 };
 }
 
-/**
- * Safely get numeric values from an XLS row - NEVER throws
- */
-function safeGetNumericValuesFromXLSRow(row: XLSRow | undefined | null): { value: number; raw: string }[] {
-  if (!row) {
-    return [];
-  }
-
-  // Try numericValues first
-  if (row.numericValues && Array.isArray(row.numericValues)) {
-    return row.numericValues;
-  }
-
-  // Fallback: scan cells manually
+function safeGetNumericValues(row: XLSRow | undefined | null): { value: number; raw: string }[] {
+  if (!row) return [];
+  if (row.numericValues?.length) return row.numericValues;
+  
   const values: { value: number; raw: string }[] = [];
-  if (row.cells && Array.isArray(row.cells)) {
+  if (row.cells) {
     for (const cell of row.cells) {
       if (typeof cell === "string" && isNumericCell(cell)) {
         values.push({ value: parseSimpleBrazilianNumber(cell), raw: cell });
       }
     }
   }
-
+  
   return values;
 }
 
-/**
- * Safely get cells array from an XLS row
- */
-function safeGetCellsFromXLSRow(row: XLSRow | undefined | null): string[] {
-  if (!row || !row.cells || !Array.isArray(row.cells)) {
-    return [];
-  }
-  return row.cells;
+function safeGetCells(row: XLSRow | undefined | null): string[] {
+  return row?.cells || [];
 }
 
-// ============= BALANÇO PATRIMONIAL PARSING =============
-
-export interface BalancoParseResult {
-  entries: ParsedBalancoEntry[];
-  metrics: BalancoMetrics;
-  periodo: string;
-  errors: string[];
-  /**
-   * Indica se o parser conseguiu "tentar" interpretar a estrutura do arquivo.
-   * (Não depende de entries > 0; útil para XLS tolerante.)
-   */
-  parsed: boolean;
-}
+// ============= BALANÇO PATRIMONIAL PARSING - REGRAS CONTÁBEIS =============
 
 /**
- * Parse Balanço from XLS/XLSX - cell by cell approach with SAFE access
+ * Parse Balanço Patrimonial com regras contábeis corretas:
+ * 1. Início a partir de "ATIVO"
+ * 2. Estado de leitura progressivo
+ * 3. Classificação correta de tipos
+ * 4. Não recalcular totais - usar valor da linha
+ * 5. Tratamento correto de D/C
  */
 function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResult {
-  debugLog("=== Iniciando parseBalancoFromXLS ===");
-  debugLog("Total de linhas recebidas:", rows?.length || 0);
+  debugLog("=== Iniciando parseBalancoFromXLS (REGRAS CONTÁBEIS) ===");
+  debugLog("Total de linhas:", rows?.length || 0);
 
   const entries: ParsedBalancoEntry[] = [];
   const errors: string[] = [];
-
-  // Safe periodo extraction
-  const safeRows = (rows || []).map((r) => safeGetCellsFromXLSRow(r));
-  const periodo = extractPeriodFromRows(safeRows, filename);
+  const periodo = extractPeriodFromRows(rows?.map(r => safeGetCells(r)) || [], filename);
 
   const metrics: BalancoMetrics = {
     ativoTotal: 0,
@@ -1247,244 +555,177 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
     patrimonioLiquido: 0,
   };
 
-  // Validate rows array
-  if (!rows || !Array.isArray(rows) || rows.length === 0) {
-    debugLog("AVISO: Array de linhas vazio ou inválido");
+  if (!rows || rows.length === 0) {
     return { entries, metrics, periodo, errors, parsed: false };
   }
 
-  // Find "ATIVO" to start - this marks valid Balanço
+  // REGRA 2: Encontrar "ATIVO" para início dos dados
   let startRow = -1;
-  let foundAtivo = false;
-
   for (let i = 0; i < rows.length; i++) {
-    const { text } = safeGetFirstTextFromXLSRow(rows[i]);
-    if (!text) continue; // Skip empty rows
-
-    const normalText = normalizeText(text);
-    if (normalText === "ATIVO") {
+    const { text } = safeGetFirstText(rows[i]);
+    if (normalizeText(text) === "ATIVO") {
       startRow = i;
-      foundAtivo = true;
-      debugLog("Encontrado ATIVO na linha:", i);
+      debugLog("INÍCIO DOS DADOS - ATIVO encontrado na linha:", i);
       break;
     }
   }
 
-  // Fallback: if "ATIVO" not found, look for any numeric data
-  if (!foundAtivo) {
-    debugLog("ATIVO não encontrado, buscando dados numéricos...");
-    for (let i = 0; i < rows.length && i < 30; i++) {
-      const numericValues = safeGetNumericValuesFromXLSRow(rows[i]);
-      if (numericValues.length > 0) {
-        startRow = i;
-        debugLog("Dados numéricos encontrados na linha:", i);
-        break;
-      }
-    }
-    if (startRow === -1) {
-      startRow = Math.min(5, rows.length - 1);
-    }
+  if (startRow === -1) {
+    debugLog("ATIVO não encontrado, usando fallback");
+    startRow = 0;
   }
 
-  // Track section context
-  let currentSection: "ATIVO" | "PASSIVO" | "PL" = "ATIVO";
-  let currentTipo = "ATIVO CIRCULANTE";
+  // REGRA 2: Estado interno de leitura
+  let currentSection: BalancoSectionType = "ATIVO";
+  let currentTipo: BalancoTipoSubconta = "ATIVO_CIRCULANTE";
   let justSawAtivo = false;
   let justSawPassivo = false;
-  let foundAtivoCirculante = false;
-  let foundPassivoCirculante = false;
-  const hierarchyStack: string[] = [];
+  let foundFirstCirculante = false;
 
   for (let i = startRow; i < rows.length; i++) {
     const row = rows[i];
+    const { text: conta, index: textIndex } = safeGetFirstText(row);
+    
+    if (!conta || conta.length < 2) continue;
 
-    // SAFE access - never assume row properties exist
-    const { text: conta, index: textIndex } = safeGetFirstTextFromXLSRow(row);
-
-    // Skip rows without text
-    if (!conta || conta.length < 2) {
-      debugLog("Linha ignorada (sem texto):", i);
+    const normalConta = normalizeText(conta);
+    
+    // Skip headers
+    if (normalConta.includes("DESCRICAO") || normalConta === "CONTA" || 
+        normalConta.includes("EMPRESA") || normalConta.includes("CNPJ")) {
       continue;
     }
 
-    const normalConta = normalizeText(conta);
+    // Get numeric values with D/C context
+    const rawValues = safeGetNumericValues(row);
+    
+    // REGRA 5: Usar parseBrazilianNumber com contexto para D/C
+    const valor = rawValues.length > 0 
+      ? parseBrazilianNumber(rawValues[0].raw, currentSection) 
+      : 0;
+    const valorAnterior = rawValues.length > 1 
+      ? parseBrazilianNumber(rawValues[1].raw, currentSection) 
+      : null;
 
-    // Skip header rows
-    if (normalConta.includes("DESCRICAO") || normalConta === "CONTA") continue;
+    // REGRA 3: Classificação por contexto
+    let tipoEntry: BalancoTipoCompleto = currentTipo;
 
-    // Get values with D/C context - SAFE access
-    const rawCells = safeGetNumericValuesFromXLSRow(row);
-    const valor = rawCells.length > 0 ? parseBrazilianNumber(rawCells[0].raw, currentSection) : 0;
-    const valor_anterior = rawCells.length > 1 ? parseBrazilianNumber(rawCells[1].raw, currentSection) : null;
-
-    // === PROGRESSIVE METRICS EXTRACTION ===
-
+    // === DETECÇÃO DE SEÇÃO E CLASSIFICAÇÃO ===
+    
     if (normalConta === "ATIVO") {
-      metrics.ativoTotal = Math.abs(valor);
+      // ATIVO total - USAR VALOR DIRETO (REGRA 6)
       currentSection = "ATIVO";
-      currentTipo = "ATIVO CIRCULANTE";
+      currentTipo = "ATIVO_CIRCULANTE";
+      tipoEntry = "ATIVO_TOTAL";
       justSawAtivo = true;
       justSawPassivo = false;
-      debugLog("ATIVO Total:", metrics.ativoTotal);
-    } else if (normalConta === "CIRCULANTE" && justSawAtivo && !foundAtivoCirculante) {
-      metrics.ativoCirculante = Math.abs(valor);
-      foundAtivoCirculante = true;
+      foundFirstCirculante = false;
+      
+      if (valor !== 0) {
+        metrics.ativoTotal = Math.abs(valor);
+        debugLog("ATIVO TOTAL (do arquivo):", metrics.ativoTotal);
+      }
+    }
+    else if (normalConta === "CIRCULANTE") {
+      if (justSawAtivo && !foundFirstCirculante) {
+        // Primeiro CIRCULANTE após ATIVO = ATIVO CIRCULANTE
+        currentTipo = "ATIVO_CIRCULANTE";
+        tipoEntry = "ATIVO_CIRCULANTE";
+        foundFirstCirculante = true;
+        justSawAtivo = false;
+        
+        if (valor !== 0) {
+          metrics.ativoCirculante = Math.abs(valor);
+          debugLog("ATIVO CIRCULANTE (do arquivo):", metrics.ativoCirculante);
+        }
+      } else if (justSawPassivo) {
+        // CIRCULANTE após PASSIVO = PASSIVO CIRCULANTE
+        currentTipo = "PASSIVO_CIRCULANTE";
+        tipoEntry = "PASSIVO_CIRCULANTE";
+        justSawPassivo = false;
+        
+        if (valor !== 0) {
+          metrics.passivoCirculante = Math.abs(valor);
+          debugLog("PASSIVO CIRCULANTE (do arquivo):", metrics.passivoCirculante);
+        }
+      }
+    }
+    else if (normalConta === "ATIVO NAO CIRCULANTE" || 
+             normalConta === "NAO CIRCULANTE" && currentSection === "ATIVO") {
+      currentTipo = "ATIVO_NAO_CIRCULANTE";
+      tipoEntry = "ATIVO_NAO_CIRCULANTE";
       justSawAtivo = false;
-      debugLog("Ativo Circulante:", metrics.ativoCirculante);
-    } else if (
-      normalConta === "ATIVO NAO CIRCULANTE" ||
-      (normalConta === "NAO CIRCULANTE" && currentSection === "ATIVO")
-    ) {
-      metrics.ativoNaoCirculante = Math.abs(valor);
-      currentTipo = "ATIVO NAO CIRCULANTE";
-      justSawAtivo = false;
-      debugLog("Ativo Não Circulante:", metrics.ativoNaoCirculante);
-    } else if (normalConta === "PASSIVO") {
-      metrics.passivoTotal = Math.abs(valor);
+      
+      if (valor !== 0) {
+        metrics.ativoNaoCirculante = Math.abs(valor);
+        debugLog("ATIVO NAO CIRCULANTE (do arquivo):", metrics.ativoNaoCirculante);
+      }
+    }
+    else if (normalConta === "PASSIVO") {
       currentSection = "PASSIVO";
-      currentTipo = "PASSIVO CIRCULANTE";
+      currentTipo = "PASSIVO_CIRCULANTE";
+      tipoEntry = "PASSIVO_TOTAL";
       justSawPassivo = true;
       justSawAtivo = false;
-      debugLog("PASSIVO Total:", metrics.passivoTotal);
-    } else if (normalConta === "CIRCULANTE" && justSawPassivo && !foundPassivoCirculante) {
-      metrics.passivoCirculante = Math.abs(valor);
-      foundPassivoCirculante = true;
+      foundFirstCirculante = false;
+      
+      if (valor !== 0) {
+        metrics.passivoTotal = Math.abs(valor);
+        debugLog("PASSIVO TOTAL (do arquivo):", metrics.passivoTotal);
+      }
+    }
+    else if (normalConta === "PASSIVO NAO CIRCULANTE" ||
+             normalConta === "NAO CIRCULANTE" && currentSection === "PASSIVO") {
+      currentTipo = "PASSIVO_NAO_CIRCULANTE";
+      tipoEntry = "PASSIVO_NAO_CIRCULANTE";
       justSawPassivo = false;
-      debugLog("Passivo Circulante:", metrics.passivoCirculante);
-    } else if (
-      normalConta === "PASSIVO NAO CIRCULANTE" ||
-      (normalConta === "NAO CIRCULANTE" && currentSection === "PASSIVO")
-    ) {
-      metrics.passivoNaoCirculante = Math.abs(valor);
-      currentTipo = "PASSIVO NAO CIRCULANTE";
-      justSawPassivo = false;
-      debugLog("Passivo Não Circulante:", metrics.passivoNaoCirculante);
-    } else if (normalConta === "PATRIMONIO LIQUIDO" || normalConta.includes("PATRIMONIO LIQUIDO")) {
-      metrics.patrimonioLiquido = Math.abs(valor);
+      
+      if (valor !== 0) {
+        metrics.passivoNaoCirculante = Math.abs(valor);
+        debugLog("PASSIVO NAO CIRCULANTE (do arquivo):", metrics.passivoNaoCirculante);
+      }
+    }
+    else if (normalConta === "PATRIMONIO LIQUIDO" || normalConta.includes("PATRIMONIO LIQUIDO")) {
       currentSection = "PL";
-      currentTipo = "PATRIMONIO LIQUIDO";
+      currentTipo = "PATRIMONIO_LIQUIDO";
+      tipoEntry = "PATRIMONIO_LIQUIDO";
       justSawAtivo = false;
       justSawPassivo = false;
-      debugLog("Patrimônio Líquido:", metrics.patrimonioLiquido);
-    } else {
+      
+      if (valor !== 0) {
+        metrics.patrimonioLiquido = Math.abs(valor);
+        debugLog("PATRIMONIO LIQUIDO (do arquivo):", metrics.patrimonioLiquido);
+      }
+    }
+    else {
+      // Subconta - herda o tipo da seção atual
+      tipoEntry = currentTipo;
       justSawAtivo = false;
       justSawPassivo = false;
     }
 
-    // Add entry if has value
-    if (valor !== 0 || (valor_anterior !== null && valor_anterior !== 0)) {
+    // Criar entry se tiver valor
+    if (valor !== 0 || (valorAnterior !== null && valorAnterior !== 0)) {
       const level = textIndex >= 0 ? textIndex : 0;
-      while (hierarchyStack.length > level) {
-        hierarchyStack.pop();
-      }
-      hierarchyStack[level] = conta;
-      const hierarchy = hierarchyStack.filter(Boolean).join(" > ");
-
+      
       entries.push({
         conta,
-        tipo: currentTipo,
+        tipo: tipoEntry,
         valor: Math.abs(valor),
-        valor_anterior: valor_anterior !== null ? Math.abs(valor_anterior) : null,
-        hierarchy,
-        raw_row: safeGetCellsFromXLSRow(row),
+        valor_anterior: valorAnterior !== null ? Math.abs(valorAnterior) : null,
+        hierarchy: conta,
+        raw_row: safeGetCells(row),
       });
+      
+      debugLog(`Entry: ${conta} | Tipo: ${tipoEntry} | Valor: ${Math.abs(valor)}`);
     }
   }
 
-  debugLog("Total de entries do Balanço:", entries.length);
-  debugLog("Metrics extraídas:", metrics);
+  debugLog("Total entries Balanço:", entries.length);
+  debugLog("Metrics finais:", metrics);
 
-  // Para XLS, considere "parsed" true se:
-  // - rows.length > 0 (arquivo foi lido)
-  // - E (hasAnyNumeric OU entries.length > 0)
-  // 📌 NÃO exigir "ATIVO", "PASSIVO", "RECEITA" como critério obrigatório para XLS
-  const hasAnyNumeric = (rows || []).some((r) => safeGetNumericValuesFromXLSRow(r).length > 0);
+  const hasAnyNumeric = rows.some(r => safeGetNumericValues(r).length > 0);
   const parsed = rows.length > 0 && (hasAnyNumeric || entries.length > 0);
-
-  // Fallback materializador: se o XLS foi lido (parsed) mas nenhuma linha foi estruturada,
-  // crie entradas mínimas a partir das métricas para garantir persistência/UX.
-  if (parsed && entries.length === 0) {
-    debugLog("Balanço: parsed=true mas entries=0; aplicando fallback materializador via metrics");
-
-    const fallbackRow = ["fallback-metrics", filename, periodo];
-
-    if (metrics.ativoTotal !== 0) {
-      entries.push({
-        conta: "ATIVO",
-        tipo: "ATIVO",
-        valor: Math.abs(metrics.ativoTotal),
-        valor_anterior: null,
-        hierarchy: "ATIVO",
-        raw_row: fallbackRow,
-      });
-    }
-
-    if (metrics.ativoCirculante !== 0) {
-      entries.push({
-        conta: "CIRCULANTE",
-        tipo: "ATIVO CIRCULANTE",
-        valor: Math.abs(metrics.ativoCirculante),
-        valor_anterior: null,
-        hierarchy: "ATIVO > CIRCULANTE",
-        raw_row: fallbackRow,
-      });
-    }
-
-    if (metrics.ativoNaoCirculante !== 0) {
-      entries.push({
-        conta: "ATIVO NAO CIRCULANTE",
-        tipo: "ATIVO NAO CIRCULANTE",
-        valor: Math.abs(metrics.ativoNaoCirculante),
-        valor_anterior: null,
-        hierarchy: "ATIVO > ATIVO NAO CIRCULANTE",
-        raw_row: fallbackRow,
-      });
-    }
-
-    if (metrics.passivoTotal !== 0) {
-      entries.push({
-        conta: "PASSIVO",
-        tipo: "PASSIVO",
-        valor: Math.abs(metrics.passivoTotal),
-        valor_anterior: null,
-        hierarchy: "PASSIVO",
-        raw_row: fallbackRow,
-      });
-    }
-
-    if (metrics.passivoCirculante !== 0) {
-      entries.push({
-        conta: "CIRCULANTE",
-        tipo: "PASSIVO CIRCULANTE",
-        valor: Math.abs(metrics.passivoCirculante),
-        valor_anterior: null,
-        hierarchy: "PASSIVO > CIRCULANTE",
-        raw_row: fallbackRow,
-      });
-    }
-
-    if (metrics.passivoNaoCirculante !== 0) {
-      entries.push({
-        conta: "PASSIVO NAO CIRCULANTE",
-        tipo: "PASSIVO NAO CIRCULANTE",
-        valor: Math.abs(metrics.passivoNaoCirculante),
-        valor_anterior: null,
-        hierarchy: "PASSIVO > PASSIVO NAO CIRCULANTE",
-        raw_row: fallbackRow,
-      });
-    }
-
-    if (metrics.patrimonioLiquido !== 0) {
-      entries.push({
-        conta: "PATRIMONIO LIQUIDO",
-        tipo: "PATRIMONIO LIQUIDO",
-        valor: Math.abs(metrics.patrimonioLiquido),
-        valor_anterior: null,
-        hierarchy: "PATRIMONIO LIQUIDO",
-        raw_row: fallbackRow,
-      });
-    }
-  }
 
   return { entries, metrics, periodo, errors, parsed };
 }
@@ -1493,7 +734,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
  * Parse Balanço from CSV
  */
 function parseBalancoFromCSV(rows: string[][], filename: string): BalancoParseResult {
-  debugLog("=== Iniciando parseBalancoFromCSV ===");
+  debugLog("=== parseBalancoFromCSV ===");
 
   const entries: ParsedBalancoEntry[] = [];
   const errors: string[] = [];
@@ -1509,31 +750,23 @@ function parseBalancoFromCSV(rows: string[][], filename: string): BalancoParseRe
     patrimonioLiquido: 0,
   };
 
-  // Find "ATIVO"
+  // Find ATIVO
   let startRow = -1;
   for (let i = 0; i < rows.length; i++) {
-    const rowText = rows[i]?.join(" ") || "";
-    if (normalizeText(rowText).includes("ATIVO") && !normalizeText(rowText).includes("NAO CIRCULANTE")) {
-      const firstText = findFirstTextInRow(rows[i]);
-      if (normalizeText(firstText) === "ATIVO") {
-        startRow = i;
-        break;
-      }
+    const firstText = findFirstTextInRow(rows[i] || []);
+    if (normalizeText(firstText) === "ATIVO") {
+      startRow = i;
+      break;
     }
   }
 
-  if (startRow === -1) {
-    // Fallback: start from line 9 (Domínio format)
-    startRow = Math.min(8, rows.length - 1);
-  }
+  if (startRow === -1) startRow = Math.min(8, rows.length - 1);
 
-  let currentSection: "ATIVO" | "PASSIVO" | "PL" = "ATIVO";
-  let currentTipo = "ATIVO CIRCULANTE";
+  let currentSection: BalancoSectionType = "ATIVO";
+  let currentTipo: BalancoTipoSubconta = "ATIVO_CIRCULANTE";
   let justSawAtivo = false;
   let justSawPassivo = false;
-  let foundAtivoCirculante = false;
-  let foundPassivoCirculante = false;
-  const hierarchyStack: string[] = [];
+  let foundFirstCirculante = false;
 
   for (let i = startRow; i < rows.length; i++) {
     const row = rows[i];
@@ -1547,135 +780,124 @@ function parseBalancoFromCSV(rows: string[][], filename: string): BalancoParseRe
 
     const numericValues = findNumericValuesInRow(row);
     const valor = numericValues.length > 0 ? parseBrazilianNumber(numericValues[0], currentSection) : 0;
-    const valor_anterior = numericValues.length > 1 ? parseBrazilianNumber(numericValues[1], currentSection) : null;
+    const valorAnterior = numericValues.length > 1 ? parseBrazilianNumber(numericValues[1], currentSection) : null;
 
-    // Same metrics extraction logic as XLS
+    let tipoEntry: BalancoTipoCompleto = currentTipo;
+
     if (normalConta === "ATIVO") {
-      metrics.ativoTotal = Math.abs(valor);
       currentSection = "ATIVO";
-      currentTipo = "ATIVO CIRCULANTE";
+      currentTipo = "ATIVO_CIRCULANTE";
+      tipoEntry = "ATIVO_TOTAL";
       justSawAtivo = true;
+      if (valor !== 0) metrics.ativoTotal = Math.abs(valor);
+    }
+    else if (normalConta === "CIRCULANTE" && justSawAtivo && !foundFirstCirculante) {
+      currentTipo = "ATIVO_CIRCULANTE";
+      tipoEntry = "ATIVO_CIRCULANTE";
+      foundFirstCirculante = true;
+      justSawAtivo = false;
+      if (valor !== 0) metrics.ativoCirculante = Math.abs(valor);
+    }
+    else if (normalConta === "CIRCULANTE" && justSawPassivo) {
+      currentTipo = "PASSIVO_CIRCULANTE";
+      tipoEntry = "PASSIVO_CIRCULANTE";
       justSawPassivo = false;
-    } else if (normalConta === "CIRCULANTE" && justSawAtivo && !foundAtivoCirculante) {
-      metrics.ativoCirculante = Math.abs(valor);
-      foundAtivoCirculante = true;
+      if (valor !== 0) metrics.passivoCirculante = Math.abs(valor);
+    }
+    else if (normalConta === "ATIVO NAO CIRCULANTE" || (normalConta === "NAO CIRCULANTE" && currentSection === "ATIVO")) {
+      currentTipo = "ATIVO_NAO_CIRCULANTE";
+      tipoEntry = "ATIVO_NAO_CIRCULANTE";
       justSawAtivo = false;
-    } else if (
-      normalConta === "ATIVO NAO CIRCULANTE" ||
-      (normalConta === "NAO CIRCULANTE" && currentSection === "ATIVO")
-    ) {
-      metrics.ativoNaoCirculante = Math.abs(valor);
-      currentTipo = "ATIVO NAO CIRCULANTE";
-      justSawAtivo = false;
-    } else if (normalConta === "PASSIVO") {
-      metrics.passivoTotal = Math.abs(valor);
+      if (valor !== 0) metrics.ativoNaoCirculante = Math.abs(valor);
+    }
+    else if (normalConta === "PASSIVO") {
       currentSection = "PASSIVO";
-      currentTipo = "PASSIVO CIRCULANTE";
+      currentTipo = "PASSIVO_CIRCULANTE";
+      tipoEntry = "PASSIVO_TOTAL";
       justSawPassivo = true;
       justSawAtivo = false;
-    } else if (normalConta === "CIRCULANTE" && justSawPassivo && !foundPassivoCirculante) {
-      metrics.passivoCirculante = Math.abs(valor);
-      foundPassivoCirculante = true;
+      foundFirstCirculante = false;
+      if (valor !== 0) metrics.passivoTotal = Math.abs(valor);
+    }
+    else if (normalConta === "PASSIVO NAO CIRCULANTE" || (normalConta === "NAO CIRCULANTE" && currentSection === "PASSIVO")) {
+      currentTipo = "PASSIVO_NAO_CIRCULANTE";
+      tipoEntry = "PASSIVO_NAO_CIRCULANTE";
       justSawPassivo = false;
-    } else if (
-      normalConta === "PASSIVO NAO CIRCULANTE" ||
-      (normalConta === "NAO CIRCULANTE" && currentSection === "PASSIVO")
-    ) {
-      metrics.passivoNaoCirculante = Math.abs(valor);
-      currentTipo = "PASSIVO NAO CIRCULANTE";
-      justSawPassivo = false;
-    } else if (normalConta === "PATRIMONIO LIQUIDO" || normalConta.includes("PATRIMONIO LIQUIDO")) {
-      metrics.patrimonioLiquido = Math.abs(valor);
+      if (valor !== 0) metrics.passivoNaoCirculante = Math.abs(valor);
+    }
+    else if (normalConta.includes("PATRIMONIO LIQUIDO")) {
       currentSection = "PL";
-      currentTipo = "PATRIMONIO LIQUIDO";
-      justSawAtivo = false;
-      justSawPassivo = false;
-    } else {
+      currentTipo = "PATRIMONIO_LIQUIDO";
+      tipoEntry = "PATRIMONIO_LIQUIDO";
+      if (valor !== 0) metrics.patrimonioLiquido = Math.abs(valor);
+    }
+    else {
+      tipoEntry = currentTipo;
       justSawAtivo = false;
       justSawPassivo = false;
     }
 
-    if (valor !== 0 || (valor_anterior !== null && valor_anterior !== 0)) {
-      const textIndex = findTextIndexInRow(row);
-      const level = textIndex >= 0 ? textIndex : 0;
-      while (hierarchyStack.length > level) {
-        hierarchyStack.pop();
-      }
-      hierarchyStack[level] = conta;
-      const hierarchy = hierarchyStack.filter(Boolean).join(" > ");
-
+    if (valor !== 0 || (valorAnterior !== null && valorAnterior !== 0)) {
       entries.push({
         conta,
-        tipo: currentTipo,
+        tipo: tipoEntry,
         valor: Math.abs(valor),
-        valor_anterior: valor_anterior !== null ? Math.abs(valor_anterior) : null,
-        hierarchy,
+        valor_anterior: valorAnterior !== null ? Math.abs(valorAnterior) : null,
+        hierarchy: conta,
         raw_row: row.map(String),
       });
     }
   }
 
-  debugLog("Total de entries do Balanço (CSV):", entries.length);
-
   return { entries, metrics, periodo, errors, parsed: true };
 }
 
-// ============= DRE PARSING =============
-
-export interface DREParseResult {
-  entries: ParsedDREEntry[];
-  periodo: string;
-  errors: string[];
-  /**
-   * Indica se o parser conseguiu "tentar" interpretar a estrutura do arquivo.
-   * (Não depende de entries > 0; útil para XLS tolerante.)
-   */
-  parsed: boolean;
-}
+// ============= DRE PARSING - REGRAS CONTÁBEIS =============
 
 /**
- * Parse DRE from XLS/XLSX - with SAFE access
+ * Parse DRE com regras contábeis:
+ * 1. Início após "DEMONSTRAÇÃO DO RESULTADO DO EXERCÍCIO EM"
+ * 2. Não recalcular totais - usar valores do arquivo
+ * 3. Preservar estrutura hierárquica
  */
 function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
-  debugLog("=== Iniciando parseDREFromXLS ===");
-  debugLog("Total de linhas recebidas:", rows?.length || 0);
+  debugLog("=== Iniciando parseDREFromXLS (REGRAS CONTÁBEIS) ===");
+  debugLog("Total de linhas:", rows?.length || 0);
 
   const entries: ParsedDREEntry[] = [];
   const errors: string[] = [];
+  const periodo = extractPeriodFromRows(rows?.map(r => safeGetCells(r)) || [], filename);
 
-  // Safe periodo extraction
-  const safeRows = (rows || []).map((r) => safeGetCellsFromXLSRow(r));
-  const periodo = extractPeriodFromRows(safeRows, filename);
-
-  // Validate rows array
-  if (!rows || !Array.isArray(rows) || rows.length === 0) {
-    debugLog("AVISO: Array de linhas vazio ou inválido");
+  if (!rows || rows.length === 0) {
     return { entries, periodo, errors, parsed: false };
   }
 
-  // Find start - "DEMONSTRAÇÃO DO RESULTADO" or fallback to "RECEITA"
+  // REGRA 7: Encontrar header DRE
   let startRow = 0;
   let found = false;
 
   for (let i = 0; i < rows.length && i < 30; i++) {
-    const cells = safeGetCellsFromXLSRow(rows[i]);
+    const cells = safeGetCells(rows[i]);
     const rowText = normalizeText(cells.join(" "));
-    if (rowText.includes("DEMONSTRACAO DO RESULTADO") || rowText.includes("DEMONSTRAÇÃO DO RESULTADO")) {
+    
+    // Procurar "DEMONSTRAÇÃO DO RESULTADO DO EXERCÍCIO EM"
+    if (rowText.includes("DEMONSTRACAO DO RESULTADO DO EXERCICIO") || 
+        rowText.includes("DEMONSTRAÇÃO DO RESULTADO DO EXERCÍCIO")) {
       startRow = i + 1;
       found = true;
-      debugLog("Encontrado header DRE na linha:", i);
+      debugLog("Header DRE encontrado na linha:", i);
       break;
     }
   }
 
-  // Fallback: look for "RECEITA"
+  // Fallback: procurar "RECEITA"
   if (!found) {
     for (let i = 0; i < rows.length && i < 30; i++) {
-      const { text } = safeGetFirstTextFromXLSRow(rows[i]);
+      const { text } = safeGetFirstText(rows[i]);
       if (text && normalizeText(text).includes("RECEITA")) {
         startRow = i;
         found = true;
-        debugLog("Fallback: encontrado RECEITA na linha:", i);
+        debugLog("Fallback: RECEITA encontrada na linha:", i);
         break;
       }
     }
@@ -1683,75 +905,53 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
 
   if (!found) {
     startRow = Math.min(5, rows.length - 1);
-    debugLog("Usando linha padrão:", startRow);
   }
 
+  // Processar linhas DRE
   for (let i = startRow; i < rows.length; i++) {
     const row = rows[i];
+    const { text: descricao } = safeGetFirstText(row);
 
-    // SAFE access
-    const { text: descricao } = safeGetFirstTextFromXLSRow(row);
+    if (!descricao || descricao.length < 2) continue;
 
-    if (!descricao || descricao.length < 2) {
-      debugLog("Linha ignorada (sem texto):", i);
+    const normalDesc = normalizeText(descricao);
+    
+    // Skip headers e linhas de assinatura
+    if (normalDesc.includes("DESCRICAO") || 
+        normalDesc === "CONTA" ||
+        normalDesc.includes("CPF") ||
+        normalDesc.includes("CRC") ||
+        normalDesc.includes("GERENTE") ||
+        normalDesc.includes("________")) {
       continue;
     }
 
-    const normalDesc = normalizeText(descricao);
-    if (normalDesc.includes("DESCRICAO") || normalDesc === "CONTA") continue;
+    const numericValues = safeGetNumericValues(row);
+    
+    // Linhas sem valor são títulos de grupo (REGRA 8)
+    if (numericValues.length === 0) {
+      debugLog(`Título de grupo (sem valor): ${descricao}`);
+      continue;
+    }
 
-    // SAFE access for numeric values
-    const numericValues = safeGetNumericValuesFromXLSRow(row);
-    if (numericValues.length === 0) continue;
-
+    // REGRA: Usar valor direto do arquivo, não recalcular
     const valor = numericValues[0]?.value || 0;
-    const valor_anterior = numericValues.length > 1 ? numericValues[1].value : null;
+    const valorAnterior = numericValues.length > 1 ? numericValues[1].value : null;
 
     entries.push({
       descricao,
       valor,
-      valor_anterior,
-      raw_row: safeGetCellsFromXLSRow(row),
+      valor_anterior: valorAnterior,
+      raw_row: safeGetCells(row),
     });
+    
+    debugLog(`DRE Entry: ${descricao} | Valor: ${valor}`);
   }
 
-  debugLog("Total de entries DRE:", entries.length);
+  debugLog("Total entries DRE:", entries.length);
 
-  // Para XLS, considere "parsed" true se:
-  // - rows.length > 0 (arquivo foi lido)
-  // - E (hasAnyNumeric OU entries.length > 0)
-  // 📌 NÃO exigir "RECEITA" ou header como critério obrigatório para XLS
-  const hasAnyNumeric = (rows || []).some((r) => safeGetNumericValuesFromXLSRow(r).length > 0);
+  const hasAnyNumeric = rows.some(r => safeGetNumericValues(r).length > 0);
   const parsed = rows.length > 0 && (hasAnyNumeric || entries.length > 0);
-
-  // Fallback materializador: se o XLS foi lido (parsed) mas nenhuma linha foi estruturada,
-  // gere entradas "genéricas" a partir das linhas que contenham valores numéricos.
-  if (parsed && entries.length === 0) {
-    debugLog("DRE: parsed=true mas entries=0; aplicando fallback materializador via linhas numéricas");
-
-    for (let i = startRow; i < rows.length; i++) {
-      const row = rows[i];
-      const numericValues = safeGetNumericValuesFromXLSRow(row);
-      if (numericValues.length === 0) continue;
-
-      // Tenta usar a primeira célula textual; se não houver, pega a primeira célula não-vazia.
-      const { text } = safeGetFirstTextFromXLSRow(row);
-      const cells = safeGetCellsFromXLSRow(row);
-      const fallbackDescricao =
-        text ||
-        cells.find((c) => typeof c === "string" && c.trim().length > 0) ||
-        `LINHA ${i + 1}`;
-
-      entries.push({
-        descricao: fallbackDescricao,
-        valor: numericValues[0]?.value ?? 0,
-        valor_anterior: numericValues.length > 1 ? numericValues[1].value : null,
-        raw_row: cells,
-      });
-    }
-
-    debugLog("DRE: entries após fallback:", entries.length);
-  }
 
   return { entries, periodo, errors, parsed };
 }
@@ -1760,13 +960,12 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
  * Parse DRE from CSV
  */
 function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
-  debugLog("=== Iniciando parseDREFromCSV ===");
+  debugLog("=== parseDREFromCSV ===");
 
   const entries: ParsedDREEntry[] = [];
   const errors: string[] = [];
   const periodo = extractPeriodFromRows(rows, filename);
 
-  // Find start
   let startRow = 0;
   let found = false;
 
@@ -1790,10 +989,7 @@ function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
     }
   }
 
-  if (!found) {
-    // Domínio format: skip first 7 lines
-    startRow = Math.min(7, rows.length - 1);
-  }
+  if (!found) startRow = Math.min(7, rows.length - 1);
 
   for (let i = startRow; i < rows.length; i++) {
     const row = rows[i];
@@ -1809,17 +1005,15 @@ function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
     if (numericValues.length === 0) continue;
 
     const valor = parseSimpleBrazilianNumber(numericValues[0]);
-    const valor_anterior = numericValues.length > 1 ? parseSimpleBrazilianNumber(numericValues[1]) : null;
+    const valorAnterior = numericValues.length > 1 ? parseSimpleBrazilianNumber(numericValues[1]) : null;
 
     entries.push({
       descricao,
       valor,
-      valor_anterior,
+      valor_anterior: valorAnterior,
       raw_row: row.map(String),
     });
   }
-
-  debugLog("Total de entries DRE (CSV):", entries.length);
 
   return { entries, periodo, errors, parsed: true };
 }
@@ -1836,16 +1030,6 @@ function findFirstTextInRow(row: string[]): string {
   return "";
 }
 
-function findTextIndexInRow(row: string[]): number {
-  for (let i = 0; i < row.length; i++) {
-    const cleaned = String(row[i] || "").trim();
-    if (isTextCell(cleaned)) {
-      return i;
-    }
-  }
-  return -1;
-}
-
 function findNumericValuesInRow(row: string[]): string[] {
   const values: string[] = [];
   for (const cell of row) {
@@ -1858,11 +1042,9 @@ function findNumericValuesInRow(row: string[]): string[] {
 }
 
 function extractPeriodFromRows(rows: string[][], filename: string): string {
-  // Try filename first
   const dateMatch = filename.match(/(\d{2}\/\d{2}\/\d{4}|\d{4})/);
   if (dateMatch) return dateMatch[1];
 
-  // Try content in first 15 rows
   for (const row of rows.slice(0, 15)) {
     const text = row.join(" ");
     const match = text.match(/(\d{2}\/\d{2}\/\d{4}|\d{4})/);
@@ -1874,10 +1056,6 @@ function extractPeriodFromRows(rows: string[][], filename: string): string {
 
 // ============= MAIN EXPORT FUNCTIONS =============
 
-/**
- * Parse file to array - ONLY for backward compatibility
- * New code should use parseBalancoFile and parseDREFile directly
- */
 export async function parseFileToArray(file: File): Promise<string[][]> {
   const extension = getFileExtension(file.name);
 
@@ -1891,49 +1069,37 @@ export async function parseFileToArray(file: File): Promise<string[][]> {
   throw new Error("Formato não suportado. Use CSV, XLS ou XLSX.");
 }
 
-/**
- * Parse DRE file - main entry point
- * Automatically detects file type and uses appropriate parser
- */
 export async function parseDREFileAuto(file: File): Promise<DREParseResult> {
   const extension = getFileExtension(file.name);
-  debugLog("Tipo de arquivo detectado para DRE:", extension);
-  debugLog("Fluxo utilizado:", extension === "csv" ? "CSV" : "XLS/XLSX");
+  debugLog("DRE - Tipo de arquivo:", extension);
 
   if (extension === "csv") {
     const rows = await parseCSVFile(file);
     return parseDREFromCSV(rows, file.name);
   } else if (extension === "xls" || extension === "xlsx") {
     const xlsRows = await parseXLSFile(file);
-    // O parsed é definido exclusivamente pelo parser interno, não revalidar aqui
     return parseDREFromXLS(xlsRows, file.name);
   }
 
   throw new Error("Formato não suportado. Use CSV, XLS ou XLSX.");
 }
 
-/**
- * Parse Balanço file - main entry point
- * Automatically detects file type and uses appropriate parser
- */
 export async function parseBalancoFileAuto(file: File): Promise<BalancoParseResult> {
   const extension = getFileExtension(file.name);
-  debugLog("Tipo de arquivo detectado para Balanço:", extension);
-  debugLog("Fluxo utilizado:", extension === "csv" ? "CSV" : "XLS/XLSX");
+  debugLog("Balanço - Tipo de arquivo:", extension);
 
   if (extension === "csv") {
     const rows = await parseCSVFile(file);
     return parseBalancoFromCSV(rows, file.name);
   } else if (extension === "xls" || extension === "xlsx") {
     const xlsRows = await parseXLSFile(file);
-    // O parsed é definido exclusivamente pelo parser interno, não revalidar aqui
     return parseBalancoFromXLS(xlsRows, file.name);
   }
 
   throw new Error("Formato não suportado. Use CSV, XLS ou XLSX.");
 }
 
-// Keep old functions for backward compatibility
+// Backward compatibility
 export function parseDREFile(rows: string[][], filename: string): DREParseResult {
   return parseDREFromCSV(rows, filename);
 }
@@ -1944,6 +1110,7 @@ export function parseBalancoFile(rows: string[][], filename: string): BalancoPar
 
 /**
  * Calculate DRE metrics from entries
+ * REGRA: Usar valores do arquivo, não recalcular
  */
 export function calculateDREMetrics(entries: ParsedDREEntry[]): DREMetrics {
   const metrics: DREMetrics = {
@@ -1953,64 +1120,30 @@ export function calculateDREMetrics(entries: ParsedDREEntry[]): DREMetrics {
     lucroLiquido: 0,
   };
 
-  let inReceitaSection = false;
-  let inDespesasSection = false;
-
   for (const entry of entries) {
     const normalDesc = normalizeText(entry.descricao);
     const valor = Math.abs(entry.valor);
 
-    if (
-      normalDesc.includes("RECEITA OPERACIONAL") ||
-      normalDesc.includes("RECEITA BRUTA") ||
-      normalDesc.includes("RECEITA LIQUIDA")
-    ) {
-      if (valor > 0) {
-        metrics.receitaOperacional = valor;
-      } else {
-        inReceitaSection = true;
-      }
-      continue;
+    // Usar valores diretos das linhas de total
+    if (normalDesc.includes("RECEITA OPERACIONAL") || normalDesc === "RECEITA LIQUIDA") {
+      metrics.receitaOperacional = valor;
     }
-
-    if (normalDesc.includes("IMPOSTOS SOBRE VENDAS") || normalDesc.includes("DEDUCOES DA RECEITA")) {
-      inReceitaSection = false;
-      continue;
-    }
-
-    if (normalDesc.includes("LUCRO BRUTO") || normalDesc === "LUCRO BRUTO") {
+    else if (normalDesc === "LUCRO BRUTO" || normalDesc.includes("LUCRO BRUTO")) {
       metrics.lucroBruto = valor;
-      inDespesasSection = true;
-      continue;
     }
-
-    if (normalDesc.includes("DESPESAS FINANCEIRAS") || normalDesc.includes("RESULTADO FINANCEIRO")) {
-      inDespesasSection = false;
-      continue;
-    }
-
-    if (
-      normalDesc.includes("LUCRO LIQUIDO") ||
-      normalDesc.includes("RESULTADO DO EXERCICIO") ||
-      normalDesc.includes("RESULTADO LIQUIDO")
-    ) {
+    else if (normalDesc.includes("LUCRO LIQUIDO") || 
+             normalDesc.includes("RESULTADO DO EXERCICIO") ||
+             normalDesc.includes("LUCRO LIQUIDO DO EXERCICIO")) {
       metrics.lucroLiquido = valor;
-      continue;
     }
-
-    if (inReceitaSection && valor > 0) {
-      metrics.receitaOperacional += valor;
-    }
-
-    if (inDespesasSection && valor > 0 && (normalDesc.includes("DESPESA") || normalDesc.includes("CUSTO"))) {
-      metrics.despesasOperacionais += valor;
+    else if (normalDesc.includes("DESPESAS OPERACIONAIS") || normalDesc === "TOTAL DESPESAS") {
+      metrics.despesasOperacionais = valor;
     }
   }
 
   return metrics;
 }
 
-// For backward compatibility
 export function extractPeriod(filename: string, rows: string[][]): string {
   return extractPeriodFromRows(rows, filename);
 }
