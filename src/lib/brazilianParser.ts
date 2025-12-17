@@ -35,29 +35,28 @@ interface BIFFCell {
 function parseBIFF8Manual(buffer: ArrayBuffer, strings: string[]): BIFFCell[] {
   const data = new DataView(buffer);
   const cells: BIFFCell[] = [];
-  let offset = 0;
   const len = buffer.byteLength;
   
-  debugLog("BIFF8 Manual Parser: buffer size = " + len);
+  debugLog("BIFF8 Manual Parser: buffer size = " + len + ", strings = " + strings.length);
   
-  // Find the start of the workbook stream (skip OLE header if present)
-  // OLE compound document header starts with D0 CF 11 E0
-  const isOLE = data.getUint32(0, false) === 0xD0CF11E0;
+  // Strategy 1: Scan for BIFF record structures
+  let offset = 0;
+  let recordCount = 0;
+  let numberCount = 0;
+  let labelCount = 0;
   
+  // Find potential BIFF stream start (skip OLE header)
+  const isOLE = len > 4 && data.getUint32(0, false) === 0xD0CF11E0;
   if (isOLE) {
-    debugLog("BIFF8: Detected OLE compound document");
-    // For OLE files, we need to find the Workbook stream
-    // This is complex, so we'll scan for BIFF records instead
-    
-    // Scan for BOF record (0x0809) which marks start of BIFF8
-    for (let i = 0; i < len - 4; i++) {
-      const recordType = data.getUint16(i, true);
-      if (recordType === 0x0809) {
-        // Check if this looks like a valid BOF
-        const recordLen = data.getUint16(i + 2, true);
-        if (recordLen >= 8 && recordLen <= 16) {
+    debugLog("BIFF8: OLE compound document detected");
+    // Scan for BOF record (0x0809) or Workbook stream
+    for (let i = 512; i < Math.min(len - 4, 65536); i++) {
+      const val = data.getUint16(i, true);
+      if (val === 0x0809) { // BOF
+        const recLen = data.getUint16(i + 2, true);
+        if (recLen >= 8 && recLen <= 20) {
           offset = i;
-          debugLog("BIFF8: Found BOF at offset " + i);
+          debugLog("BIFF8: BOF found at " + i);
           break;
         }
       }
@@ -65,16 +64,11 @@ function parseBIFF8Manual(buffer: ArrayBuffer, strings: string[]): BIFFCell[] {
   }
   
   // Parse BIFF records
-  let recordCount = 0;
-  let numberCount = 0;
-  let labelCount = 0;
-  
   while (offset < len - 4) {
     try {
       const recordType = data.getUint16(offset, true);
       const recordLen = data.getUint16(offset + 2, true);
       
-      // Sanity check
       if (recordLen > 8224 || offset + 4 + recordLen > len) {
         offset++;
         continue;
@@ -82,74 +76,44 @@ function parseBIFF8Manual(buffer: ArrayBuffer, strings: string[]): BIFFCell[] {
       
       recordCount++;
       
-      // NUMBER record (0x0203) - contains row, col, and 8-byte IEEE 754 double
+      // NUMBER record (0x0203)
       if (recordType === 0x0203 && recordLen >= 14) {
         const row = data.getUint16(offset + 4, true);
         const col = data.getUint16(offset + 6, true);
-        // XF index at offset 8-9
         const value = data.getFloat64(offset + 10, true);
         
-        if (!isNaN(value) && isFinite(value) && row < 10000 && col < 256) {
+        if (!isNaN(value) && isFinite(value) && row < 5000 && col < 50) {
           cells.push({ row, col, value, type: "number" });
           numberCount++;
         }
       }
       
-      // RK record (0x027E) - compact number format
+      // RK record (0x027E)
       else if (recordType === 0x027E && recordLen >= 10) {
         const row = data.getUint16(offset + 4, true);
         const col = data.getUint16(offset + 6, true);
         const rkValue = data.getUint32(offset + 10, true);
+        const value = decodeRK(rkValue);
         
-        // Decode RK value
-        let value: number;
-        if (rkValue & 0x02) {
-          // Integer value
-          value = (rkValue >> 2);
-          if (rkValue & 0x01) value /= 100;
-        } else {
-          // IEEE number with modified mantissa
-          const ieee = new ArrayBuffer(8);
-          const ieeeView = new DataView(ieee);
-          ieeeView.setUint32(4, rkValue & 0xFFFFFFFC, true);
-          ieeeView.setUint32(0, 0, true);
-          value = ieeeView.getFloat64(0, true);
-          if (rkValue & 0x01) value /= 100;
-        }
-        
-        if (!isNaN(value) && isFinite(value) && row < 10000 && col < 256) {
+        if (!isNaN(value) && isFinite(value) && row < 5000 && col < 50) {
           cells.push({ row, col, value, type: "number" });
           numberCount++;
         }
       }
       
-      // MULRK record (0x00BD) - multiple RK values in one record
-      else if (recordType === 0x00BD && recordLen >= 6) {
+      // MULRK record (0x00BD)
+      else if (recordType === 0x00BD && recordLen >= 10) {
         const row = data.getUint16(offset + 4, true);
         const firstCol = data.getUint16(offset + 6, true);
-        
-        // Each RK value is 6 bytes (2 XF + 4 RK)
         const numValues = Math.floor((recordLen - 6) / 6);
         
-        for (let i = 0; i < numValues && firstCol + i < 256; i++) {
-          const rkOffset = offset + 8 + (i * 6) + 2; // +2 to skip XF
+        for (let i = 0; i < numValues && firstCol + i < 50; i++) {
+          const rkOffset = offset + 8 + (i * 6) + 2;
           if (rkOffset + 4 <= offset + 4 + recordLen) {
             const rkValue = data.getUint32(rkOffset, true);
+            const value = decodeRK(rkValue);
             
-            let value: number;
-            if (rkValue & 0x02) {
-              value = (rkValue >> 2);
-              if (rkValue & 0x01) value /= 100;
-            } else {
-              const ieee = new ArrayBuffer(8);
-              const ieeeView = new DataView(ieee);
-              ieeeView.setUint32(4, rkValue & 0xFFFFFFFC, true);
-              ieeeView.setUint32(0, 0, true);
-              value = ieeeView.getFloat64(0, true);
-              if (rkValue & 0x01) value /= 100;
-            }
-            
-            if (!isNaN(value) && isFinite(value) && row < 10000) {
+            if (!isNaN(value) && isFinite(value) && row < 5000) {
               cells.push({ row, col: firstCol + i, value, type: "number" });
               numberCount++;
             }
@@ -157,39 +121,153 @@ function parseBIFF8Manual(buffer: ArrayBuffer, strings: string[]): BIFFCell[] {
         }
       }
       
-      // LABELSST record (0x00FD) - reference to shared string table
+      // LABELSST record (0x00FD)
       else if (recordType === 0x00FD && recordLen >= 10) {
         const row = data.getUint16(offset + 4, true);
         const col = data.getUint16(offset + 6, true);
         const sstIndex = data.getUint32(offset + 10, true);
         
-        if (row < 10000 && col < 256 && sstIndex < strings.length) {
+        if (row < 5000 && col < 50 && sstIndex < strings.length) {
           cells.push({ row, col, value: strings[sstIndex], type: "string" });
           labelCount++;
         }
       }
       
-      // EOF record (0x000A) - end of file
+      // EOF (0x000A)
       if (recordType === 0x000A) {
-        debugLog("BIFF8: Found EOF record");
+        debugLog("BIFF8: EOF at " + offset);
         break;
       }
       
       offset += 4 + recordLen;
-      
-    } catch (e) {
+    } catch {
       offset++;
     }
   }
   
-  debugLog("BIFF8 Manual Parser: " + recordCount + " records, " + numberCount + " numbers, " + labelCount + " labels");
-  debugLog("BIFF8 cells found:", cells.length);
+  debugLog("BIFF8 records: " + recordCount + " total, " + numberCount + " numbers, " + labelCount + " labels");
   
+  // Strategy 2: If no cells found via BIFF records, scan for IEEE 754 doubles directly
+  if (cells.length === 0 && strings.length > 0) {
+    debugLog("BIFF8: No cells from records, scanning for IEEE 754 doubles...");
+    
+    const doubles: { offset: number; value: number }[] = [];
+    
+    // Scan for valid IEEE 754 doubles that look like accounting values
+    for (let i = 0; i < len - 8; i++) {
+      try {
+        const value = data.getFloat64(i, true);
+        
+        // Filter for reasonable accounting values: non-zero, finite, in typical range
+        if (value !== 0 && isFinite(value) && !isNaN(value)) {
+          const absVal = Math.abs(value);
+          // Accept values between 0.01 and 10 billion (typical accounting range)
+          if (absVal >= 0.01 && absVal <= 10000000000) {
+            // Check if it looks like a nice number (not garbage)
+            // Numbers from accounting usually have at most 2 decimal places
+            const rounded = Math.round(value * 100) / 100;
+            if (Math.abs(value - rounded) < 0.001) {
+              doubles.push({ offset: i, value: rounded });
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+    
+    debugLog("BIFF8: Found " + doubles.length + " candidate doubles");
+    
+    // Deduplicate (same value within 8 bytes = same cell)
+    const uniqueDoubles: { offset: number; value: number }[] = [];
+    for (const d of doubles) {
+      const isDupe = uniqueDoubles.some(u => Math.abs(u.offset - d.offset) < 8 && u.value === d.value);
+      if (!isDupe) {
+        uniqueDoubles.push(d);
+      }
+    }
+    
+    debugLog("BIFF8: " + uniqueDoubles.length + " unique doubles after dedup");
+    if (uniqueDoubles.length > 0) {
+      debugLog("BIFF8: First 10 doubles:", uniqueDoubles.slice(0, 10));
+    }
+    
+    // Now try to associate numbers with strings based on position patterns
+    // In BIFF files, cells are typically stored row by row
+    // We'll assign row numbers based on the order of values
+    
+    // First, identify text rows from strings (skip header strings)
+    const textStrings: { index: number; text: string }[] = [];
+    for (let i = 0; i < strings.length; i++) {
+      const str = strings[i];
+      // Skip headers, metadata, signatures
+      if (str.includes("Empresa:") || str.includes("C.N.P.J.") || str.includes("Período:") ||
+          str.includes("Folha:") || str.includes("CONSOLIDADO") || str.includes("DEMONSTRAÇÃO") ||
+          str.includes("BALANÇO") || str.includes("________") || str.includes("CPF:") ||
+          str.includes("CRC") || str.includes("GERENTE") || str.includes("LTDA-EPP") ||
+          str.includes("CNPJ") || !str.trim()) {
+        continue;
+      }
+      if (isTextCell(str)) {
+        textStrings.push({ index: i, text: str });
+      }
+    }
+    
+    debugLog("BIFF8: " + textStrings.length + " account name strings found");
+    
+    // Match numbers to account names
+    // Typically each account has 1-2 values (current and previous period)
+    if (textStrings.length > 0 && uniqueDoubles.length > 0) {
+      // Estimate number of values per row
+      const valuesPerRow = Math.ceil(uniqueDoubles.length / textStrings.length);
+      debugLog("BIFF8: Estimated " + valuesPerRow + " values per row");
+      
+      let doubleIndex = 0;
+      for (let rowIdx = 0; rowIdx < textStrings.length; rowIdx++) {
+        const { text } = textStrings[rowIdx];
+        
+        // Add the text cell
+        cells.push({ row: rowIdx, col: 0, value: text, type: "string" });
+        
+        // Add associated numeric values
+        const numVals = Math.min(valuesPerRow, uniqueDoubles.length - doubleIndex);
+        for (let i = 0; i < numVals && doubleIndex < uniqueDoubles.length; i++) {
+          cells.push({ row: rowIdx, col: 1 + i, value: uniqueDoubles[doubleIndex].value, type: "number" });
+          doubleIndex++;
+        }
+      }
+      
+      debugLog("BIFF8: Created " + cells.length + " cells from IEEE scan + strings");
+    }
+  }
+  
+  debugLog("BIFF8 total cells found:", cells.length);
   if (cells.length > 0) {
-    debugLog("First 10 cells:", cells.slice(0, 10));
+    debugLog("BIFF8 first 10 cells:", cells.slice(0, 10));
   }
   
   return cells;
+}
+
+/**
+ * Decode RK compressed number format
+ */
+function decodeRK(rk: number): number {
+  let value: number;
+  if (rk & 0x02) {
+    // Integer value
+    value = (rk >> 2);
+    if (rk & 0x01) value /= 100;
+  } else {
+    // IEEE with modified mantissa
+    const ieee = new ArrayBuffer(8);
+    const view = new DataView(ieee);
+    view.setUint32(4, rk & 0xFFFFFFFC, true);
+    view.setUint32(0, 0, true);
+    value = view.getFloat64(0, true);
+    if (rk & 0x01) value /= 100;
+  }
+  return value;
 }
 
 /**
