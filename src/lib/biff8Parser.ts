@@ -118,10 +118,10 @@ function isAccountName(text: string): boolean {
 
 /**
  * Scan binary data for IEEE 754 doubles that look like accounting values
- * Returns filtered, deduplicated values
+ * Returns values in ORDER OF OFFSET (preserves position in file)
  */
-function scanForAccountingDoubles(data: Uint8Array): number[] {
-  const found: Set<string> = new Set();
+function scanForAccountingDoubles(data: Uint8Array): { value: number; offset: number }[] {
+  const found: Map<string, { value: number; offset: number }> = new Map();
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   
   // Scan every 4 bytes (most values align at 4 bytes)
@@ -155,20 +155,19 @@ function scanForAccountingDoubles(data: Uint8Array): number[] {
       const rounded = Math.round(val * 100) / 100;
       const key = rounded.toFixed(2);
       
-      // Skip duplicates
-      if (found.has(key)) continue;
-      found.add(key);
+      // Keep first occurrence (by offset)
+      if (!found.has(key)) {
+        found.set(key, { value: rounded, offset: i });
+      }
       
     } catch {
       continue;
     }
   }
   
-  // Convert to sorted array
-  const values = Array.from(found).map(s => parseFloat(s));
-  
-  // Sort by absolute value descending (larger values usually more relevant)
-  values.sort((a, b) => Math.abs(b) - Math.abs(a));
+  // Return sorted by OFFSET (preserves file order)
+  const values = Array.from(found.values());
+  values.sort((a, b) => a.offset - b.offset);
   
   return values;
 }
@@ -341,18 +340,18 @@ export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): 
     return cells;
   }
   
-  // Scan for IEEE doubles in the binary
-  const doubles = scanForAccountingDoubles(uint8);
-  debugLog(`IEEE doubles found: ${doubles.length}`);
+  // Scan for IEEE doubles in the binary (sorted by file offset to preserve order)
+  const doublesWithOffset = scanForAccountingDoubles(uint8);
+  debugLog(`IEEE doubles found: ${doublesWithOffset.length}`);
   
-  if (doubles.length > 0) {
-    debugLog(`Sample doubles: ${doubles.slice(0, 20).map(d => d.toFixed(2)).join(", ")}`);
+  if (doublesWithOffset.length > 0) {
+    debugLog(`Sample doubles (by offset): ${doublesWithOffset.slice(0, 20).map(d => d.value.toFixed(2)).join(", ")}`);
   }
   
   // Build cells: account names in col 0, numbers distributed per row
   // Typical Brazilian reports have 1-2 value columns per row
   const newCells: BIFFCell[] = [];
-  const numPerRow = doubles.length > 0 ? Math.max(1, Math.round(doubles.length / accountNames.length)) : 0;
+  const numPerRow = doublesWithOffset.length > 0 ? Math.max(1, Math.round(doublesWithOffset.length / accountNames.length)) : 0;
   
   debugLog(`Building ${accountNames.length} rows with ~${numPerRow} numbers each`);
   
@@ -364,11 +363,11 @@ export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): 
     newCells.push({ row: rowIdx, col: 0, value: name, type: "string" });
     
     // Add numbers in columns 1, 2, etc.
-    for (let c = 0; c < numPerRow && numIdx < doubles.length; c++) {
+    for (let c = 0; c < numPerRow && numIdx < doublesWithOffset.length; c++) {
       newCells.push({ 
         row: rowIdx, 
         col: c + 1, 
-        value: doubles[numIdx], 
+        value: doublesWithOffset[numIdx].value, 
         type: "number" 
       });
       numIdx++;
