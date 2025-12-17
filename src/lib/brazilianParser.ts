@@ -10,6 +10,242 @@ function debugLog(message: string, data?: unknown) {
   }
 }
 
+// ============= INTERFACES (Forward declaration) =============
+
+interface XLSRow {
+  cells: string[];
+  firstTextCell: { text: string; index: number };
+  numericValues: { value: number; raw: string }[];
+}
+
+// ============= BIFF8 MANUAL PARSER =============
+// For old XLS files where xlsx library fails to extract cells
+
+interface BIFFCell {
+  row: number;
+  col: number;
+  value: number | string;
+  type: "number" | "string";
+}
+
+/**
+ * Manually parse BIFF8 (Excel 97-2003) file to extract cell data
+ * This is a fallback when xlsx library fails to read the Sheets properly
+ */
+function parseBIFF8Manual(buffer: ArrayBuffer, strings: string[]): BIFFCell[] {
+  const data = new DataView(buffer);
+  const cells: BIFFCell[] = [];
+  let offset = 0;
+  const len = buffer.byteLength;
+  
+  debugLog("BIFF8 Manual Parser: buffer size = " + len);
+  
+  // Find the start of the workbook stream (skip OLE header if present)
+  // OLE compound document header starts with D0 CF 11 E0
+  const isOLE = data.getUint32(0, false) === 0xD0CF11E0;
+  
+  if (isOLE) {
+    debugLog("BIFF8: Detected OLE compound document");
+    // For OLE files, we need to find the Workbook stream
+    // This is complex, so we'll scan for BIFF records instead
+    
+    // Scan for BOF record (0x0809) which marks start of BIFF8
+    for (let i = 0; i < len - 4; i++) {
+      const recordType = data.getUint16(i, true);
+      if (recordType === 0x0809) {
+        // Check if this looks like a valid BOF
+        const recordLen = data.getUint16(i + 2, true);
+        if (recordLen >= 8 && recordLen <= 16) {
+          offset = i;
+          debugLog("BIFF8: Found BOF at offset " + i);
+          break;
+        }
+      }
+    }
+  }
+  
+  // Parse BIFF records
+  let recordCount = 0;
+  let numberCount = 0;
+  let labelCount = 0;
+  
+  while (offset < len - 4) {
+    try {
+      const recordType = data.getUint16(offset, true);
+      const recordLen = data.getUint16(offset + 2, true);
+      
+      // Sanity check
+      if (recordLen > 8224 || offset + 4 + recordLen > len) {
+        offset++;
+        continue;
+      }
+      
+      recordCount++;
+      
+      // NUMBER record (0x0203) - contains row, col, and 8-byte IEEE 754 double
+      if (recordType === 0x0203 && recordLen >= 14) {
+        const row = data.getUint16(offset + 4, true);
+        const col = data.getUint16(offset + 6, true);
+        // XF index at offset 8-9
+        const value = data.getFloat64(offset + 10, true);
+        
+        if (!isNaN(value) && isFinite(value) && row < 10000 && col < 256) {
+          cells.push({ row, col, value, type: "number" });
+          numberCount++;
+        }
+      }
+      
+      // RK record (0x027E) - compact number format
+      else if (recordType === 0x027E && recordLen >= 10) {
+        const row = data.getUint16(offset + 4, true);
+        const col = data.getUint16(offset + 6, true);
+        const rkValue = data.getUint32(offset + 10, true);
+        
+        // Decode RK value
+        let value: number;
+        if (rkValue & 0x02) {
+          // Integer value
+          value = (rkValue >> 2);
+          if (rkValue & 0x01) value /= 100;
+        } else {
+          // IEEE number with modified mantissa
+          const ieee = new ArrayBuffer(8);
+          const ieeeView = new DataView(ieee);
+          ieeeView.setUint32(4, rkValue & 0xFFFFFFFC, true);
+          ieeeView.setUint32(0, 0, true);
+          value = ieeeView.getFloat64(0, true);
+          if (rkValue & 0x01) value /= 100;
+        }
+        
+        if (!isNaN(value) && isFinite(value) && row < 10000 && col < 256) {
+          cells.push({ row, col, value, type: "number" });
+          numberCount++;
+        }
+      }
+      
+      // MULRK record (0x00BD) - multiple RK values in one record
+      else if (recordType === 0x00BD && recordLen >= 6) {
+        const row = data.getUint16(offset + 4, true);
+        const firstCol = data.getUint16(offset + 6, true);
+        
+        // Each RK value is 6 bytes (2 XF + 4 RK)
+        const numValues = Math.floor((recordLen - 6) / 6);
+        
+        for (let i = 0; i < numValues && firstCol + i < 256; i++) {
+          const rkOffset = offset + 8 + (i * 6) + 2; // +2 to skip XF
+          if (rkOffset + 4 <= offset + 4 + recordLen) {
+            const rkValue = data.getUint32(rkOffset, true);
+            
+            let value: number;
+            if (rkValue & 0x02) {
+              value = (rkValue >> 2);
+              if (rkValue & 0x01) value /= 100;
+            } else {
+              const ieee = new ArrayBuffer(8);
+              const ieeeView = new DataView(ieee);
+              ieeeView.setUint32(4, rkValue & 0xFFFFFFFC, true);
+              ieeeView.setUint32(0, 0, true);
+              value = ieeeView.getFloat64(0, true);
+              if (rkValue & 0x01) value /= 100;
+            }
+            
+            if (!isNaN(value) && isFinite(value) && row < 10000) {
+              cells.push({ row, col: firstCol + i, value, type: "number" });
+              numberCount++;
+            }
+          }
+        }
+      }
+      
+      // LABELSST record (0x00FD) - reference to shared string table
+      else if (recordType === 0x00FD && recordLen >= 10) {
+        const row = data.getUint16(offset + 4, true);
+        const col = data.getUint16(offset + 6, true);
+        const sstIndex = data.getUint32(offset + 10, true);
+        
+        if (row < 10000 && col < 256 && sstIndex < strings.length) {
+          cells.push({ row, col, value: strings[sstIndex], type: "string" });
+          labelCount++;
+        }
+      }
+      
+      // EOF record (0x000A) - end of file
+      if (recordType === 0x000A) {
+        debugLog("BIFF8: Found EOF record");
+        break;
+      }
+      
+      offset += 4 + recordLen;
+      
+    } catch (e) {
+      offset++;
+    }
+  }
+  
+  debugLog("BIFF8 Manual Parser: " + recordCount + " records, " + numberCount + " numbers, " + labelCount + " labels");
+  debugLog("BIFF8 cells found:", cells.length);
+  
+  if (cells.length > 0) {
+    debugLog("First 10 cells:", cells.slice(0, 10));
+  }
+  
+  return cells;
+}
+
+/**
+ * Convert BIFF cells to XLSRow format
+ */
+function biffCellsToXLSRows(cells: BIFFCell[]): XLSRow[] {
+  if (cells.length === 0) return [];
+  
+  // Group cells by row
+  const rowMap = new Map<number, BIFFCell[]>();
+  for (const cell of cells) {
+    if (!rowMap.has(cell.row)) {
+      rowMap.set(cell.row, []);
+    }
+    rowMap.get(cell.row)!.push(cell);
+  }
+  
+  // Sort rows
+  const sortedRows = Array.from(rowMap.entries()).sort((a, b) => a[0] - b[0]);
+  
+  const rows: XLSRow[] = [];
+  
+  for (const [rowNum, rowCells] of sortedRows) {
+    // Sort cells by column
+    rowCells.sort((a, b) => a.col - b.col);
+    
+    const xlsRow: XLSRow = {
+      cells: [],
+      firstTextCell: { text: "", index: -1 },
+      numericValues: [],
+    };
+    
+    for (const cell of rowCells) {
+      const cellStr = String(cell.value);
+      xlsRow.cells.push(cellStr);
+      
+      if (cell.type === "string" && xlsRow.firstTextCell.index === -1) {
+        xlsRow.firstTextCell = { text: cellStr, index: cell.col };
+      }
+      
+      if (cell.type === "number" && typeof cell.value === "number") {
+        xlsRow.numericValues.push({ value: cell.value, raw: cellStr });
+      }
+    }
+    
+    // Only add rows that have content
+    if (xlsRow.cells.length > 0 && (xlsRow.firstTextCell.text || xlsRow.numericValues.length > 0)) {
+      rows.push(xlsRow);
+    }
+  }
+  
+  debugLog("BIFF to XLSRow: converted " + rows.length + " rows");
+  
+  return rows;
+}
+
 // ============= NUMBER PARSING =============
 
 /**
@@ -236,12 +472,6 @@ async function parseCSVFile(file: File): Promise<string[][]> {
 }
 
 // ============= XLS/XLSX PARSING (Completely Separate Flow) =============
-
-interface XLSRow {
-  cells: string[];
-  firstTextCell: { text: string; index: number };
-  numericValues: { value: number; raw: string }[];
-}
 
 /**
  * Parse XLS/XLSX file - reads cell by cell, NOT using CSV logic
@@ -475,7 +705,7 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
     }
 
     if (!sheet) {
-      debugLog("ERRO: Não foi possível acessar nenhuma sheet");
+      debugLog("ERRO: Não foi possível acessar nenhuma sheet via xlsx");
       debugLog("Workbook info:", {
         hasWorkbook: !!workbook,
         sheetNames: workbook?.SheetNames,
@@ -484,8 +714,31 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
         hasStrings: !!((workbook as any)?.Strings),
       });
       
-      // Try to extract data from Strings if available - reconstruct rows from shared string table
+      // BIFF8 MANUAL PARSER FALLBACK
+      // Extract strings for text references
+      const stringsArray: string[] = [];
       const strings = (workbook as any)?.Strings;
+      if (strings && Array.isArray(strings)) {
+        for (const str of strings) {
+          const text = typeof str === 'object' && str.t ? str.t : String(str || "");
+          stringsArray.push(text);
+        }
+        debugLog("Strings extraídos para BIFF parser:", stringsArray.length);
+      }
+      
+      // Try manual BIFF8 parsing
+      debugLog("Tentando parser BIFF8 manual...");
+      const biffCells = parseBIFF8Manual(buffer, stringsArray);
+      
+      if (biffCells.length > 0) {
+        const biffRows = biffCellsToXLSRows(biffCells);
+        if (biffRows.length > 0) {
+          debugLog("BIFF8 manual parser SUCCESS: " + biffRows.length + " rows");
+          return biffRows;
+        }
+      }
+      
+      // Fallback to Strings-only reconstruction
       if (strings && Array.isArray(strings) && strings.length > 0) {
         debugLog("Reconstruindo dados a partir de Strings: " + strings.length + " strings");
         
