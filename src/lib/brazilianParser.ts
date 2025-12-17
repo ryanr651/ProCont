@@ -21,6 +21,7 @@ interface XLSRow {
 
 export interface ParsedDREEntry {
   descricao: string;
+  grupo: string;
   valor: number;
   valor_anterior: number | null;
   raw_row: string[];
@@ -88,6 +89,14 @@ type BalancoTipoSubconta =
   | "PATRIMONIO_LIQUIDO";
 
 // ============= NUMBER PARSING =============
+
+/**
+ * REGRA 1: Arredondar para exatamente 2 casas decimais
+ * Nunca truncar, sempre arredondar
+ */
+function roundTo2Decimals(value: number): number {
+  return Math.round(value * 100) / 100;
+}
 
 /**
  * Parse Brazilian number format with D/C (Debit/Credit) handling
@@ -704,12 +713,13 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
     // Get numeric values with D/C context
     const rawValues = safeGetNumericValues(row);
     
-    // REGRA 5: Usar parseBrazilianNumber com contexto para D/C
+    // REGRA 1 + 2: Aplicar arredondamento 2 casas + mapeamento de colunas
+    // 1 número = valor, 2 números = valor + valor_anterior, >2 = usar apenas os 2 primeiros
     const valor = rawValues.length > 0 
-      ? parseBrazilianNumber(rawValues[0].raw, currentSection) 
+      ? roundTo2Decimals(parseBrazilianNumber(rawValues[0].raw, currentSection))
       : 0;
     const valorAnterior = rawValues.length > 1 
-      ? parseBrazilianNumber(rawValues[1].raw, currentSection) 
+      ? roundTo2Decimals(parseBrazilianNumber(rawValues[1].raw, currentSection))
       : null;
 
     // REGRA 3: Classificação por contexto
@@ -727,7 +737,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
       foundFirstCirculante = false;
       
       if (valor !== 0) {
-        metrics.ativoTotal = Math.abs(valor);
+        metrics.ativoTotal = roundTo2Decimals(Math.abs(valor));
         debugLog("ATIVO TOTAL (do arquivo):", metrics.ativoTotal);
       }
     }
@@ -740,7 +750,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         justSawAtivo = false;
         
         if (valor !== 0) {
-          metrics.ativoCirculante = Math.abs(valor);
+          metrics.ativoCirculante = roundTo2Decimals(Math.abs(valor));
           debugLog("ATIVO CIRCULANTE (do arquivo):", metrics.ativoCirculante);
         }
       } else if (justSawPassivo) {
@@ -750,7 +760,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         justSawPassivo = false;
         
         if (valor !== 0) {
-          metrics.passivoCirculante = Math.abs(valor);
+          metrics.passivoCirculante = roundTo2Decimals(Math.abs(valor));
           debugLog("PASSIVO CIRCULANTE (do arquivo):", metrics.passivoCirculante);
         }
       }
@@ -762,7 +772,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
       justSawAtivo = false;
       
       if (valor !== 0) {
-        metrics.ativoNaoCirculante = Math.abs(valor);
+        metrics.ativoNaoCirculante = roundTo2Decimals(Math.abs(valor));
         debugLog("ATIVO NAO CIRCULANTE (do arquivo):", metrics.ativoNaoCirculante);
       }
     }
@@ -775,7 +785,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
       foundFirstCirculante = false;
       
       if (valor !== 0) {
-        metrics.passivoTotal = Math.abs(valor);
+        metrics.passivoTotal = roundTo2Decimals(Math.abs(valor));
         debugLog("PASSIVO TOTAL (do arquivo):", metrics.passivoTotal);
       }
     }
@@ -786,7 +796,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
       justSawPassivo = false;
       
       if (valor !== 0) {
-        metrics.passivoNaoCirculante = Math.abs(valor);
+        metrics.passivoNaoCirculante = roundTo2Decimals(Math.abs(valor));
         debugLog("PASSIVO NAO CIRCULANTE (do arquivo):", metrics.passivoNaoCirculante);
       }
     }
@@ -798,7 +808,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
       justSawPassivo = false;
       
       if (valor !== 0) {
-        metrics.patrimonioLiquido = Math.abs(valor);
+        metrics.patrimonioLiquido = roundTo2Decimals(Math.abs(valor));
         debugLog("PATRIMONIO LIQUIDO (do arquivo):", metrics.patrimonioLiquido);
       }
     }
@@ -816,8 +826,8 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
       entries.push({
         conta,
         tipo: tipoEntry,
-        valor: Math.abs(valor),
-        valor_anterior: valorAnterior !== null ? Math.abs(valorAnterior) : null,
+        valor: roundTo2Decimals(Math.abs(valor)),
+        valor_anterior: valorAnterior !== null ? roundTo2Decimals(Math.abs(valorAnterior)) : null,
         hierarchy: conta,
         raw_row: safeGetCells(row),
       });
@@ -884,8 +894,13 @@ function parseBalancoFromCSV(rows: string[][], filename: string): BalancoParseRe
     if (normalConta.includes("DESCRICAO") || normalConta === "CONTA") continue;
 
     const numericValues = findNumericValuesInRow(row);
-    const valor = numericValues.length > 0 ? parseBrazilianNumber(numericValues[0], currentSection) : 0;
-    const valorAnterior = numericValues.length > 1 ? parseBrazilianNumber(numericValues[1], currentSection) : null;
+    // REGRA 1 + 2: Arredondamento 2 casas + mapeamento de colunas
+    const valor = numericValues.length > 0 
+      ? roundTo2Decimals(parseBrazilianNumber(numericValues[0], currentSection)) 
+      : 0;
+    const valorAnterior = numericValues.length > 1 
+      ? roundTo2Decimals(parseBrazilianNumber(numericValues[1], currentSection)) 
+      : null;
 
     let tipoEntry: BalancoTipoCompleto = currentTipo;
 
@@ -894,26 +909,26 @@ function parseBalancoFromCSV(rows: string[][], filename: string): BalancoParseRe
       currentTipo = "ATIVO_CIRCULANTE";
       tipoEntry = "ATIVO_TOTAL";
       justSawAtivo = true;
-      if (valor !== 0) metrics.ativoTotal = Math.abs(valor);
+      if (valor !== 0) metrics.ativoTotal = roundTo2Decimals(Math.abs(valor));
     }
     else if (normalConta === "CIRCULANTE" && justSawAtivo && !foundFirstCirculante) {
       currentTipo = "ATIVO_CIRCULANTE";
       tipoEntry = "ATIVO_CIRCULANTE";
       foundFirstCirculante = true;
       justSawAtivo = false;
-      if (valor !== 0) metrics.ativoCirculante = Math.abs(valor);
+      if (valor !== 0) metrics.ativoCirculante = roundTo2Decimals(Math.abs(valor));
     }
     else if (normalConta === "CIRCULANTE" && justSawPassivo) {
       currentTipo = "PASSIVO_CIRCULANTE";
       tipoEntry = "PASSIVO_CIRCULANTE";
       justSawPassivo = false;
-      if (valor !== 0) metrics.passivoCirculante = Math.abs(valor);
+      if (valor !== 0) metrics.passivoCirculante = roundTo2Decimals(Math.abs(valor));
     }
     else if (normalConta === "ATIVO NAO CIRCULANTE" || (normalConta === "NAO CIRCULANTE" && currentSection === "ATIVO")) {
       currentTipo = "ATIVO_NAO_CIRCULANTE";
       tipoEntry = "ATIVO_NAO_CIRCULANTE";
       justSawAtivo = false;
-      if (valor !== 0) metrics.ativoNaoCirculante = Math.abs(valor);
+      if (valor !== 0) metrics.ativoNaoCirculante = roundTo2Decimals(Math.abs(valor));
     }
     else if (normalConta === "PASSIVO") {
       currentSection = "PASSIVO";
@@ -922,19 +937,19 @@ function parseBalancoFromCSV(rows: string[][], filename: string): BalancoParseRe
       justSawPassivo = true;
       justSawAtivo = false;
       foundFirstCirculante = false;
-      if (valor !== 0) metrics.passivoTotal = Math.abs(valor);
+      if (valor !== 0) metrics.passivoTotal = roundTo2Decimals(Math.abs(valor));
     }
     else if (normalConta === "PASSIVO NAO CIRCULANTE" || (normalConta === "NAO CIRCULANTE" && currentSection === "PASSIVO")) {
       currentTipo = "PASSIVO_NAO_CIRCULANTE";
       tipoEntry = "PASSIVO_NAO_CIRCULANTE";
       justSawPassivo = false;
-      if (valor !== 0) metrics.passivoNaoCirculante = Math.abs(valor);
+      if (valor !== 0) metrics.passivoNaoCirculante = roundTo2Decimals(Math.abs(valor));
     }
     else if (normalConta.includes("PATRIMONIO LIQUIDO")) {
       currentSection = "PL";
       currentTipo = "PATRIMONIO_LIQUIDO";
       tipoEntry = "PATRIMONIO_LIQUIDO";
-      if (valor !== 0) metrics.patrimonioLiquido = Math.abs(valor);
+      if (valor !== 0) metrics.patrimonioLiquido = roundTo2Decimals(Math.abs(valor));
     }
     else {
       tipoEntry = currentTipo;
@@ -946,8 +961,8 @@ function parseBalancoFromCSV(rows: string[][], filename: string): BalancoParseRe
       entries.push({
         conta,
         tipo: tipoEntry,
-        valor: Math.abs(valor),
-        valor_anterior: valorAnterior !== null ? Math.abs(valorAnterior) : null,
+        valor: roundTo2Decimals(Math.abs(valor)),
+        valor_anterior: valorAnterior !== null ? roundTo2Decimals(Math.abs(valorAnterior)) : null,
         hierarchy: conta,
         raw_row: row.map(String),
       });
@@ -959,11 +974,69 @@ function parseBalancoFromCSV(rows: string[][], filename: string): BalancoParseRe
 
 // ============= DRE PARSING - REGRAS CONTÁBEIS =============
 
+// Tipo de grupo DRE
+type DREGrupo = 
+  | "RECEITA_OPERACIONAL"
+  | "DEDUCOES"
+  | "CUSTOS"
+  | "DESPESAS_OPERACIONAIS"
+  | "RESULTADO_FINANCEIRO"
+  | "LUCRO_LIQUIDO"
+  | "OUTROS";
+
+/**
+ * Determina o grupo DRE baseado no texto da linha
+ * REGRA 5: Mapeamento automático do grupo
+ */
+function determineDREGrupo(descricao: string, currentGrupo: DREGrupo): DREGrupo {
+  const normalDesc = normalizeText(descricao);
+  
+  // Receita
+  if (normalDesc.includes("RECEITA") && !normalDesc.includes("FINANCEIRA")) {
+    return "RECEITA_OPERACIONAL";
+  }
+  // Deduções
+  if (normalDesc.includes("IMPOSTO") || normalDesc.includes("DEDUCAO") || 
+      normalDesc.includes("DEVOLUC") || normalDesc.includes("ABATIMENTO") ||
+      normalDesc.startsWith("(-)") || normalDesc.includes("SIMPLES NACIONAL")) {
+    if (currentGrupo === "RECEITA_OPERACIONAL") {
+      return "DEDUCOES";
+    }
+  }
+  // Custos
+  if (normalDesc.includes("CUSTO") || normalDesc.includes("CMV") || 
+      normalDesc.includes("ESTOQUE") || normalDesc.includes("COMPRA")) {
+    return "CUSTOS";
+  }
+  // Despesas
+  if (normalDesc.includes("DESPESA") || normalDesc.includes("SALARIO") ||
+      normalDesc.includes("PRO-LABORE") || normalDesc.includes("FGTS") ||
+      normalDesc.includes("FERIAS") || normalDesc.includes("13") ||
+      normalDesc.includes("AGUA") || normalDesc.includes("ENERGIA") ||
+      normalDesc.includes("ALUGUEL") || normalDesc.includes("DEPRECIACAO")) {
+    return "DESPESAS_OPERACIONAIS";
+  }
+  // Resultado Financeiro
+  if (normalDesc.includes("FINANCEIRO") || normalDesc.includes("JUROS") ||
+      normalDesc.includes("DESCONTO")) {
+    return "RESULTADO_FINANCEIRO";
+  }
+  // Lucro Líquido
+  if (normalDesc.includes("LUCRO LIQUIDO") || normalDesc.includes("RESULTADO DO EXERCICIO") ||
+      normalDesc.includes("LUCRO DO EXERCICIO") || normalDesc.includes("PREJUIZO")) {
+    return "LUCRO_LIQUIDO";
+  }
+  
+  return currentGrupo;
+}
+
 /**
  * Parse DRE com regras contábeis:
  * 1. Início após "DEMONSTRAÇÃO DO RESULTADO DO EXERCÍCIO EM"
  * 2. Não recalcular totais - usar valores do arquivo
  * 3. Preservar estrutura hierárquica
+ * 4. Aplicar arredondamento 2 casas decimais
+ * 5. Classificar grupo automaticamente
  */
 function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
   debugLog("=== Iniciando parseDREFromXLS (REGRAS CONTÁBEIS) ===");
@@ -1012,6 +1085,9 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
     startRow = Math.min(5, rows.length - 1);
   }
 
+  // Estado de grupo atual
+  let currentGrupo: DREGrupo = "RECEITA_OPERACIONAL";
+
   // Processar linhas DRE
   for (let i = startRow; i < rows.length; i++) {
     const row = rows[i];
@@ -1031,26 +1107,35 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
       continue;
     }
 
+    // Atualizar grupo baseado na linha
+    currentGrupo = determineDREGrupo(descricao, currentGrupo);
+
     const numericValues = safeGetNumericValues(row);
     
-    // Linhas sem valor são títulos de grupo (REGRA 8)
+    // Linhas sem valor são títulos de grupo - não salvar
     if (numericValues.length === 0) {
       debugLog(`Título de grupo (sem valor): ${descricao}`);
       continue;
     }
 
-    // REGRA: Usar valor direto do arquivo, não recalcular
-    const valor = numericValues[0]?.value || 0;
-    const valorAnterior = numericValues.length > 1 ? numericValues[1].value : null;
+    // REGRA 2: Mapeamento de colunas numéricas
+    // 1 número = valor
+    // 2 números = 1º valor, 2º valor_anterior
+    // >2 números = usar apenas os dois primeiros
+    const valor = roundTo2Decimals(numericValues[0]?.value || 0);
+    const valorAnterior = numericValues.length > 1 
+      ? roundTo2Decimals(numericValues[1].value) 
+      : null;
 
     entries.push({
       descricao,
+      grupo: currentGrupo,
       valor,
       valor_anterior: valorAnterior,
       raw_row: safeGetCells(row),
     });
     
-    debugLog(`DRE Entry: ${descricao} | Valor: ${valor}`);
+    debugLog(`DRE Entry: ${descricao} | Grupo: ${currentGrupo} | Valor: ${valor}`);
   }
 
   debugLog("Total entries DRE:", entries.length);
@@ -1096,6 +1181,9 @@ function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
 
   if (!found) startRow = Math.min(7, rows.length - 1);
 
+  // Estado de grupo atual
+  let currentGrupo: DREGrupo = "RECEITA_OPERACIONAL";
+
   for (let i = startRow; i < rows.length; i++) {
     const row = rows[i];
     if (!row || row.length === 0) continue;
@@ -1106,14 +1194,21 @@ function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
     const normalDesc = normalizeText(descricao);
     if (normalDesc.includes("DESCRICAO") || normalDesc === "CONTA") continue;
 
+    // Atualizar grupo baseado na linha
+    currentGrupo = determineDREGrupo(descricao, currentGrupo);
+
     const numericValues = findNumericValuesInRow(row);
     if (numericValues.length === 0) continue;
 
-    const valor = parseSimpleBrazilianNumber(numericValues[0]);
-    const valorAnterior = numericValues.length > 1 ? parseSimpleBrazilianNumber(numericValues[1]) : null;
+    // REGRA 2: Mapeamento de colunas numéricas com arredondamento
+    const valor = roundTo2Decimals(parseSimpleBrazilianNumber(numericValues[0]));
+    const valorAnterior = numericValues.length > 1 
+      ? roundTo2Decimals(parseSimpleBrazilianNumber(numericValues[1])) 
+      : null;
 
     entries.push({
       descricao,
+      grupo: currentGrupo,
       valor,
       valor_anterior: valorAnterior,
       raw_row: row.map(String),
