@@ -28,6 +28,18 @@ function decodeRK(rk: number): number {
   return value;
 }
 
+function findFirstBofOffset(stream: Uint8Array): number {
+  // BOF record type is 0x0809 (bytes 0x09 0x08 in little-endian)
+  for (let i = 0; i + 8 <= stream.byteLength; i++) {
+    if (stream[i] === 0x09 && stream[i + 1] === 0x08) {
+      // recordLen at i+2..i+3 (little-endian)
+      const recordLen = stream[i + 2] | (stream[i + 3] << 8);
+      if (recordLen >= 4 && recordLen <= 32) return i;
+    }
+  }
+  return 0;
+}
+
 /**
  * Check if string looks like an account name (not a number or metadata)
  */
@@ -119,16 +131,21 @@ function scanForAccountingDoubles(data: Uint8Array): { value: number; offset: nu
 }
 
 function parseBIFFStream(stream: Uint8Array, strings: string[]): BIFFCell[] {
+  const startOffset = findFirstBofOffset(stream);
   const data = new DataView(stream.buffer, stream.byteOffset, stream.byteLength);
   const cells: BIFFCell[] = [];
-  
-  let offset = 0;
+
+  let offset = startOffset;
   const len = stream.byteLength;
   let numRecords = 0;
   let labelRecords = 0;
   let rkRecords = 0;
   let mulrkRecords = 0;
   let formulaRecords = 0;
+
+  // Legacy BIFF numeric types (very old files)
+  let legacyNumberRecords = 0;
+  let legacyLabelRecords = 0;
 
   while (offset + 4 <= len) {
     const recordType = data.getUint16(offset, true);
@@ -140,7 +157,7 @@ function parseBIFFStream(stream: Uint8Array, strings: string[]): BIFFCell[] {
       continue;
     }
 
-    // NUMBER (0x0203)
+    // NUMBER (BIFF8 = 0x0203)
     if (recordType === 0x0203 && recordLen >= 14) {
       const row = data.getUint16(offset + 4, true);
       const col = data.getUint16(offset + 6, true);
@@ -148,6 +165,18 @@ function parseBIFFStream(stream: Uint8Array, strings: string[]): BIFFCell[] {
       if (Number.isFinite(value) && row < 100000 && col < 256) {
         cells.push({ row, col, value, type: "number" });
         numRecords++;
+      }
+    }
+
+    // NUMBER (very old BIFF2/3/4 = 0x0003) -> row, col, xf?, value (8)
+    else if (recordType === 0x0003 && recordLen >= 12) {
+      const row = data.getUint16(offset + 4, true);
+      const col = data.getUint16(offset + 6, true);
+      // Some BIFF variants have XF at +8, then value at +10 (same as BIFF8)
+      const value = data.getFloat64(offset + 10, true);
+      if (Number.isFinite(value) && row < 100000 && col < 256) {
+        cells.push({ row, col, value, type: "number" });
+        legacyNumberRecords++;
       }
     }
 
@@ -205,10 +234,27 @@ function parseBIFFStream(stream: Uint8Array, strings: string[]): BIFFCell[] {
       }
     }
 
+    // LABEL (very old BIFF2/3/4 = 0x0004) -> row, col, xf?, len, bytes
+    else if (recordType === 0x0004 && recordLen >= 9) {
+      const row = data.getUint16(offset + 4, true);
+      const col = data.getUint16(offset + 6, true);
+      const textLen = data.getUint8(offset + 10);
+      const textStart = offset + 11;
+      const textEnd = Math.min(textStart + textLen, offset + 4 + recordLen);
+      const bytes = stream.slice(textStart, textEnd);
+      const text = new TextDecoder("latin1").decode(bytes);
+      if (text && row < 100000 && col < 256) {
+        cells.push({ row, col, value: text, type: "string" });
+        legacyLabelRecords++;
+      }
+    }
+
     offset = next;
   }
 
-  debugLog(`Records: NUMBER=${numRecords}, FORMULA=${formulaRecords}, RK=${rkRecords}, MULRK=${mulrkRecords}, LABELSST=${labelRecords}`);
+  debugLog(
+    `BIFF scan startOffset=${startOffset} Records: NUMBER=${numRecords}, FORMULA=${formulaRecords}, RK=${rkRecords}, MULRK=${mulrkRecords}, LABELSST=${labelRecords}, LEGACY_NUMBER=${legacyNumberRecords}, LEGACY_LABEL=${legacyLabelRecords}`,
+  );
   return cells;
 }
 
@@ -378,120 +424,17 @@ export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): 
   const numericCount = newCells.filter(c => c.type === "number").length;
   debugLog(`Cells created: ${newCells.length} (${numericCount} numeric from SST formatted strings)`);
   
-  // Se não conseguimos associar valores via SST formatado, fazer fallback IEEE
-  // ESTRATÉGIA: associar números a CONTAS-CHAVE (Balanço e DRE)
+  // Se não conseguimos associar valores via SST formatado, NÃO fazemos fallback IEEE por offset.
+  // Motivo: IEEE doubles NÃO têm linha/coluna, então qualquer "distribuição" vai gerar
+  // associações erradas (ex.: PASSIVO_TOTAL recebendo PL).
+  // Neste cenário, retornamos apenas texto + números que foram de fato encontrados em BIFF (acima)
+  // ou em SST como número formatado.
   if (numericCount === 0) {
-    debugLog("No formatted numeric strings found; using SMART IEEE fallback");
-
-    const doublesWithOffset = scanForAccountingDoubles(uint8);
-    debugLog(`IEEE doubles found: ${doublesWithOffset.length}`);
-    if (doublesWithOffset.length > 0) {
-      debugLog(`Sample doubles (by offset): ${doublesWithOffset.slice(0, 20).map(d => d.value.toFixed(2)).join(", ")}`);
-    }
-
-    // Filtrar IEEE doubles que são claramente inválidos
-    // (valores muito pequenos que não são contábeis, ou valores que parecem flags)
-    const validDoubles = doublesWithOffset.filter(d => {
-      const abs = Math.abs(d.value);
-      // Ignorar valores muito pequenos (< 10) que provavelmente são flags
-      if (abs < 10 && abs !== 0) return false;
-      // Ignorar valores que são potências de 2 exatas (metadata binária)
-      if (abs > 0 && Math.log2(abs) % 1 === 0 && abs > 100) return false;
-      return true;
-    });
-    
-    debugLog(`Valid IEEE doubles after filtering: ${validDoubles.length}`);
-
-    // Padrões para BALANÇO PATRIMONIAL
-    const balancoPatterns = [
-      { pattern: /^ATIVO$/i, priority: 1 },
-      { pattern: /^PASSIVO$/i, priority: 1 },
-      { pattern: /^CIRCULANTE$/i, priority: 2 },
-      { pattern: /^NAO CIRCULANTE$/i, priority: 2 },
-      { pattern: /^ATIVO CIRCULANTE$/i, priority: 2 },
-      { pattern: /^PASSIVO CIRCULANTE$/i, priority: 2 },
-      { pattern: /^ATIVO NAO CIRCULANTE$/i, priority: 2 },
-      { pattern: /^PASSIVO NAO CIRCULANTE$/i, priority: 2 },
-      { pattern: /PATRIMONIO LIQUIDO/i, priority: 1 },
-      { pattern: /^DISPONIBILIDADES$/i, priority: 3 },
-      { pattern: /^CAIXA$/i, priority: 3 },
-      { pattern: /^CREDITOS$/i, priority: 3 },
-      { pattern: /^IMOBILIZADO$/i, priority: 3 },
-      { pattern: /^DUPLICATAS/i, priority: 3 },
-    ];
-
-    // Padrões para DRE
-    const drePatterns = [
-      { pattern: /RECEITA OPERACIONAL/i, priority: 1 },
-      { pattern: /RECEITA BRUTA/i, priority: 1 },
-      { pattern: /RECEITA LIQUIDA/i, priority: 1 },
-      { pattern: /LUCRO BRUTO/i, priority: 1 },
-      { pattern: /LUCRO OPERACIONAL/i, priority: 1 },
-      { pattern: /LUCRO LIQUIDO/i, priority: 1 },
-      { pattern: /LUCRO DO EXERCICIO/i, priority: 1 },
-      { pattern: /RESULTADO DO EXERCICIO/i, priority: 1 },
-      { pattern: /VENDAS DE MERCADORIAS/i, priority: 2 },
-      { pattern: /PRESTACAO DE SERVICOS/i, priority: 2 },
-      { pattern: /IMPOSTOS SOBRE VENDAS/i, priority: 2 },
-      { pattern: /SIMPLES NACIONAL/i, priority: 2 },
-      { pattern: /CUSTOS? (DAS |DE )?MERCADORIAS/i, priority: 2 },
-      { pattern: /CMV|CPV/i, priority: 2 },
-      { pattern: /DESPESAS? (OPERACIONAIS|TRABALHISTAS|GERAIS|ADMINISTRATIVAS)/i, priority: 2 },
-      { pattern: /ESTOQUE/i, priority: 3 },
-      { pattern: /COMPRAS/i, priority: 3 },
-      { pattern: /SALARIOS/i, priority: 3 },
-      { pattern: /FGTS/i, priority: 3 },
-      { pattern: /PRO.?LABORE/i, priority: 3 },
-      { pattern: /FERIAS/i, priority: 3 },
-      { pattern: /13.? SALARIO/i, priority: 3 },
-      { pattern: /DEPRECIACAO/i, priority: 3 },
-      { pattern: /ALUGUEL/i, priority: 3 },
-      { pattern: /AGUA E ESGOTO/i, priority: 3 },
-      { pattern: /ENERGIA ELETRICA/i, priority: 3 },
-      { pattern: /TELEFONE/i, priority: 3 },
-    ];
-
-    const allPatterns = [...balancoPatterns, ...drePatterns];
-
-    // Identificar contas-chave
-    const keyAccounts: { rowIdx: number; name: string; priority: number }[] = [];
-    for (let i = 0; i < accountNames.length; i++) {
-      const name = accountNames[i].name.toUpperCase()
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-      
-      for (const { pattern, priority } of allPatterns) {
-        if (pattern.test(name)) {
-          keyAccounts.push({ rowIdx: i, name: accountNames[i].name, priority });
-          break;
-        }
-      }
-    }
-
-    debugLog(`Key accounts identified: ${keyAccounts.length}`);
-    debugLog(`Key accounts (first 15): ${keyAccounts.slice(0, 15).map(k => `${k.rowIdx}:${k.name}`).join(" | ")}`);
-
-    // Associar valores IEEE às contas-chave em ordem
-    if (keyAccounts.length > 0 && validDoubles.length > 0) {
-      debugLog(`Associating ${Math.min(validDoubles.length, keyAccounts.length)} values to key accounts`);
-      
-      let numIdx = 0;
-      for (const keyAcc of keyAccounts) {
-        if (numIdx >= validDoubles.length) break;
-        
-        newCells.push({
-          row: keyAcc.rowIdx,
-          col: 1,
-          value: validDoubles[numIdx].value,
-          type: "number",
-        });
-        numIdx++;
-      }
-    }
-
-    const fallbackCount = newCells.filter(c => c.type === "number").length;
-    debugLog(`IEEE fallback numeric cells created: ${fallbackCount}`);
+    debugLog(
+      "No formatted numeric strings found; skipping IEEE fallback (cannot guarantee row-level association)",
+    );
   }
-  
+
   return newCells;
 }
 
