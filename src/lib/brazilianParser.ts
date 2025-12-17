@@ -59,6 +59,7 @@ export interface BalancoParseResult {
   periodo: string;
   errors: string[];
   parsed: boolean;
+  validationRows?: ValidationRow[];
 }
 
 export interface DREParseResult {
@@ -66,6 +67,16 @@ export interface DREParseResult {
   periodo: string;
   errors: string[];
   parsed: boolean;
+}
+
+// Validação linha a linha
+export interface ValidationRow {
+  rowIndex: number;
+  textoConta: string;
+  numerosDetectados: { value: number; raw: string }[];
+  classificacao?: string;
+  secaoAtual?: string;
+  alerta?: string;
 }
 
 // ============= TIPOS CONTÁBEIS PARA BALANÇO =============
@@ -694,6 +705,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
 
   const entries: ParsedBalancoEntry[] = [];
   const errors: string[] = [];
+  const validationRows: ValidationRow[] = [];
   const periodo = extractPeriodFromRows(rows?.map(r => safeGetCells(r)) || [], filename);
 
   const metrics: BalancoMetrics = {
@@ -707,7 +719,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
   };
 
   if (!rows || rows.length === 0) {
-    return { entries, metrics, periodo, errors, parsed: false };
+    return { entries, metrics, periodo, errors, parsed: false, validationRows };
   }
 
   // REGRA 2: Encontrar "ATIVO" para início dos dados
@@ -760,6 +772,14 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
     const valorAnterior = rawValues.length > 1
       ? roundTo2Decimals(parseBrazilianNumber(rawValues[rawValues.length - 2].raw, currentSection))
       : null;
+
+    // Criar registro de validação ANTES de classificar
+    const validationRow: ValidationRow = {
+      rowIndex: i,
+      textoConta: conta,
+      numerosDetectados: rawValues.map(v => ({ value: v.value, raw: v.raw })),
+      secaoAtual: currentSection,
+    };
 
     let tipoEntry: BalancoTipoCompleto = currentTipo;
 
@@ -889,6 +909,20 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
       tipoEntry = currentTipo;
     }
 
+    // Atualizar validação com classificação
+    validationRow.classificacao = tipoEntry;
+    validationRow.secaoAtual = currentSection;
+    
+    // Detectar alertas
+    const isKeyAccount = ["ATIVO", "PASSIVO", "CIRCULANTE", "NAO CIRCULANTE", "PATRIMONIO LIQUIDO"].some(
+      k => normalConta.includes(k) || normalConta === k
+    );
+    if (isKeyAccount && rawValues.length === 0) {
+      validationRow.alerta = "Sem valor na linha";
+    }
+    
+    validationRows.push(validationRow);
+
     // Criar entry se tiver valor
     if (valor !== 0 || (valorAnterior !== null && valorAnterior !== 0)) {
       const level = textIndex >= 0 ? textIndex : 0;
@@ -920,7 +954,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
   const hasAnyNumeric = rows.some(r => safeGetNumericValues(r).length > 0);
   const parsed = rows.length > 0 && (hasAnyNumeric || entries.length > 0);
 
-  return { entries, metrics, periodo, errors, parsed };
+  return { entries, metrics, periodo, errors, parsed, validationRows };
 }
 
 /**
