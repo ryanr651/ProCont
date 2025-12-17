@@ -45,25 +45,36 @@ const Upload = () => {
     try {
       const result = await uploadAndProcessFiles(dreFile, balancoFile, user.id);
       
-      if (result.success) {
-        setLastResult({
-          dre_entries: result.dre_entries,
-          balanco_entries: result.balanco_entries
-        });
+       if (result.success) {
+         // Se o backend considerou "parsed" mas nada foi persistido, não navegar para /resultado
+         // (a página vai redirecionar de volta e a UX fica confusa).
+         if ((result.inserted_dre ?? 0) === 0 && (result.inserted_balanco ?? 0) === 0) {
+           toast({
+             title: "Arquivos lidos, mas sem linhas geradas",
+             description: "Os arquivos foram lidos, porém nenhuma linha contábil foi materializada para salvar. Verifique o formato/exportação e tente novamente.",
+             variant: "destructive",
+           });
+           return;
+         }
 
-        toast({
-          title: "Processamento concluído!",
-          description: `${result.inserted_dre} linhas de DRE e ${result.inserted_balanco} linhas de Balanço inseridas.`,
-        });
+         setLastResult({
+           dre_entries: result.dre_entries,
+           balanco_entries: result.balanco_entries
+         });
 
-        navigate("/resultado");
-      } else {
-        toast({
-          title: "Erro no processamento",
-          description: result.errors.join('\n'),
-          variant: "destructive"
-        });
-      }
+         toast({
+           title: "Processamento concluído!",
+           description: `${result.inserted_dre} linhas de DRE e ${result.inserted_balanco} linhas de Balanço inseridas.`,
+         });
+
+         navigate("/resultado");
+       } else {
+         toast({
+           title: "Erro no processamento",
+           description: result.errors.join('\n'),
+           variant: "destructive"
+         });
+       }
     } catch (error) {
       console.error("Error processing files:", error);
       toast({

@@ -944,6 +944,91 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
   const hasAnyNumeric = (rows || []).some((r) => safeGetNumericValuesFromXLSRow(r).length > 0);
   const parsed = rows.length > 0 && (hasAnyNumeric || entries.length > 0);
 
+  // Fallback materializador: se o XLS foi lido (parsed) mas nenhuma linha foi estruturada,
+  // crie entradas mínimas a partir das métricas para garantir persistência/UX.
+  if (parsed && entries.length === 0) {
+    debugLog("Balanço: parsed=true mas entries=0; aplicando fallback materializador via metrics");
+
+    const fallbackRow = ["fallback-metrics", filename, periodo];
+
+    if (metrics.ativoTotal !== 0) {
+      entries.push({
+        conta: "ATIVO",
+        tipo: "ATIVO",
+        valor: Math.abs(metrics.ativoTotal),
+        valor_anterior: null,
+        hierarchy: "ATIVO",
+        raw_row: fallbackRow,
+      });
+    }
+
+    if (metrics.ativoCirculante !== 0) {
+      entries.push({
+        conta: "CIRCULANTE",
+        tipo: "ATIVO CIRCULANTE",
+        valor: Math.abs(metrics.ativoCirculante),
+        valor_anterior: null,
+        hierarchy: "ATIVO > CIRCULANTE",
+        raw_row: fallbackRow,
+      });
+    }
+
+    if (metrics.ativoNaoCirculante !== 0) {
+      entries.push({
+        conta: "ATIVO NAO CIRCULANTE",
+        tipo: "ATIVO NAO CIRCULANTE",
+        valor: Math.abs(metrics.ativoNaoCirculante),
+        valor_anterior: null,
+        hierarchy: "ATIVO > ATIVO NAO CIRCULANTE",
+        raw_row: fallbackRow,
+      });
+    }
+
+    if (metrics.passivoTotal !== 0) {
+      entries.push({
+        conta: "PASSIVO",
+        tipo: "PASSIVO",
+        valor: Math.abs(metrics.passivoTotal),
+        valor_anterior: null,
+        hierarchy: "PASSIVO",
+        raw_row: fallbackRow,
+      });
+    }
+
+    if (metrics.passivoCirculante !== 0) {
+      entries.push({
+        conta: "CIRCULANTE",
+        tipo: "PASSIVO CIRCULANTE",
+        valor: Math.abs(metrics.passivoCirculante),
+        valor_anterior: null,
+        hierarchy: "PASSIVO > CIRCULANTE",
+        raw_row: fallbackRow,
+      });
+    }
+
+    if (metrics.passivoNaoCirculante !== 0) {
+      entries.push({
+        conta: "PASSIVO NAO CIRCULANTE",
+        tipo: "PASSIVO NAO CIRCULANTE",
+        valor: Math.abs(metrics.passivoNaoCirculante),
+        valor_anterior: null,
+        hierarchy: "PASSIVO > PASSIVO NAO CIRCULANTE",
+        raw_row: fallbackRow,
+      });
+    }
+
+    if (metrics.patrimonioLiquido !== 0) {
+      entries.push({
+        conta: "PATRIMONIO LIQUIDO",
+        tipo: "PATRIMONIO LIQUIDO",
+        valor: Math.abs(metrics.patrimonioLiquido),
+        valor_anterior: null,
+        hierarchy: "PATRIMONIO LIQUIDO",
+        raw_row: fallbackRow,
+      });
+    }
+  }
+
   return { entries, metrics, periodo, errors, parsed };
 }
 
@@ -1181,6 +1266,35 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
   // 📌 NÃO exigir "RECEITA" ou header como critério obrigatório para XLS
   const hasAnyNumeric = (rows || []).some((r) => safeGetNumericValuesFromXLSRow(r).length > 0);
   const parsed = rows.length > 0 && (hasAnyNumeric || entries.length > 0);
+
+  // Fallback materializador: se o XLS foi lido (parsed) mas nenhuma linha foi estruturada,
+  // gere entradas "genéricas" a partir das linhas que contenham valores numéricos.
+  if (parsed && entries.length === 0) {
+    debugLog("DRE: parsed=true mas entries=0; aplicando fallback materializador via linhas numéricas");
+
+    for (let i = startRow; i < rows.length; i++) {
+      const row = rows[i];
+      const numericValues = safeGetNumericValuesFromXLSRow(row);
+      if (numericValues.length === 0) continue;
+
+      // Tenta usar a primeira célula textual; se não houver, pega a primeira célula não-vazia.
+      const { text } = safeGetFirstTextFromXLSRow(row);
+      const cells = safeGetCellsFromXLSRow(row);
+      const fallbackDescricao =
+        text ||
+        cells.find((c) => typeof c === "string" && c.trim().length > 0) ||
+        `LINHA ${i + 1}`;
+
+      entries.push({
+        descricao: fallbackDescricao,
+        valor: numericValues[0]?.value ?? 0,
+        valor_anterior: numericValues.length > 1 ? numericValues[1].value : null,
+        raw_row: cells,
+      });
+    }
+
+    debugLog("DRE: entries após fallback:", entries.length);
+  }
 
   return { entries, periodo, errors, parsed };
 }
