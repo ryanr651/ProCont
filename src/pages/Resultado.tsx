@@ -36,6 +36,14 @@ interface BalancoEntry {
   hierarchy: string;
 }
 
+interface DiagnosticLine {
+  conta: string;
+  valor: number;
+  valorAnterior: number | null;
+  colunaUsada: 'atual' | 'anterior' | 'nenhuma';
+  encontrado: boolean;
+}
+
 interface CalculatedDRE {
   receitaBruta: number;
   receitaLiquida: number;
@@ -76,6 +84,7 @@ const Resultado = () => {
   const [dreData, setDreData] = useState<CalculatedDRE | null>(null);
   const [balancoData, setBalancoData] = useState<CalculatedBalanco | null>(null);
   const [insights, setInsights] = useState<string[]>([]);
+  const [diagnosticLines, setDiagnosticLines] = useState<DiagnosticLine[]>([]);
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
 
@@ -120,6 +129,10 @@ const Resultado = () => {
       // Calculate Balanço metrics from key lines
       const balanco = calculateBalancoMetrics(balancoEntries as BalancoEntry[]);
       setBalancoData(balanco);
+
+      // Generate diagnostic lines for debugging
+      const diagnostic = generateDiagnosticLines(balancoEntries as BalancoEntry[]);
+      setDiagnosticLines(diagnostic);
 
       // Generate insights
       setInsights(generateInsights(dre, balanco));
@@ -259,6 +272,63 @@ const Resultado = () => {
       passivoTotal,
       patrimonioLiquido
     };
+  };
+
+  /**
+   * Generate diagnostic lines for debugging import issues
+   */
+  const generateDiagnosticLines = (entries: BalancoEntry[]): DiagnosticLine[] => {
+    const keyAccounts = ['ATIVO', 'CIRCULANTE', 'NAO CIRCULANTE', 'ATIVO NAO CIRCULANTE', 'PASSIVO', 'PASSIVO NAO CIRCULANTE', 'PATRIMONIO LIQUIDO'];
+    const diagnostics: DiagnosticLine[] = [];
+
+    // Track section context for CIRCULANTE
+    let inAtivoSection = false;
+    let inPassivoSection = false;
+    let circulanteCount = 0;
+    let naoCirculanteCount = 0;
+
+    for (const entry of entries) {
+      const contaNorm = normalizeText(entry.conta);
+      
+      // Track section
+      if (contaNorm === 'ATIVO') {
+        inAtivoSection = true;
+        inPassivoSection = false;
+      } else if (contaNorm === 'PASSIVO') {
+        inAtivoSection = false;
+        inPassivoSection = true;
+      }
+
+      // Check if this is a key account
+      if (keyAccounts.includes(contaNorm)) {
+        let label = entry.conta;
+        
+        // Add context for CIRCULANTE
+        if (contaNorm === 'CIRCULANTE') {
+          circulanteCount++;
+          label = inAtivoSection ? `CIRCULANTE (Ativo - ${circulanteCount}º)` : `CIRCULANTE (Passivo - ${circulanteCount}º)`;
+        }
+        
+        // Add context for NAO CIRCULANTE
+        if (contaNorm === 'NAO CIRCULANTE') {
+          naoCirculanteCount++;
+          label = inAtivoSection ? `NAO CIRCULANTE (Ativo - ${naoCirculanteCount}º)` : `NAO CIRCULANTE (Passivo - ${naoCirculanteCount}º)`;
+        }
+
+        const hasValor = entry.valor !== 0;
+        const hasValorAnterior = entry.valor_anterior !== null && entry.valor_anterior !== 0;
+        
+        diagnostics.push({
+          conta: label,
+          valor: entry.valor,
+          valorAnterior: entry.valor_anterior,
+          colunaUsada: hasValor ? 'atual' : (hasValorAnterior ? 'anterior' : 'nenhuma'),
+          encontrado: hasValor || hasValorAnterior
+        });
+      }
+    }
+
+    return diagnostics;
   };
 
   const generateInsights = (dre: CalculatedDRE, balanco: CalculatedBalanco): string[] => {
@@ -595,6 +665,66 @@ const Resultado = () => {
             </div>
           </div>
         </section>
+
+        {/* Diagnóstico de Importação Section */}
+        {diagnosticLines.length > 0 && (
+          <section className="mb-12">
+            <h2 className="font-display text-2xl font-bold mb-6 flex items-center gap-3">
+              🔍 Diagnóstico de Importação
+            </h2>
+            <div className="glass-card p-6">
+              <p className="text-sm text-muted-foreground mb-4">
+                Linhas de totais encontradas no arquivo e valores importados:
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="text-left py-2 px-3 text-muted-foreground font-medium">Conta</th>
+                      <th className="text-right py-2 px-3 text-muted-foreground font-medium">Valor Atual</th>
+                      <th className="text-right py-2 px-3 text-muted-foreground font-medium">Valor Anterior</th>
+                      <th className="text-center py-2 px-3 text-muted-foreground font-medium">Coluna Usada</th>
+                      <th className="text-center py-2 px-3 text-muted-foreground font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {diagnosticLines.map((line, index) => (
+                      <tr key={index} className="border-b border-border/50 hover:bg-muted/30">
+                        <td className="py-2 px-3 font-medium text-foreground">{line.conta}</td>
+                        <td className="py-2 px-3 text-right text-foreground">
+                          {line.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                        </td>
+                        <td className="py-2 px-3 text-right text-muted-foreground">
+                          {line.valorAnterior !== null 
+                            ? line.valorAnterior.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+                            : "—"
+                          }
+                        </td>
+                        <td className="py-2 px-3 text-center">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            line.colunaUsada === 'atual' 
+                              ? 'bg-primary/20 text-primary' 
+                              : line.colunaUsada === 'anterior'
+                                ? 'bg-secondary/20 text-secondary'
+                                : 'bg-muted text-muted-foreground'
+                          }`}>
+                            {line.colunaUsada === 'atual' ? 'ATUAL' : line.colunaUsada === 'anterior' ? 'ANTERIOR' : 'N/A'}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 text-center">
+                          {line.encontrado 
+                            ? <span className="text-green-400">✓</span>
+                            : <span className="text-red-400">✗</span>
+                          }
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* Insights Section */}
         <section className="mb-12">
