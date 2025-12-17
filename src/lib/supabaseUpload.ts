@@ -54,6 +54,15 @@ export async function uploadAndProcessFiles(dreFile: File, balancoFile: File, us
       balancoParsed,
     });
 
+    // Log explícito do parsing real (temporário)
+    console.log("PARSED RESULT", {
+      dre_entries_count: dreResult.entries.length,
+      balanco_entries_count: balancoResult.entries.length,
+      dre_first_entries: dreResult.entries.slice(0, 5),
+      balanco_first_entries: balancoResult.entries.slice(0, 5),
+      balanco_metrics: balancoResult.metrics,
+    });
+
     // Validação tolerante: só bloqueia se NENHUM dado foi encontrado
     // XLS com números, mesmo sem estrutura perfeita, não será bloqueado
     const hasAnyValidData =
@@ -114,8 +123,16 @@ export async function uploadAndProcessFiles(dreFile: File, balancoFile: File, us
       }
     }
 
+    // Aviso de UX: arquivo foi lido (parsed=true), mas nenhuma linha foi materializada/persistida.
+    if (dreParsed && insertedDre === 0) {
+      errors.push("DRE foi lido, mas nenhuma linha foi materializada para persistência (entries=0).");
+    }
+    if (balancoParsed && insertedBalanco === 0) {
+      errors.push("Balanço foi lido, mas nenhuma linha foi materializada para persistência (entries=0).");
+    }
+
     return {
-      success: insertedDre > 0 || insertedBalanco > 0 || dreParsed || balancoParsed,
+      success: dreParsed || balancoParsed,
       inserted_dre: insertedDre,
       inserted_balanco: insertedBalanco,
       errors,
