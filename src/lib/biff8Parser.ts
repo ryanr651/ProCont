@@ -111,79 +111,76 @@ function parseBIFFStream(stream: Uint8Array, strings: string[]): BIFFCell[] {
 }
 
 /**
- * Scan for IEEE 754 doubles in buffer - fallback when BIFF records don't work
+ * Check if string looks like a Brazilian formatted number
  */
-function scanForDoubles(buffer: ArrayBuffer): number[] {
-  const data = new DataView(buffer);
-  const len = buffer.byteLength;
-  const found: { offset: number; value: number }[] = [];
-
-  for (let i = 0; i < len - 8; i++) {
-    try {
-      const value = data.getFloat64(i, true);
-      if (value !== 0 && Number.isFinite(value) && !Number.isNaN(value)) {
-        const absVal = Math.abs(value);
-        // Typical accounting range: 0.01 to 100 billion
-        if (absVal >= 0.01 && absVal <= 100000000000) {
-          // Must look like a "clean" number (max 2 decimals)
-          const rounded = Math.round(value * 100) / 100;
-          if (Math.abs(value - rounded) < 0.001) {
-            found.push({ offset: i, value: rounded });
-          }
-        }
-      }
-    } catch {
-      // ignore
-    }
+function isBrazilianNumber(str: string): boolean {
+  const text = str.trim();
+  if (!text) return false;
+  
+  // Skip obvious non-numbers
+  if (/^[A-Za-z\(\-\+]/.test(text) && !/^[-+]?\d/.test(text)) return false;
+  
+  // Brazilian format: 1.234,56 or 1234,56 or -1.234,56 D/C
+  const pattern = /^[-+]?\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?(?:\s*[DC])?$/;
+  if (pattern.test(text)) return true;
+  
+  // Also accept: 1234.56 (international format sometimes used)
+  const intlPattern = /^[-+]?\d+(?:\.\d{1,2})?$/;
+  if (intlPattern.test(text) && text.includes('.') && !text.includes(',')) {
+    const num = parseFloat(text);
+    return Number.isFinite(num) && Math.abs(num) >= 0.01 && Math.abs(num) <= 100000000000;
   }
-
-  // Dedupe (same offset within 8 bytes = same double)
-  const unique: number[] = [];
-  for (const f of found) {
-    const isDupe = found.some(
-      (o) => Math.abs(o.offset - f.offset) < 8 && Math.abs(o.offset - f.offset) > 0 && o.value === f.value
-    );
-    if (!isDupe && !unique.includes(f.value)) {
-      unique.push(f.value);
-    }
-  }
-
-  // Remove very similar values (within 0.01)
-  const final: number[] = [];
-  for (const val of unique) {
-    if (!final.some((v) => Math.abs(v - val) < 0.01)) {
-      final.push(val);
-    }
-  }
-
-  debugLog(`IEEE scan: found ${found.length} candidates, ${final.length} unique`);
-  return final;
+  
+  return false;
 }
 
 /**
- * Extract cells from legacy XLS (BIFF8) by reading OLE streams.
- * Falls back to IEEE double scanning if BIFF records yield no numbers.
+ * Parse Brazilian formatted number string
+ */
+function parseBrazilianNumberString(str: string): number {
+  let text = str.trim();
+  
+  // Handle D/C suffix (Debit/Credit)
+  const hasDebit = /\s*D\s*$/i.test(text);
+  const hasCredit = /\s*C\s*$/i.test(text);
+  text = text.replace(/\s*[DC]\s*$/i, '');
+  
+  // Brazilian format: dots as thousands, comma as decimal
+  // 1.234.567,89 -> 1234567.89
+  let normalized = text
+    .replace(/\./g, '')  // Remove thousand separators
+    .replace(',', '.');  // Convert decimal separator
+  
+  const value = parseFloat(normalized);
+  if (!Number.isFinite(value)) return 0;
+  
+  // Apply D/C rules (simplified: D = positive, C = negative for assets)
+  if (hasCredit) return -Math.abs(value);
+  if (hasDebit) return Math.abs(value);
+  
+  return value;
+}
+
+/**
+ * Extract cells from legacy XLS (BIFF8) by analyzing string table content.
+ * Numbers in legacy XLS are often stored as formatted text strings.
  */
 export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): BIFFCell[] {
-  const uint8 = new Uint8Array(buffer);
-
   debugLog(`Parsing XLS: ${buffer.byteLength} bytes, ${strings.length} strings`);
 
+  const uint8 = new Uint8Array(buffer);
   const isOLE =
     uint8.length >= 8 &&
     uint8[0] === 0xd0 &&
     uint8[1] === 0xcf &&
     uint8[2] === 0x11 &&
-    uint8[3] === 0xe0 &&
-    uint8[4] === 0xa1 &&
-    uint8[5] === 0xb1 &&
-    uint8[6] === 0x1a &&
-    uint8[7] === 0xe1;
+    uint8[3] === 0xe0;
 
   debugLog(`isOLE: ${isOLE}`);
 
+  // First try BIFF record parsing
   let cells: BIFFCell[] = [];
-
+  
   try {
     if (isOLE) {
       const cfb = XLSX.CFB.read(uint8, { type: "buffer" });
@@ -202,38 +199,43 @@ export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): 
         const isWorkbook = /\b(Workbook|Book)\b/i.test(p);
         if (!isWorkbook) continue;
 
-        debugLog(`Parsing stream: ${p} (${content.byteLength} bytes)`);
         const parsed = parseBIFFStream(content, strings);
         cells.push(...parsed);
       }
     } else {
-      // Scan whole buffer
       cells = parseBIFFStream(uint8, strings);
     }
   } catch (e) {
     debugLog(`CFB error: ${e}`);
-    cells = parseBIFFStream(uint8, strings);
   }
 
-  // Count numeric vs string cells
   const numericCells = cells.filter((c) => c.type === "number").length;
   const stringCells = cells.filter((c) => c.type === "string").length;
   debugLog(`BIFF result: ${numericCells} numbers, ${stringCells} strings`);
 
-  // FALLBACK: If no numeric cells found via BIFF, scan for IEEE doubles
+  // FALLBACK: Analyze strings for numbers stored as text
   if (numericCells === 0 && strings.length > 0) {
-    debugLog("No BIFF numbers found, falling back to IEEE double scan...");
+    debugLog("No BIFF numbers found, analyzing strings for formatted numbers...");
     
-    const doubles = scanForDoubles(buffer);
-    debugLog(`IEEE doubles found: ${doubles.slice(0, 20)}`);
-
-    // Filter account names from strings
-    const accountNames: string[] = [];
+    cells = [];
+    let currentRow = 0;
+    let currentCol = 0;
+    
+    // Track which strings are account names vs numbers
+    const processedStrings: Array<{
+      text: string;
+      isNumber: boolean;
+      value: number;
+      row: number;
+      col: number;
+    }> = [];
+    
     for (const str of strings) {
       const text = String(str || "").trim();
+      if (!text || text.length < 1) continue;
+      
+      // Skip headers/metadata
       if (
-        !text ||
-        text.length < 3 ||
         text.includes("Empresa:") ||
         text.includes("C.N.P.J.") ||
         text.includes("Período:") ||
@@ -247,36 +249,79 @@ export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): 
         text.includes("Sistema licenciado") ||
         text.includes("CNPJ") ||
         text.includes("Número livro") ||
-        /^\d{2}\.\d{3}\.\d{3}/.test(text)
+        /^\d{2}\.\d{3}\.\d{3}/.test(text) ||
+        text.length > 100
       ) {
         continue;
       }
-      accountNames.push(text);
-    }
-
-    debugLog(`Account names: ${accountNames.length}`);
-
-    // Associate doubles with account names
-    // Heuristic: 2 values per row (current + previous period)
-    let dblIdx = 0;
-    for (let rowIdx = 0; rowIdx < accountNames.length; rowIdx++) {
-      const name = accountNames[rowIdx];
       
-      // Add text cell
-      cells.push({ row: rowIdx, col: 0, value: name, type: "string" });
-
-      // Add up to 2 numeric values per row
-      if (dblIdx < doubles.length) {
-        cells.push({ row: rowIdx, col: 1, value: doubles[dblIdx], type: "number" });
-        dblIdx++;
+      const isNumber = isBrazilianNumber(text);
+      const value = isNumber ? parseBrazilianNumberString(text) : 0;
+      
+      processedStrings.push({
+        text,
+        isNumber,
+        value,
+        row: currentRow,
+        col: currentCol
+      });
+      
+      // Move to next position
+      if (isNumber) {
+        currentCol++;
+        // Assume max 2 value columns (current + previous period)
+        if (currentCol > 2) {
+          currentCol = 0;
+          currentRow++;
+        }
+      } else {
+        // Text usually starts a new row (account name)
+        if (currentCol > 0) {
+          currentRow++;
+        }
+        currentCol = 0;
       }
-      if (dblIdx < doubles.length) {
-        cells.push({ row: rowIdx, col: 2, value: doubles[dblIdx], type: "number" });
-        dblIdx++;
+    }
+    
+    // Re-process into proper row structure
+    // Account name at col 0, value at col 1, previous value at col 2
+    let rowIdx = 0;
+    let pendingName: string | null = null;
+    let pendingValues: number[] = [];
+    
+    for (const item of processedStrings) {
+      if (!item.isNumber) {
+        // Save previous row if exists
+        if (pendingName !== null) {
+          cells.push({ row: rowIdx, col: 0, value: pendingName, type: "string" });
+          if (pendingValues.length > 0) {
+            cells.push({ row: rowIdx, col: 1, value: pendingValues[0], type: "number" });
+          }
+          if (pendingValues.length > 1) {
+            cells.push({ row: rowIdx, col: 2, value: pendingValues[1], type: "number" });
+          }
+          rowIdx++;
+        }
+        pendingName = item.text;
+        pendingValues = [];
+      } else {
+        pendingValues.push(item.value);
+      }
+    }
+    
+    // Save last row
+    if (pendingName !== null) {
+      cells.push({ row: rowIdx, col: 0, value: pendingName, type: "string" });
+      if (pendingValues.length > 0) {
+        cells.push({ row: rowIdx, col: 1, value: pendingValues[0], type: "number" });
+      }
+      if (pendingValues.length > 1) {
+        cells.push({ row: rowIdx, col: 2, value: pendingValues[1], type: "number" });
       }
     }
 
-    debugLog(`Fallback cells created: ${cells.length}`);
+    debugLog(`String analysis cells created: ${cells.length}`);
+    debugLog(`Sample values: ${cells.filter(c => c.type === "number").slice(0, 10).map(c => c.value).join(", ")}`);
   }
 
   return cells;
