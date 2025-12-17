@@ -726,6 +726,8 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
     // === DETECÇÃO DE SEÇÃO E CLASSIFICAÇÃO ===
     
     if (normalConta === "ATIVO") {
+      console.log("=== ATIVO DETECTADO ===");
+      console.log("Linha:", i, "| valor:", valor);
       currentSection = "ATIVO";
       currentTipo = "ATIVO_CIRCULANTE";
       tipoEntry = "ATIVO_TOTAL";
@@ -733,54 +735,60 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
 
       if (valor !== 0) {
         metrics.ativoTotal = roundTo2Decimals(Math.abs(valor));
-        debugLog("ATIVO TOTAL (do arquivo):", metrics.ativoTotal);
+        console.log("→ metrics.ativoTotal =", metrics.ativoTotal);
       }
     }
     else if (normalConta === "PASSIVO") {
+      console.log("=== PASSIVO DETECTADO ===");
+      console.log("Linha:", i, "| valor:", valor);
+      console.log("foundAtivoCirculante neste momento:", foundAtivoCirculante);
       currentSection = "PASSIVO";
       currentTipo = "PASSIVO_CIRCULANTE";
       tipoEntry = "PASSIVO_TOTAL";
       foundPassivoCirculante = false; // Reset para nova seção PASSIVO
 
-      console.log("=== DEBUG PASSIVO ===");
-      console.log("Row index:", i);
-      console.log("Row raw:", row);
-      console.log("rawValues:", rawValues);
-      console.log("valor calculado:", valor);
-
       if (valor !== 0) {
         metrics.passivoTotal = roundTo2Decimals(Math.abs(valor));
-        debugLog("PASSIVO TOTAL (do arquivo):", metrics.passivoTotal);
+        console.log("→ metrics.passivoTotal =", metrics.passivoTotal);
       }
     }
     else if (normalConta === "CIRCULANTE" || normalConta.startsWith("CIRCULANTE")) {
+      // LOG DETALHADO PARA DEBUG
+      console.log("=== DEBUG CIRCULANTE ENCONTRADO ===");
+      console.log("Linha:", i, "| Conta:", conta);
+      console.log("currentSection:", currentSection);
+      console.log("foundAtivoCirculante:", foundAtivoCirculante);
+      console.log("foundPassivoCirculante:", foundPassivoCirculante);
+      console.log("rawValues:", rawValues);
+      console.log("valor:", valor);
+
       // CIRCULANTE genérico - usar currentSection para determinar
       if (currentSection === "ATIVO" && !foundAtivoCirculante) {
         // PRIMEIRO CIRCULANTE na seção ATIVO = ATIVO_CIRCULANTE
         currentTipo = "ATIVO_CIRCULANTE";
         tipoEntry = "ATIVO_CIRCULANTE";
         foundAtivoCirculante = true;
-        debugLog("PRIMEIRO CIRCULANTE na seção ATIVO → ATIVO_CIRCULANTE");
+        console.log("→ Classificado como ATIVO_CIRCULANTE");
 
         if (valor !== 0) {
           metrics.ativoCirculante = roundTo2Decimals(Math.abs(valor));
-          debugLog("ATIVO CIRCULANTE (do arquivo):", metrics.ativoCirculante);
+          console.log("→ metrics.ativoCirculante =", metrics.ativoCirculante);
         }
       } else if (currentSection === "PASSIVO" && !foundPassivoCirculante) {
         // PRIMEIRO CIRCULANTE na seção PASSIVO = PASSIVO_CIRCULANTE
         currentTipo = "PASSIVO_CIRCULANTE";
         tipoEntry = "PASSIVO_CIRCULANTE";
         foundPassivoCirculante = true;
-        debugLog("PRIMEIRO CIRCULANTE na seção PASSIVO → PASSIVO_CIRCULANTE");
+        console.log("→ Classificado como PASSIVO_CIRCULANTE");
 
         if (valor !== 0) {
           metrics.passivoCirculante = roundTo2Decimals(Math.abs(valor));
-          debugLog("PASSIVO CIRCULANTE (do arquivo):", metrics.passivoCirculante);
+          console.log("→ metrics.passivoCirculante =", metrics.passivoCirculante);
         }
       } else {
         // Já encontrou o CIRCULANTE desta seção, herda tipo atual
         tipoEntry = currentTipo;
-        debugLog("CIRCULANTE adicional, herdando tipo:", currentTipo);
+        console.log("→ Já encontrou circulante desta seção, herdando tipo:", currentTipo);
       }
     }
     else if (normalConta === "ATIVO CIRCULANTE") {
@@ -858,8 +866,16 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
     }
   }
 
-  debugLog("Total entries Balanço:", entries.length);
-  debugLog("Metrics finais:", metrics);
+  // LOG FINAL DOS METRICS
+  console.log("=== RESULTADO FINAL DO PARSING ===");
+  console.log("ativoTotal:", metrics.ativoTotal);
+  console.log("ativoCirculante:", metrics.ativoCirculante);
+  console.log("ativoNaoCirculante:", metrics.ativoNaoCirculante);
+  console.log("passivoTotal:", metrics.passivoTotal);
+  console.log("passivoCirculante:", metrics.passivoCirculante);
+  console.log("passivoNaoCirculante:", metrics.passivoNaoCirculante);
+  console.log("patrimonioLiquido:", metrics.patrimonioLiquido);
+  console.log("Total entries:", entries.length);
 
   const hasAnyNumeric = rows.some(r => safeGetNumericValues(r).length > 0);
   const parsed = rows.length > 0 && (hasAnyNumeric || entries.length > 0);
