@@ -42,6 +42,9 @@ interface DiagnosticLine {
   valorAnterior: number | null;
   colunaUsada: 'atual' | 'anterior' | 'nenhuma';
   encontrado: boolean;
+  secao: 'ATIVO' | 'PASSIVO' | 'PL' | '-';
+  tipoClassificado: string;
+  motivo: string;
 }
 
 interface CalculatedDRE {
@@ -281,49 +284,71 @@ const Resultado = () => {
     const keyAccounts = ['ATIVO', 'CIRCULANTE', 'NAO CIRCULANTE', 'ATIVO NAO CIRCULANTE', 'PASSIVO', 'PASSIVO NAO CIRCULANTE', 'PATRIMONIO LIQUIDO'];
     const diagnostics: DiagnosticLine[] = [];
 
-    // Track section context for CIRCULANTE
-    let inAtivoSection = false;
-    let inPassivoSection = false;
-    let circulanteCount = 0;
-    let naoCirculanteCount = 0;
+    // Track section context
+    let currentSection: 'ATIVO' | 'PASSIVO' | 'PL' = 'ATIVO';
+    let foundAtivoCirculante = false;
+    let foundPassivoCirculante = false;
 
     for (const entry of entries) {
       const contaNorm = normalizeText(entry.conta);
       
-      // Track section
+      // Determine section and reason
+      let secao: 'ATIVO' | 'PASSIVO' | 'PL' | '-' = currentSection;
+      let motivo = '';
+      let tipoClassificado = entry.tipo;
+
+      // Update section based on account
       if (contaNorm === 'ATIVO') {
-        inAtivoSection = true;
-        inPassivoSection = false;
+        currentSection = 'ATIVO';
+        secao = 'ATIVO';
+        foundAtivoCirculante = false;
+        motivo = 'Início da seção ATIVO';
       } else if (contaNorm === 'PASSIVO') {
-        inAtivoSection = false;
-        inPassivoSection = true;
+        currentSection = 'PASSIVO';
+        secao = 'PASSIVO';
+        foundPassivoCirculante = false;
+        motivo = 'Início da seção PASSIVO';
+      } else if (contaNorm.includes('PATRIMONIO LIQUIDO')) {
+        currentSection = 'PL';
+        secao = 'PL';
+        motivo = 'Patrimônio Líquido detectado';
+      } else if (contaNorm.includes('CIRCULANTE') && !contaNorm.includes('NAO CIRCULANTE')) {
+        secao = currentSection;
+        if (currentSection === 'ATIVO' && !foundAtivoCirculante) {
+          foundAtivoCirculante = true;
+          motivo = `"CIRCULANTE" após ATIVO → ATIVO_CIRCULANTE`;
+        } else if (currentSection === 'PASSIVO' && !foundPassivoCirculante) {
+          foundPassivoCirculante = true;
+          motivo = `"CIRCULANTE" após PASSIVO → PASSIVO_CIRCULANTE`;
+        } else {
+          motivo = `Subconta de ${currentSection === 'ATIVO' ? 'ATIVO_CIRCULANTE' : 'PASSIVO_CIRCULANTE'}`;
+        }
+      } else if (contaNorm.includes('NAO CIRCULANTE')) {
+        secao = currentSection;
+        motivo = currentSection === 'ATIVO' 
+          ? '"NÃO CIRCULANTE" na seção ATIVO → ATIVO_NAO_CIRCULANTE'
+          : '"NÃO CIRCULANTE" na seção PASSIVO → PASSIVO_NAO_CIRCULANTE';
+      } else {
+        secao = currentSection;
+        motivo = `Herda tipo da seção atual (${currentSection})`;
       }
 
-      // Check if this is a key account
-      if (keyAccounts.includes(contaNorm)) {
-        let label = entry.conta;
-        
-        // Add context for CIRCULANTE
-        if (contaNorm === 'CIRCULANTE') {
-          circulanteCount++;
-          label = inAtivoSection ? `CIRCULANTE (Ativo - ${circulanteCount}º)` : `CIRCULANTE (Passivo - ${circulanteCount}º)`;
-        }
-        
-        // Add context for NAO CIRCULANTE
-        if (contaNorm === 'NAO CIRCULANTE') {
-          naoCirculanteCount++;
-          label = inAtivoSection ? `NAO CIRCULANTE (Ativo - ${naoCirculanteCount}º)` : `NAO CIRCULANTE (Passivo - ${naoCirculanteCount}º)`;
-        }
-
+      // Check if this is a key account to display
+      const isKeyAccount = keyAccounts.some(k => contaNorm === k || contaNorm.includes(k));
+      
+      if (isKeyAccount) {
         const hasValor = entry.valor !== 0;
         const hasValorAnterior = entry.valor_anterior !== null && entry.valor_anterior !== 0;
         
         diagnostics.push({
-          conta: label,
+          conta: entry.conta,
           valor: entry.valor,
           valorAnterior: entry.valor_anterior,
           colunaUsada: hasValor ? 'atual' : (hasValorAnterior ? 'anterior' : 'nenhuma'),
-          encontrado: hasValor || hasValorAnterior
+          encontrado: hasValor || hasValorAnterior,
+          secao,
+          tipoClassificado,
+          motivo
         });
       }
     }
@@ -681,41 +706,42 @@ const Resultado = () => {
                   <thead>
                     <tr className="border-b border-border">
                       <th className="text-left py-2 px-3 text-muted-foreground font-medium">Conta</th>
-                      <th className="text-right py-2 px-3 text-muted-foreground font-medium">Valor Atual</th>
-                      <th className="text-right py-2 px-3 text-muted-foreground font-medium">Valor Anterior</th>
-                      <th className="text-center py-2 px-3 text-muted-foreground font-medium">Coluna Usada</th>
+                      <th className="text-center py-2 px-3 text-muted-foreground font-medium">Seção</th>
+                      <th className="text-left py-2 px-3 text-muted-foreground font-medium">Tipo Classificado</th>
+                      <th className="text-right py-2 px-3 text-muted-foreground font-medium">Valor</th>
                       <th className="text-center py-2 px-3 text-muted-foreground font-medium">Status</th>
+                      <th className="text-left py-2 px-3 text-muted-foreground font-medium">Motivo</th>
                     </tr>
                   </thead>
                   <tbody>
                     {diagnosticLines.map((line, index) => (
                       <tr key={index} className="border-b border-border/50 hover:bg-muted/30">
                         <td className="py-2 px-3 font-medium text-foreground">{line.conta}</td>
-                        <td className="py-2 px-3 text-right text-foreground">
-                          {line.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                        </td>
-                        <td className="py-2 px-3 text-right text-muted-foreground">
-                          {line.valorAnterior !== null 
-                            ? line.valorAnterior.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
-                            : "—"
-                          }
-                        </td>
                         <td className="py-2 px-3 text-center">
                           <span className={`px-2 py-1 rounded text-xs font-medium ${
-                            line.colunaUsada === 'atual' 
-                              ? 'bg-primary/20 text-primary' 
-                              : line.colunaUsada === 'anterior'
-                                ? 'bg-secondary/20 text-secondary'
-                                : 'bg-muted text-muted-foreground'
+                            line.secao === 'ATIVO' 
+                              ? 'bg-blue-500/20 text-blue-400' 
+                              : line.secao === 'PASSIVO'
+                                ? 'bg-orange-500/20 text-orange-400'
+                                : line.secao === 'PL'
+                                  ? 'bg-green-500/20 text-green-400'
+                                  : 'bg-muted text-muted-foreground'
                           }`}>
-                            {line.colunaUsada === 'atual' ? 'ATUAL' : line.colunaUsada === 'anterior' ? 'ANTERIOR' : 'N/A'}
+                            {line.secao}
                           </span>
+                        </td>
+                        <td className="py-2 px-3 text-foreground text-xs">{line.tipoClassificado}</td>
+                        <td className="py-2 px-3 text-right text-foreground">
+                          {line.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                         </td>
                         <td className="py-2 px-3 text-center">
                           {line.encontrado 
                             ? <span className="text-green-400">✓</span>
                             : <span className="text-red-400">✗</span>
                           }
+                        </td>
+                        <td className="py-2 px-3 text-muted-foreground text-xs max-w-xs truncate" title={line.motivo}>
+                          {line.motivo}
                         </td>
                       </tr>
                     ))}
