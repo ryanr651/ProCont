@@ -325,16 +325,18 @@ export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): 
   }
 
   // FALLBACK: No BIFF number records found
-  // CRITICAL: Não distribuir IEEE doubles sequencialmente - isso causa valores errados!
-  // Retornar APENAS células de texto quando não temos posições reais de números
-  debugLog("No BIFF numbers found - returning TEXT-ONLY cells to prevent wrong value associations");
+  // Estratégia para arquivos PROCONT: usar IEEE doubles com mapeamento inteligente
+  debugLog("No BIFF numbers found - attempting PROCONT-style IEEE mapping");
   
   // Extract account names from SST in order
-  const accountNames: { name: string; index: number }[] = [];
+  const accountNames: { name: string; index: number; hasIndent: boolean }[] = [];
   for (let i = 0; i < strings.length; i++) {
-    const text = String(strings[i] || "").trim();
-    if (text && isAccountName(text)) {
-      accountNames.push({ name: text, index: i });
+    const text = String(strings[i] || "");
+    const trimmed = text.trim();
+    if (trimmed && isAccountName(trimmed)) {
+      // Detectar indentação (contas com espaços no início são subcontas)
+      const hasIndent = text.startsWith("   ") || text.startsWith("\t");
+      accountNames.push({ name: trimmed, index: i, hasIndent });
     }
   }
   
@@ -347,7 +349,6 @@ export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): 
   }
 
   // NOVA ESTRATÉGIA: Procurar números formatados como texto nas strings SST
-  // Alguns arquivos XLS antigos armazenam números como strings formatadas
   const formattedNumbers: { value: number; index: number }[] = [];
   for (let i = 0; i < strings.length; i++) {
     const text = String(strings[i] || "").trim();
@@ -360,32 +361,26 @@ export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): 
   }
   
   debugLog(`Formatted numbers in SST: ${formattedNumbers.length}`);
-  if (formattedNumbers.length > 0) {
-    debugLog(`Sample formatted: ${formattedNumbers.slice(0, 10).map(n => n.value.toFixed(2)).join(", ")}`);
-  }
   
-  // Build cells: text only, sem números IEEE (que não têm posição confiável)
+  // Build cells with text
   const newCells: BIFFCell[] = [];
-  
   for (let rowIdx = 0; rowIdx < accountNames.length; rowIdx++) {
     const name = accountNames[rowIdx].name;
     newCells.push({ row: rowIdx, col: 0, value: name, type: "string" });
   }
   
-  // Se encontramos números formatados como strings, tentar associá-los
-  // Estratégia: números que aparecem LOGO APÓS um nome de conta na SST
-  // pertencem a essa conta
+  // Se encontramos números formatados como strings, associá-los
   if (formattedNumbers.length > 0) {
+    debugLog(`Sample formatted: ${formattedNumbers.slice(0, 10).map(n => n.value.toFixed(2)).join(", ")}`);
+    
     let lastAccountRow = -1;
     let numbersForCurrentAccount: number[] = [];
     
     for (let i = 0; i < strings.length; i++) {
       const text = String(strings[i] || "").trim();
       
-      // É um nome de conta?
       const accountIdx = accountNames.findIndex(a => a.index === i);
       if (accountIdx !== -1) {
-        // Salvar números pendentes da conta anterior
         if (lastAccountRow >= 0 && numbersForCurrentAccount.length > 0) {
           for (let c = 0; c < numbersForCurrentAccount.length && c < 2; c++) {
             newCells.push({ 
@@ -398,9 +393,7 @@ export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): 
         }
         lastAccountRow = accountIdx;
         numbersForCurrentAccount = [];
-      }
-      // É um número formatado?
-      else if (looksLikeFormattedNumber(text)) {
+      } else if (looksLikeFormattedNumber(text)) {
         const parsed = parseBrazilianNumberFromString(text);
         if (parsed !== null && Number.isFinite(parsed)) {
           numbersForCurrentAccount.push(parsed);
@@ -408,7 +401,6 @@ export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): 
       }
     }
     
-    // Não esquecer a última conta
     if (lastAccountRow >= 0 && numbersForCurrentAccount.length > 0) {
       for (let c = 0; c < numbersForCurrentAccount.length && c < 2; c++) {
         newCells.push({ 
@@ -421,20 +413,82 @@ export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): 
     }
   }
   
-  const numericCount = newCells.filter(c => c.type === "number").length;
-  debugLog(`Cells created: ${newCells.length} (${numericCount} numeric from SST formatted strings)`);
+  let numericCount = newCells.filter(c => c.type === "number").length;
+  debugLog(`Cells after SST formatted: ${newCells.length} (${numericCount} numeric)`);
   
-  // Se não conseguimos associar valores via SST formatado, NÃO fazemos fallback IEEE por offset.
-  // Motivo: IEEE doubles NÃO têm linha/coluna, então qualquer "distribuição" vai gerar
-  // associações erradas (ex.: PASSIVO_TOTAL recebendo PL).
-  // Neste cenário, retornamos apenas texto + números que foram de fato encontrados em BIFF (acima)
-  // ou em SST como número formatado.
+  // Se ainda não temos números, tentar IEEE fallback INTELIGENTE
+  // Estratégia: associar IEEE doubles apenas a contas que DEVEM ter valores
   if (numericCount === 0) {
-    debugLog(
-      "No formatted numeric strings found; skipping IEEE fallback (cannot guarantee row-level association)",
-    );
+    debugLog("Using SMART IEEE fallback for PROCONT-style files");
+    
+    const doublesWithOffset = scanForAccountingDoubles(uint8);
+    debugLog(`IEEE doubles found: ${doublesWithOffset.length}`);
+    
+    if (doublesWithOffset.length > 0) {
+      debugLog(`Sample doubles (by offset): ${doublesWithOffset.slice(0, 20).map(d => d.value.toFixed(2)).join(", ")}`);
+      
+      // Filtrar valores claramente inválidos
+      const validDoubles = doublesWithOffset.filter(d => {
+        const abs = Math.abs(d.value);
+        if (abs < 10 && abs !== 0) return false; // Flags
+        if (abs > 0 && Math.log2(abs) % 1 === 0 && abs > 100) return false; // Potências de 2
+        return true;
+      });
+      
+      debugLog(`Valid IEEE doubles after filtering: ${validDoubles.length}`);
+      
+      // Identificar contas que DEVEM ter valores (não são apenas títulos de seção)
+      // Regra: contas com indentação ou que não são cabeçalhos puros
+      const accountsWithValues: number[] = [];
+      
+      const headerPatterns = [
+        /^ATIVO$/i,
+        /^PASSIVO$/i,
+        /^PATRIMONIO LIQUIDO$/i,
+        /^DEMONSTRA[CÇ]/i,
+        /^BALAN[CÇ]O/i,
+        /^RESULTADO/i,
+      ];
+      
+      for (let i = 0; i < accountNames.length; i++) {
+        const name = accountNames[i].name.toUpperCase()
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+        
+        // Se tem indentação, provavelmente tem valor
+        if (accountNames[i].hasIndent) {
+          accountsWithValues.push(i);
+          continue;
+        }
+        
+        // Se é um cabeçalho puro, pular
+        const isHeader = headerPatterns.some(p => p.test(name));
+        if (isHeader) continue;
+        
+        // Outras contas provavelmente têm valores
+        accountsWithValues.push(i);
+      }
+      
+      debugLog(`Accounts expected to have values: ${accountsWithValues.length}`);
+      
+      // Associar IEEE doubles em ordem às contas que devem ter valores
+      const numToAssign = Math.min(validDoubles.length, accountsWithValues.length);
+      debugLog(`Associating ${numToAssign} IEEE doubles to accounts`);
+      
+      for (let i = 0; i < numToAssign; i++) {
+        const rowIdx = accountsWithValues[i];
+        newCells.push({
+          row: rowIdx,
+          col: 1,
+          value: validDoubles[i].value,
+          type: "number",
+        });
+      }
+      
+      numericCount = newCells.filter(c => c.type === "number").length;
+      debugLog(`IEEE fallback numeric cells created: ${numericCount}`);
+    }
   }
-
+  
   return newCells;
 }
 
