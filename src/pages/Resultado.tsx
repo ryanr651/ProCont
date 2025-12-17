@@ -45,7 +45,6 @@ interface DiagnosticLine {
   secao: 'ATIVO' | 'PASSIVO' | 'PL' | '-';
   tipoClassificado: string;
   motivo: string;
-  imediatamenteApos: 'ATIVO' | 'PASSIVO' | null;
 }
 
 interface CalculatedDRE {
@@ -285,82 +284,61 @@ const Resultado = () => {
     const keyAccounts = ['ATIVO', 'CIRCULANTE', 'NAO CIRCULANTE', 'ATIVO NAO CIRCULANTE', 'PASSIVO', 'PASSIVO NAO CIRCULANTE', 'PATRIMONIO LIQUIDO'];
     const diagnostics: DiagnosticLine[] = [];
 
-    // Track section context with immediate-after flags
+    // Track section context
     let currentSection: 'ATIVO' | 'PASSIVO' | 'PL' = 'ATIVO';
-    let justSawAtivo = false;
-    let justSawPassivo = false;
+    let foundAtivoCirculante = false;
+    let foundPassivoCirculante = false;
 
     for (const entry of entries) {
       const contaNorm = normalizeText(entry.conta);
       
-      // Guardar estado das flags ANTES de processar
-      const wasJustAfterAtivo = justSawAtivo;
-      const wasJustAfterPassivo = justSawPassivo;
-      
-      // Determine section and reason
       let secao: 'ATIVO' | 'PASSIVO' | 'PL' | '-' = currentSection;
       let motivo = '';
       let tipoClassificado = entry.tipo;
-      let imediatamenteApos: 'ATIVO' | 'PASSIVO' | null = null;
 
-      // Update section based on account
       if (contaNorm === 'ATIVO') {
         currentSection = 'ATIVO';
         secao = 'ATIVO';
-        justSawAtivo = true;
-        justSawPassivo = false;
+        foundAtivoCirculante = false;
         motivo = 'Início da seção ATIVO';
       } else if (contaNorm === 'PASSIVO') {
         currentSection = 'PASSIVO';
         secao = 'PASSIVO';
-        justSawPassivo = true;
-        justSawAtivo = false;
+        foundPassivoCirculante = false;
         motivo = 'Início da seção PASSIVO';
       } else if (contaNorm.includes('PATRIMONIO LIQUIDO')) {
         currentSection = 'PL';
         secao = 'PL';
-        justSawAtivo = false;
-        justSawPassivo = false;
         motivo = 'Patrimônio Líquido detectado';
       } else if (contaNorm === 'CIRCULANTE' || contaNorm.startsWith('CIRCULANTE')) {
         secao = currentSection;
-        justSawAtivo = false;
-        justSawPassivo = false;
-        
-        if (wasJustAfterAtivo) {
-          imediatamenteApos = 'ATIVO';
-          motivo = `"CIRCULANTE" IMEDIATAMENTE após ATIVO → ATIVO_CIRCULANTE`;
-        } else if (wasJustAfterPassivo) {
-          imediatamenteApos = 'PASSIVO';
-          motivo = `"CIRCULANTE" IMEDIATAMENTE após PASSIVO → PASSIVO_CIRCULANTE`;
+        if (currentSection === 'ATIVO' && !foundAtivoCirculante) {
+          foundAtivoCirculante = true;
+          motivo = `PRIMEIRO "CIRCULANTE" na seção ATIVO → ATIVO_CIRCULANTE`;
+        } else if (currentSection === 'PASSIVO' && !foundPassivoCirculante) {
+          foundPassivoCirculante = true;
+          motivo = `PRIMEIRO "CIRCULANTE" na seção PASSIVO → PASSIVO_CIRCULANTE`;
         } else {
-          motivo = `"CIRCULANTE" NÃO imediato - subconta de ${tipoClassificado}`;
+          motivo = `"CIRCULANTE" adicional - subconta de ${tipoClassificado}`;
         }
       } else if (contaNorm === 'ATIVO CIRCULANTE') {
         secao = 'ATIVO';
-        justSawAtivo = false;
-        justSawPassivo = false;
+        foundAtivoCirculante = true;
         motivo = '"ATIVO CIRCULANTE" explícito';
       } else if (contaNorm === 'PASSIVO CIRCULANTE') {
         secao = 'PASSIVO';
-        justSawAtivo = false;
-        justSawPassivo = false;
+        foundPassivoCirculante = true;
         motivo = '"PASSIVO CIRCULANTE" explícito';
       } else if (contaNorm.includes('NAO CIRCULANTE')) {
         secao = currentSection;
-        justSawAtivo = false;
-        justSawPassivo = false;
         motivo = currentSection === 'ATIVO' 
           ? '"NÃO CIRCULANTE" na seção ATIVO → ATIVO_NAO_CIRCULANTE'
           : '"NÃO CIRCULANTE" na seção PASSIVO → PASSIVO_NAO_CIRCULANTE';
       } else {
         secao = currentSection;
-        justSawAtivo = false;
-        justSawPassivo = false;
         motivo = `Herda tipo da seção atual (${currentSection})`;
       }
 
-      // Check if this is a key account to display
       const isKeyAccount = keyAccounts.some(k => contaNorm === k || contaNorm.includes(k));
       
       if (isKeyAccount) {
@@ -375,8 +353,7 @@ const Resultado = () => {
           encontrado: hasValor || hasValorAnterior,
           secao,
           tipoClassificado,
-          motivo,
-          imediatamenteApos
+          motivo
         });
       }
     }
@@ -736,7 +713,6 @@ const Resultado = () => {
                       <th className="text-left py-2 px-3 text-muted-foreground font-medium">Conta</th>
                       <th className="text-center py-2 px-3 text-muted-foreground font-medium">Seção</th>
                       <th className="text-left py-2 px-3 text-muted-foreground font-medium">Tipo</th>
-                      <th className="text-center py-2 px-3 text-muted-foreground font-medium">Após</th>
                       <th className="text-right py-2 px-3 text-muted-foreground font-medium">Valor</th>
                       <th className="text-center py-2 px-3 text-muted-foreground font-medium">Status</th>
                       <th className="text-left py-2 px-3 text-muted-foreground font-medium">Motivo</th>
@@ -760,19 +736,6 @@ const Resultado = () => {
                           </span>
                         </td>
                         <td className="py-2 px-3 text-foreground text-xs">{line.tipoClassificado}</td>
-                        <td className="py-2 px-3 text-center">
-                          {line.imediatamenteApos ? (
-                            <span className={`px-2 py-1 rounded text-xs font-medium ${
-                              line.imediatamenteApos === 'ATIVO' 
-                                ? 'bg-blue-500/30 text-blue-300' 
-                                : 'bg-orange-500/30 text-orange-300'
-                            }`}>
-                              {line.imediatamenteApos}
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </td>
                         <td className="py-2 px-3 text-right text-foreground">
                           {line.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                         </td>
