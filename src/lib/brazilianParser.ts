@@ -693,34 +693,27 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
   let currentSection: BalancoSectionType = "ATIVO";
   let currentTipo: BalancoTipoSubconta = "ATIVO_CIRCULANTE";
 
-  // Flags para detectar CIRCULANTE IMEDIATAMENTE após ATIVO/PASSIVO
-  let justSawAtivo = false;
-  let justSawPassivo = false;
+  // Flag para garantir que só o PRIMEIRO CIRCULANTE na seção ATIVO seja usado
+  let foundAtivoCirculante = false;
+  let foundPassivoCirculante = false;
 
   for (let i = startRow; i < rows.length; i++) {
     const row = rows[i];
     const { text: conta, index: textIndex } = safeGetFirstText(row);
     
-    if (!conta || conta.length < 2) {
-      // Linha vazia não reseta as flags - continua
-      continue;
-    }
+    if (!conta || conta.length < 2) continue;
 
     const normalConta = normalizeText(conta);
     
-    // Skip headers (mas reseta flags)
+    // Skip headers
     if (normalConta.includes("DESCRICAO") || normalConta === "CONTA" || 
         normalConta.includes("EMPRESA") || normalConta.includes("CNPJ")) {
-      justSawAtivo = false;
-      justSawPassivo = false;
       continue;
     }
 
     // Get numeric values with D/C context
     const rawValues = safeGetNumericValues(row);
     
-    // REGRA 1 + 2: Aplicar arredondamento 2 casas + mapeamento de colunas
-    // 1 número = valor, 2 números = valor + valor_anterior, >2 = usar apenas os 2 primeiros
     const valor = rawValues.length > 0 
       ? roundTo2Decimals(parseBrazilianNumber(rawValues[0].raw, currentSection))
       : 0;
@@ -728,22 +721,15 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
       ? roundTo2Decimals(parseBrazilianNumber(rawValues[1].raw, currentSection))
       : null;
 
-    // REGRA 3: Classificação por contexto
     let tipoEntry: BalancoTipoCompleto = currentTipo;
-    
-    // Guardar estado das flags ANTES de processar esta linha
-    const wasJustAfterAtivo = justSawAtivo;
-    const wasJustAfterPassivo = justSawPassivo;
 
     // === DETECÇÃO DE SEÇÃO E CLASSIFICAÇÃO ===
     
     if (normalConta === "ATIVO") {
-      // ATIVO total - USAR VALOR DIRETO (REGRA 6)
       currentSection = "ATIVO";
       currentTipo = "ATIVO_CIRCULANTE";
       tipoEntry = "ATIVO_TOTAL";
-      justSawAtivo = true;
-      justSawPassivo = false;
+      foundAtivoCirculante = false; // Reset para nova seção ATIVO
 
       if (valor !== 0) {
         metrics.ativoTotal = roundTo2Decimals(Math.abs(valor));
@@ -751,14 +737,11 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
       }
     }
     else if (normalConta === "PASSIVO") {
-      // PASSIVO total - USAR VALOR DIRETO (REGRA 6)
       currentSection = "PASSIVO";
       currentTipo = "PASSIVO_CIRCULANTE";
       tipoEntry = "PASSIVO_TOTAL";
-      justSawPassivo = true;
-      justSawAtivo = false;
+      foundPassivoCirculante = false; // Reset para nova seção PASSIVO
 
-      // DEBUG: Log detalhado para PASSIVO
       console.log("=== DEBUG PASSIVO ===");
       console.log("Row index:", i);
       console.log("Row raw:", row);
@@ -770,48 +753,40 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         debugLog("PASSIVO TOTAL (do arquivo):", metrics.passivoTotal);
       }
     }
-    else if (
-      // "CIRCULANTE" - SÓ classifica como total se for IMEDIATAMENTE após ATIVO ou PASSIVO
-      normalConta === "CIRCULANTE" || normalConta.startsWith("CIRCULANTE")
-    ) {
-      // Resetar flags - já processamos
-      justSawAtivo = false;
-      justSawPassivo = false;
-
-      if (wasJustAfterAtivo) {
-        // CIRCULANTE imediatamente após ATIVO = ATIVO_CIRCULANTE
+    else if (normalConta === "CIRCULANTE" || normalConta.startsWith("CIRCULANTE")) {
+      // CIRCULANTE genérico - usar currentSection para determinar
+      if (currentSection === "ATIVO" && !foundAtivoCirculante) {
+        // PRIMEIRO CIRCULANTE na seção ATIVO = ATIVO_CIRCULANTE
         currentTipo = "ATIVO_CIRCULANTE";
         tipoEntry = "ATIVO_CIRCULANTE";
-        debugLog("CIRCULANTE detectado IMEDIATAMENTE após ATIVO → ATIVO_CIRCULANTE");
+        foundAtivoCirculante = true;
+        debugLog("PRIMEIRO CIRCULANTE na seção ATIVO → ATIVO_CIRCULANTE");
 
         if (valor !== 0) {
           metrics.ativoCirculante = roundTo2Decimals(Math.abs(valor));
           debugLog("ATIVO CIRCULANTE (do arquivo):", metrics.ativoCirculante);
         }
-      } else if (wasJustAfterPassivo) {
-        // CIRCULANTE imediatamente após PASSIVO = PASSIVO_CIRCULANTE
+      } else if (currentSection === "PASSIVO" && !foundPassivoCirculante) {
+        // PRIMEIRO CIRCULANTE na seção PASSIVO = PASSIVO_CIRCULANTE
         currentTipo = "PASSIVO_CIRCULANTE";
         tipoEntry = "PASSIVO_CIRCULANTE";
-        debugLog("CIRCULANTE detectado IMEDIATAMENTE após PASSIVO → PASSIVO_CIRCULANTE");
+        foundPassivoCirculante = true;
+        debugLog("PRIMEIRO CIRCULANTE na seção PASSIVO → PASSIVO_CIRCULANTE");
 
         if (valor !== 0) {
           metrics.passivoCirculante = roundTo2Decimals(Math.abs(valor));
           debugLog("PASSIVO CIRCULANTE (do arquivo):", metrics.passivoCirculante);
         }
       } else {
-        // CIRCULANTE em outra posição = subconta, herda tipo atual
+        // Já encontrou o CIRCULANTE desta seção, herda tipo atual
         tipoEntry = currentTipo;
-        debugLog("CIRCULANTE em posição não-imediata, herdando tipo:", currentTipo);
+        debugLog("CIRCULANTE adicional, herdando tipo:", currentTipo);
       }
     }
-    else if (
-      // Variações como "ATIVO CIRCULANTE" ou "PASSIVO CIRCULANTE" explícitas
-      normalConta === "ATIVO CIRCULANTE"
-    ) {
-      justSawAtivo = false;
-      justSawPassivo = false;
+    else if (normalConta === "ATIVO CIRCULANTE") {
       currentTipo = "ATIVO_CIRCULANTE";
       tipoEntry = "ATIVO_CIRCULANTE";
+      foundAtivoCirculante = true;
 
       if (valor !== 0) {
         metrics.ativoCirculante = roundTo2Decimals(Math.abs(valor));
@@ -819,10 +794,9 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
       }
     }
     else if (normalConta === "PASSIVO CIRCULANTE") {
-      justSawAtivo = false;
-      justSawPassivo = false;
       currentTipo = "PASSIVO_CIRCULANTE";
       tipoEntry = "PASSIVO_CIRCULANTE";
+      foundPassivoCirculante = true;
 
       if (valor !== 0) {
         metrics.passivoCirculante = roundTo2Decimals(Math.abs(valor));
@@ -833,8 +807,6 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
       normalConta === "ATIVO NAO CIRCULANTE" ||
       (normalConta === "NAO CIRCULANTE" && currentSection === "ATIVO")
     ) {
-      justSawAtivo = false;
-      justSawPassivo = false;
       currentTipo = "ATIVO_NAO_CIRCULANTE";
       tipoEntry = "ATIVO_NAO_CIRCULANTE";
 
@@ -847,8 +819,6 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
       normalConta === "PASSIVO NAO CIRCULANTE" ||
       (normalConta === "NAO CIRCULANTE" && currentSection === "PASSIVO")
     ) {
-      justSawAtivo = false;
-      justSawPassivo = false;
       currentTipo = "PASSIVO_NAO_CIRCULANTE";
       tipoEntry = "PASSIVO_NAO_CIRCULANTE";
 
@@ -858,8 +828,6 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
       }
     }
     else if (normalConta === "PATRIMONIO LIQUIDO" || normalConta.includes("PATRIMONIO LIQUIDO")) {
-      justSawAtivo = false;
-      justSawPassivo = false;
       currentSection = "PL";
       currentTipo = "PATRIMONIO_LIQUIDO";
       tipoEntry = "PATRIMONIO_LIQUIDO";
@@ -870,10 +838,6 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
       }
     }
     else {
-      // Subconta - herda o tipo da seção atual
-      // Reseta as flags pois não é mais "imediatamente após"
-      justSawAtivo = false;
-      justSawPassivo = false;
       tipoEntry = currentTipo;
     }
 
@@ -938,9 +902,9 @@ function parseBalancoFromCSV(rows: string[][], filename: string): BalancoParseRe
   let currentSection: BalancoSectionType = "ATIVO";
   let currentTipo: BalancoTipoSubconta = "ATIVO_CIRCULANTE";
   
-  // Flags para detectar CIRCULANTE IMEDIATAMENTE após ATIVO/PASSIVO
-  let justSawAtivo = false;
-  let justSawPassivo = false;
+  // Flag para garantir que só o PRIMEIRO CIRCULANTE na seção seja usado
+  let foundAtivoCirculante = false;
+  let foundPassivoCirculante = false;
 
   for (let i = startRow; i < rows.length; i++) {
     const row = rows[i];
@@ -950,14 +914,9 @@ function parseBalancoFromCSV(rows: string[][], filename: string): BalancoParseRe
     if (!conta || conta.length < 2) continue;
 
     const normalConta = normalizeText(conta);
-    if (normalConta.includes("DESCRICAO") || normalConta === "CONTA") {
-      justSawAtivo = false;
-      justSawPassivo = false;
-      continue;
-    }
+    if (normalConta.includes("DESCRICAO") || normalConta === "CONTA") continue;
 
     const numericValues = findNumericValuesInRow(row);
-    // REGRA 1 + 2: Arredondamento 2 casas + mapeamento de colunas
     const valor = numericValues.length > 0 
       ? roundTo2Decimals(parseBrazilianNumber(numericValues[0], currentSection)) 
       : 0;
@@ -966,82 +925,65 @@ function parseBalancoFromCSV(rows: string[][], filename: string): BalancoParseRe
       : null;
 
     let tipoEntry: BalancoTipoCompleto = currentTipo;
-    
-    // Guardar estado das flags ANTES de processar esta linha
-    const wasJustAfterAtivo = justSawAtivo;
-    const wasJustAfterPassivo = justSawPassivo;
 
     if (normalConta === "ATIVO") {
       currentSection = "ATIVO";
       currentTipo = "ATIVO_CIRCULANTE";
       tipoEntry = "ATIVO_TOTAL";
-      justSawAtivo = true;
-      justSawPassivo = false;
+      foundAtivoCirculante = false;
       if (valor !== 0) metrics.ativoTotal = roundTo2Decimals(Math.abs(valor));
     }
     else if (normalConta === "PASSIVO") {
       currentSection = "PASSIVO";
       currentTipo = "PASSIVO_CIRCULANTE";
       tipoEntry = "PASSIVO_TOTAL";
-      justSawPassivo = true;
-      justSawAtivo = false;
+      foundPassivoCirculante = false;
       if (valor !== 0) metrics.passivoTotal = roundTo2Decimals(Math.abs(valor));
     }
     else if (normalConta === "CIRCULANTE" || normalConta.startsWith("CIRCULANTE")) {
-      justSawAtivo = false;
-      justSawPassivo = false;
-
-      if (wasJustAfterAtivo) {
+      if (currentSection === "ATIVO" && !foundAtivoCirculante) {
         currentTipo = "ATIVO_CIRCULANTE";
         tipoEntry = "ATIVO_CIRCULANTE";
+        foundAtivoCirculante = true;
         if (valor !== 0) metrics.ativoCirculante = roundTo2Decimals(Math.abs(valor));
-      } else if (wasJustAfterPassivo) {
+      } else if (currentSection === "PASSIVO" && !foundPassivoCirculante) {
         currentTipo = "PASSIVO_CIRCULANTE";
         tipoEntry = "PASSIVO_CIRCULANTE";
+        foundPassivoCirculante = true;
         if (valor !== 0) metrics.passivoCirculante = roundTo2Decimals(Math.abs(valor));
       } else {
         tipoEntry = currentTipo;
       }
     }
     else if (normalConta === "ATIVO CIRCULANTE") {
-      justSawAtivo = false;
-      justSawPassivo = false;
       currentTipo = "ATIVO_CIRCULANTE";
       tipoEntry = "ATIVO_CIRCULANTE";
+      foundAtivoCirculante = true;
       if (valor !== 0) metrics.ativoCirculante = roundTo2Decimals(Math.abs(valor));
     }
     else if (normalConta === "PASSIVO CIRCULANTE") {
-      justSawAtivo = false;
-      justSawPassivo = false;
       currentTipo = "PASSIVO_CIRCULANTE";
       tipoEntry = "PASSIVO_CIRCULANTE";
+      foundPassivoCirculante = true;
       if (valor !== 0) metrics.passivoCirculante = roundTo2Decimals(Math.abs(valor));
     }
     else if (normalConta === "ATIVO NAO CIRCULANTE" || (normalConta === "NAO CIRCULANTE" && currentSection === "ATIVO")) {
-      justSawAtivo = false;
-      justSawPassivo = false;
       currentTipo = "ATIVO_NAO_CIRCULANTE";
       tipoEntry = "ATIVO_NAO_CIRCULANTE";
       if (valor !== 0) metrics.ativoNaoCirculante = roundTo2Decimals(Math.abs(valor));
     }
     else if (normalConta === "PASSIVO NAO CIRCULANTE" || (normalConta === "NAO CIRCULANTE" && currentSection === "PASSIVO")) {
-      justSawAtivo = false;
-      justSawPassivo = false;
       currentTipo = "PASSIVO_NAO_CIRCULANTE";
       tipoEntry = "PASSIVO_NAO_CIRCULANTE";
       if (valor !== 0) metrics.passivoNaoCirculante = roundTo2Decimals(Math.abs(valor));
     }
     else if (normalConta.includes("PATRIMONIO LIQUIDO")) {
-      justSawAtivo = false;
-      justSawPassivo = false;
       currentSection = "PL";
       currentTipo = "PATRIMONIO_LIQUIDO";
       tipoEntry = "PATRIMONIO_LIQUIDO";
       if (valor !== 0) metrics.patrimonioLiquido = roundTo2Decimals(Math.abs(valor));
     }
     else {
-      justSawAtivo = false;
-      justSawPassivo = false;
       tipoEntry = currentTipo;
     }
 
