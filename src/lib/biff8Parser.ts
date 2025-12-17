@@ -147,6 +147,10 @@ function parseBIFFStream(stream: Uint8Array, strings: string[]): BIFFCell[] {
   let legacyNumberRecords = 0;
   let legacyLabelRecords = 0;
 
+  // Debug: record stream sanity
+  let totalValidRecords = 0;
+  const firstRecords: { t: string; len: number }[] = [];
+
   while (offset + 4 <= len) {
     const recordType = data.getUint16(offset, true);
     const recordLen = data.getUint16(offset + 2, true);
@@ -155,6 +159,11 @@ function parseBIFFStream(stream: Uint8Array, strings: string[]): BIFFCell[] {
     if (recordLen > 0x4000 || next > len) {
       offset += 1;
       continue;
+    }
+
+    totalValidRecords++;
+    if (firstRecords.length < 40) {
+      firstRecords.push({ t: `0x${recordType.toString(16).padStart(4, "0")}`, len: recordLen });
     }
 
     // NUMBER (BIFF8 = 0x0203)
@@ -253,14 +262,19 @@ function parseBIFFStream(stream: Uint8Array, strings: string[]): BIFFCell[] {
   }
 
   debugLog(
-    `BIFF scan startOffset=${startOffset} Records: NUMBER=${numRecords}, FORMULA=${formulaRecords}, RK=${rkRecords}, MULRK=${mulrkRecords}, LABELSST=${labelRecords}, LEGACY_NUMBER=${legacyNumberRecords}, LEGACY_LABEL=${legacyLabelRecords}`,
+    `BIFF scan startOffset=${startOffset} validRecords=${totalValidRecords} Records: NUMBER=${numRecords}, FORMULA=${formulaRecords}, RK=${rkRecords}, MULRK=${mulrkRecords}, LABELSST=${labelRecords}, LEGACY_NUMBER=${legacyNumberRecords}, LEGACY_LABEL=${legacyLabelRecords}`,
   );
+
+  if (cells.length === 0) {
+    debugLog(`First ${firstRecords.length} record headers: ${firstRecords.map(r => `${r.t}(${r.len})`).join(", ")}`);
+  }
+
   return cells;
 }
 
 /**
  * Extract cells from legacy XLS (BIFF8).
- * 
+ *
  * Strategy:
  * 1. Try BIFF record parsing first (preserves row/col positions)
  * 2. If no numbers found, use IEEE double scanner as fallback
