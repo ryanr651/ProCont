@@ -379,9 +379,9 @@ export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): 
   debugLog(`Cells created: ${newCells.length} (${numericCount} numeric from SST formatted strings)`);
   
   // Se não conseguimos associar valores via SST formatado, fazer fallback IEEE
-  // (melhor do que quebrar o upload; ainda assim pode não ser perfeito)
+  // NOVA ESTRATÉGIA: associar números apenas a CONTAS-CHAVE (ATIVO, PASSIVO, CIRCULANTE, etc.)
   if (numericCount === 0) {
-    debugLog("No formatted numeric strings found; using IEEE double scanner fallback (best-effort)");
+    debugLog("No formatted numeric strings found; using SMART IEEE fallback");
 
     const doublesWithOffset = scanForAccountingDoubles(uint8);
     debugLog(`IEEE doubles found: ${doublesWithOffset.length}`);
@@ -389,26 +389,76 @@ export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): 
       debugLog(`Sample doubles (by offset): ${doublesWithOffset.slice(0, 20).map(d => d.value.toFixed(2)).join(", ")}`);
     }
 
-    // Heurística: normalmente 1 (valor) ou 2 (valor + anterior) por conta
-    const ratio = accountNames.length > 0 ? doublesWithOffset.length / accountNames.length : 0;
-    const numPerRow = ratio >= 1.5 ? 2 : 1;
-    debugLog(`Building ${accountNames.length} rows with ${numPerRow} number(s) each (IEEE fallback)`);
+    // Identificar contas-chave que DEVEM ter valores em um Balanço Patrimonial
+    const keyAccountPatterns = [
+      { pattern: /^ATIVO$/i, type: "ATIVO_TOTAL" },
+      { pattern: /^PASSIVO$/i, type: "PASSIVO_TOTAL" },
+      { pattern: /^CIRCULANTE$/i, type: "CIRCULANTE" },
+      { pattern: /^NAO CIRCULANTE$/i, type: "NAO_CIRCULANTE" },
+      { pattern: /^ATIVO CIRCULANTE$/i, type: "ATIVO_CIRCULANTE" },
+      { pattern: /^PASSIVO CIRCULANTE$/i, type: "PASSIVO_CIRCULANTE" },
+      { pattern: /^ATIVO NAO CIRCULANTE$/i, type: "ATIVO_NAO_CIRCULANTE" },
+      { pattern: /^PASSIVO NAO CIRCULANTE$/i, type: "PASSIVO_NAO_CIRCULANTE" },
+      { pattern: /PATRIMONIO LIQUIDO/i, type: "PATRIMONIO_LIQUIDO" },
+      { pattern: /^DISPONIBILIDADES$/i, type: "SUBCONTA" },
+      { pattern: /^CAIXA$/i, type: "SUBCONTA" },
+      { pattern: /^CREDITOS$/i, type: "SUBCONTA" },
+      { pattern: /^IMOBILIZADO$/i, type: "SUBCONTA" },
+      { pattern: /^OBRIGACOES/i, type: "SUBCONTA" },
+    ];
 
-    let numIdx = 0;
-    for (let rowIdx = 0; rowIdx < accountNames.length; rowIdx++) {
-      for (let c = 0; c < numPerRow && numIdx < doublesWithOffset.length; c++) {
-        newCells.push({
-          row: rowIdx,
-          col: c + 1,
-          value: doublesWithOffset[numIdx].value,
-          type: "number",
-        });
-        numIdx++;
+    // Identificar quais contas são chave e sua posição na lista
+    const keyAccounts: { rowIdx: number; name: string; type: string }[] = [];
+    for (let i = 0; i < accountNames.length; i++) {
+      const name = accountNames[i].name.toUpperCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+      
+      for (const { pattern, type } of keyAccountPatterns) {
+        if (pattern.test(name)) {
+          keyAccounts.push({ rowIdx: i, name: accountNames[i].name, type });
+          break;
+        }
+      }
+    }
+
+    debugLog(`Key accounts identified: ${keyAccounts.length}`);
+    debugLog(`Key accounts: ${keyAccounts.map(k => `${k.rowIdx}:${k.name}`).join(" | ")}`);
+
+    // Estratégia: se temos aprox. o mesmo número de doubles e key accounts,
+    // associar na ordem. Se não, tentar heurística de magnitude.
+    if (keyAccounts.length > 0 && doublesWithOffset.length > 0) {
+      // Se quantidade de doubles >= key accounts, associar em ordem
+      if (doublesWithOffset.length >= keyAccounts.length * 0.5) {
+        debugLog(`Associating ${Math.min(doublesWithOffset.length, keyAccounts.length)} values to key accounts`);
+        
+        let numIdx = 0;
+        for (const keyAcc of keyAccounts) {
+          if (numIdx >= doublesWithOffset.length) break;
+          
+          newCells.push({
+            row: keyAcc.rowIdx,
+            col: 1,
+            value: doublesWithOffset[numIdx].value,
+            type: "number",
+          });
+          numIdx++;
+          
+          // Se tiver segundo valor (valor_anterior), adicionar também
+          if (numIdx < doublesWithOffset.length && doublesWithOffset.length >= keyAccounts.length * 1.5) {
+            newCells.push({
+              row: keyAcc.rowIdx,
+              col: 2,
+              value: doublesWithOffset[numIdx].value,
+              type: "number",
+            });
+            numIdx++;
+          }
+        }
       }
     }
 
     const fallbackCount = newCells.filter(c => c.type === "number").length;
-    debugLog(`IEEE fallback numeric cells created: ${fallbackCount}`);
+    debugLog(`IEEE fallback numeric cells created: ${fallbackCount} (only for key accounts)`);
   }
   
   return newCells;
