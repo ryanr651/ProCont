@@ -3,15 +3,18 @@ import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { FileUpload } from "@/components/FileUpload";
-import { ArrowLeft, Loader2, ArrowRight, Download, LogOut } from "lucide-react";
-import { uploadAndProcessFiles, generateDownloadableJSON } from "@/lib/supabaseUpload";
+import { ArrowLeft, Loader2, ArrowRight, Download, LogOut, FileSearch } from "lucide-react";
+import { uploadAndProcessFiles, generateDownloadableJSON, UploadResult } from "@/lib/supabaseUpload";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { XLSValidationMode, ValidationRow } from "@/components/XLSValidationMode";
 
 const Upload = () => {
   const [dreFile, setDreFile] = useState<File | null>(null);
   const [balancoFile, setBalancoFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showValidation, setShowValidation] = useState(false);
+  const [validationRows, setValidationRows] = useState<ValidationRow[]>([]);
   const [lastResult, setLastResult] = useState<{
     dre_entries?: unknown[];
     balanco_entries?: unknown[];
@@ -45,6 +48,11 @@ const Upload = () => {
     try {
       const result = await uploadAndProcessFiles(dreFile, balancoFile, user.id);
       
+      // Capturar dados de validação
+      if (result.balanco_validation && result.balanco_validation.length > 0) {
+        setValidationRows(result.balanco_validation);
+      }
+      
        if (result.success) {
          // Se o backend considerou "parsed" mas nada foi persistido, não navegar para /resultado
          // (a página vai redirecionar de volta e a UX fica confusa).
@@ -54,6 +62,10 @@ const Upload = () => {
              description: "Os arquivos foram lidos, porém nenhuma linha contábil foi materializada para salvar. Verifique o formato/exportação e tente novamente.",
              variant: "destructive",
            });
+           // Mostrar validação automaticamente se houver problemas
+           if (result.balanco_validation && result.balanco_validation.length > 0) {
+             setShowValidation(true);
+           }
            return;
          }
 
@@ -74,6 +86,10 @@ const Upload = () => {
            description: result.errors.join('\n'),
            variant: "destructive"
          });
+         // Mostrar validação em caso de erro
+         if (result.balanco_validation && result.balanco_validation.length > 0) {
+           setShowValidation(true);
+         }
        }
     } catch (error) {
       console.error("Error processing files:", error);
@@ -184,6 +200,32 @@ const Upload = () => {
               Formatos aceitos: CSV (separador ;), XLS, XLSX
             </p>
           </div>
+
+          {/* Validation Mode Button */}
+          {validationRows.length > 0 && (
+            <div className="mt-6 flex justify-center">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setShowValidation(!showValidation)}
+                className="gap-2"
+              >
+                <FileSearch className="w-4 h-4" />
+                {showValidation ? "Ocultar" : "Ver"} Validação XLS ({validationRows.length} linhas)
+              </Button>
+            </div>
+          )}
+
+          {/* XLS Validation Mode */}
+          {showValidation && validationRows.length > 0 && (
+            <div className="mt-6">
+              <XLSValidationMode 
+                rows={validationRows}
+                filename={balancoFile?.name || "balanco.xls"}
+                onClose={() => setShowValidation(false)}
+              />
+            </div>
+          )}
 
           {/* Download buttons after processing */}
           {lastResult && (

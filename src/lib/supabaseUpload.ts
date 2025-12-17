@@ -5,6 +5,7 @@ import {
   ParsedDREEntry,
   ParsedBalancoEntry,
   BalancoMetrics,
+  ValidationRow,
 } from "./brazilianParser";
 
 export interface UploadResult {
@@ -15,6 +16,7 @@ export interface UploadResult {
   dre_entries?: ParsedDREEntry[];
   balanco_entries?: ParsedBalancoEntry[];
   balanco_metrics?: BalancoMetrics;
+  balanco_validation?: ValidationRow[];
 }
 
 export async function uploadAndProcessFiles(dreFile: File, balancoFile: File, userId: string): Promise<UploadResult> {
@@ -139,6 +141,7 @@ export async function uploadAndProcessFiles(dreFile: File, balancoFile: File, us
       dre_entries: dreResult.entries,
       balanco_entries: balancoResult.entries,
       balanco_metrics: balancoResult.metrics,
+      balanco_validation: balancoResult.validationRows,
     };
   } catch (error) {
     return {
