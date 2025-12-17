@@ -204,6 +204,19 @@ function parseBIFFStream(stream: Uint8Array, strings: string[]): BIFFCell[] {
       }
     }
 
+    // FORMULA (0x0006) - muitas planilhas guardam totais como fórmulas com resultado numérico
+    else if (recordType === 0x0006 && recordLen >= 20) {
+      const row = data.getUint16(offset + 4, true);
+      const col = data.getUint16(offset + 6, true);
+      const value = data.getFloat64(offset + 10, true);
+
+      // Observação: resultados especiais (string/bool/error) usam um padrão específico; aqui filtramos só números finitos.
+      if (Number.isFinite(value) && row < 100000 && col < 256) {
+        cells.push({ row, col, value, type: "number" });
+        numRecords++;
+      }
+    }
+
     // RK (0x027E)
     else if (recordType === 0x027e && recordLen >= 10) {
       const row = data.getUint16(offset + 4, true);
