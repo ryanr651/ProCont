@@ -28,6 +28,110 @@ function decodeRK(rk: number): number {
   return value;
 }
 
+/**
+ * Parse Brazilian number from string
+ * Handles: 1.234,56 | 1234,56 | 1,234.56 | 1234.56 | with D/C suffix
+ */
+function parseBrazilianNumberFromString(text: string): number | null {
+  if (!text || typeof text !== 'string') return null;
+  
+  let cleaned = text.trim();
+  
+  // Remove quotes and R$
+  cleaned = cleaned.replace(/^[\"']|[\"']$/g, "");
+  cleaned = cleaned.replace(/R\$\s*/gi, "");
+  
+  // Check D/C suffix
+  const hasCredit = /[cC]\s*$/.test(cleaned);
+  cleaned = cleaned.replace(/\s*[dcDC]\s*$/i, "");
+  
+  // Handle parentheses as negative
+  const isNegativeParens = cleaned.includes("(") && cleaned.includes(")");
+  cleaned = cleaned.replace(/[()]/g, "");
+  cleaned = cleaned.replace(/\s/g, "");
+  
+  // Must have digits
+  if (!/\d/.test(cleaned)) return null;
+  
+  // Detect format: Brazilian (1.234,56) vs US (1,234.56)
+  const lastComma = cleaned.lastIndexOf(",");
+  const lastDot = cleaned.lastIndexOf(".");
+  
+  let num: number;
+  
+  if (lastComma > lastDot) {
+    // Brazilian: 1.234,56 -> comma is decimal
+    cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+  } else if (lastDot > lastComma) {
+    // US: 1,234.56 -> dot is decimal
+    cleaned = cleaned.replace(/,/g, "");
+  } else if (lastComma >= 0 && lastDot < 0) {
+    // Only comma: 1234,56 -> comma is decimal
+    cleaned = cleaned.replace(",", ".");
+  }
+  // Only dot or no separator: keep as is
+  
+  num = parseFloat(cleaned);
+  if (isNaN(num)) return null;
+  
+  // Apply sign
+  if (isNegativeParens || hasCredit) {
+    num = -Math.abs(num);
+  }
+  
+  return num;
+}
+
+/**
+ * Check if string looks like an account name (not a number or metadata)
+ */
+function isAccountName(text: string): boolean {
+  if (!text || text.length < 2 || text.length > 100) return false;
+  
+  const t = text.trim();
+  
+  // Skip metadata
+  if (
+    t.includes("Empresa:") ||
+    t.includes("C.N.P.J.") ||
+    t.includes("Período:") ||
+    t.includes("Folha:") ||
+    t.includes("DEMONSTRAÇÃO") ||
+    t.includes("BALANÇO") ||
+    t.includes("________") ||
+    t.includes("CPF:") ||
+    t.includes("CRC") ||
+    t.includes("GERENTE") ||
+    t.includes("Sistema licenciado") ||
+    t.includes("CNPJ") ||
+    t.includes("Número livro") ||
+    /^\d{2}\.\d{3}\.\d{3}/.test(t) ||
+    /^[\d.,\s]+$/.test(t) ||
+    t === "[object Object]"
+  ) {
+    return false;
+  }
+  
+  // Must have letters
+  return /[a-zA-ZÀ-ú]/.test(t);
+}
+
+/**
+ * Check if string looks like a Brazilian formatted number
+ */
+function looksLikeNumber(text: string): boolean {
+  if (!text) return false;
+  const t = text.trim();
+  
+  // Must have digits
+  if (!/\d/.test(t)) return false;
+  
+  // Brazilian number patterns
+  // 1.234,56 | 1234,56 | 1,234.56 | 1234.56 | 123 | with optional D/C suffix
+  const pattern = /^[R$\s]*[(]?[\d.,]+[)]?\s*[dcDC]?\s*$/;
+  return pattern.test(t);
+}
+
 function parseBIFFStream(stream: Uint8Array, strings: string[]): BIFFCell[] {
   const data = new DataView(stream.buffer, stream.byteOffset, stream.byteLength);
   const cells: BIFFCell[] = [];
@@ -111,97 +215,12 @@ function parseBIFFStream(stream: Uint8Array, strings: string[]): BIFFCell[] {
 }
 
 /**
- * Scan for IEEE 754 doubles that look like accounting values
- * Returns pairs of (offset, value) sorted by offset
- */
-function scanForAccountingDoubles(buffer: ArrayBuffer): Array<{ offset: number; value: number }> {
-  const data = new DataView(buffer);
-  const len = buffer.byteLength;
-  const found: Array<{ offset: number; value: number }> = [];
-
-  for (let i = 0; i < len - 8; i++) {
-    try {
-      const value = data.getFloat64(i, true);
-      if (value !== 0 && Number.isFinite(value) && !Number.isNaN(value)) {
-        const absVal = Math.abs(value);
-        // Accounting range: 0.01 to 1 billion
-        if (absVal >= 0.01 && absVal <= 1000000000) {
-          // Must be "clean" - max 2 decimals
-          const rounded = Math.round(value * 100) / 100;
-          if (Math.abs(value - rounded) < 0.0001) {
-            // Skip powers of 2 (likely memory addresses)
-            const log2 = Math.log2(absVal);
-            if (absVal > 1000 && log2 > 10 && Math.abs(log2 - Math.round(log2)) < 0.001) {
-              continue;
-            }
-            found.push({ offset: i, value: rounded });
-          }
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  // Remove duplicates and sort by offset
-  const seen = new Set<string>();
-  const unique: Array<{ offset: number; value: number }> = [];
-  
-  for (const f of found) {
-    const key = `${Math.floor(f.offset / 8)}_${f.value.toFixed(2)}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      unique.push(f);
-    }
-  }
-
-  unique.sort((a, b) => a.offset - b.offset);
-  
-  // Further dedupe by removing values within 8 bytes of each other
-  const final: Array<{ offset: number; value: number }> = [];
-  for (const item of unique) {
-    const lastOffset = final.length > 0 ? final[final.length - 1].offset : -100;
-    if (item.offset - lastOffset >= 8) {
-      final.push(item);
-    }
-  }
-
-  return final;
-}
-
-/**
- * Check if string is a valid account name (not metadata)
- */
-function isAccountName(text: string): boolean {
-  if (!text || text.length < 2 || text.length > 80) return false;
-  
-  // Skip headers/metadata
-  if (
-    text.includes("Empresa:") ||
-    text.includes("C.N.P.J.") ||
-    text.includes("Período:") ||
-    text.includes("Folha:") ||
-    text.includes("DEMONSTRAÇÃO") ||
-    text.includes("BALANÇO") ||
-    text.includes("________") ||
-    text.includes("CPF:") ||
-    text.includes("CRC") ||
-    text.includes("GERENTE") ||
-    text.includes("Sistema licenciado") ||
-    text.includes("CNPJ") ||
-    text.includes("Número livro") ||
-    /^\d{2}\.\d{3}\.\d{3}/.test(text) ||
-    /^\d+$/.test(text) ||
-    /^[\d.,\s]+$/.test(text) // Pure numbers
-  ) {
-    return false;
-  }
-  
-  return true;
-}
-
-/**
  * Extract cells from legacy XLS (BIFF8).
+ * 
+ * Strategy:
+ * 1. Try BIFF record parsing first
+ * 2. If no numbers found, analyze strings for account names and embedded numbers
+ * 3. Build rows with text in col 0, numbers in cols 1+
  */
 export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): BIFFCell[] {
   debugLog(`Parsing XLS: ${buffer.byteLength} bytes, ${strings.length} strings`);
@@ -256,53 +275,73 @@ export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): 
   const stringCells = cells.filter((c) => c.type === "string").length;
   debugLog(`BIFF result: ${numericCells} numbers, ${stringCells} strings`);
 
-  // FALLBACK: Use IEEE scan + string analysis
-  if (numericCells === 0 && strings.length > 0) {
-    debugLog("No BIFF numbers found, using IEEE scan + string analysis...");
-    
-    // 1. Extract account names from strings (in order)
-    const accountNames: string[] = [];
-    for (const str of strings) {
-      const text = String(str || "").trim();
-      if (isAccountName(text)) {
-        accountNames.push(text);
-      }
-    }
-    
-    debugLog(`Account names: ${accountNames.length}`);
-    debugLog(`First 10 names: ${accountNames.slice(0, 10).join(" | ")}`);
-
-    // 2. Extract numbers via IEEE scan
-    const numbersWithOffsets = scanForAccountingDoubles(buffer);
-    const numbers = numbersWithOffsets.map(n => n.value);
-    
-    debugLog(`Numbers found: ${numbers.length}`);
-    debugLog(`First 20 numbers: ${numbers.slice(0, 20).join(", ")}`);
-
-    // 3. Build cells - pair account names with numbers
-    // Each row: account name + current value + previous value
-    cells = [];
-    let numIdx = 0;
-    
-    for (let rowIdx = 0; rowIdx < accountNames.length; rowIdx++) {
-      const name = accountNames[rowIdx];
-      
-      // Add account name cell
-      cells.push({ row: rowIdx, col: 0, value: name, type: "string" });
-      
-      // Add value cell(s) - 2 values per row (current + previous)
-      if (numIdx < numbers.length) {
-        cells.push({ row: rowIdx, col: 1, value: numbers[numIdx], type: "number" });
-        numIdx++;
-      }
-      if (numIdx < numbers.length) {
-        cells.push({ row: rowIdx, col: 2, value: numbers[numIdx], type: "number" });
-        numIdx++;
-      }
-    }
-
-    debugLog(`Cells created: ${cells.length} (${cells.filter(c => c.type === "number").length} numeric)`);
+  // If we have BIFF records with numbers, return them
+  if (numericCells > 0) {
+    return cells;
   }
 
-  return cells;
+  // FALLBACK: Analyze strings for account names and numbers
+  // The strings array from xlsx contains all text from the SST
+  // Some strings might be account names, others might be formatted numbers
+  debugLog("No BIFF numbers found, analyzing strings for account names and values...");
+  
+  const accountNames: string[] = [];
+  const numberStrings: { value: number; raw: string }[] = [];
+  
+  for (const str of strings) {
+    const text = String(str || "").trim();
+    if (!text) continue;
+    
+    if (isAccountName(text)) {
+      accountNames.push(text);
+    } else if (looksLikeNumber(text)) {
+      const num = parseBrazilianNumberFromString(text);
+      if (num !== null && Math.abs(num) >= 0.01 && Math.abs(num) <= 1e12) {
+        numberStrings.push({ value: num, raw: text });
+      }
+    }
+  }
+  
+  debugLog(`Account names found: ${accountNames.length}`);
+  debugLog(`Number strings found: ${numberStrings.length}`);
+  
+  if (accountNames.length === 0) {
+    debugLog("No account names found in strings");
+    return cells;
+  }
+  
+  // Build cells: each account name gets a row
+  // Numbers are assigned to rows based on ratio (2 numbers per row typically: current + previous)
+  const newCells: BIFFCell[] = [];
+  const numPerRow = numberStrings.length > 0 ? Math.ceil(numberStrings.length / accountNames.length) : 0;
+  
+  debugLog(`Building ${accountNames.length} rows with ~${numPerRow} numbers each`);
+  debugLog(`First 10 account names: ${accountNames.slice(0, 10).join(" | ")}`);
+  
+  if (numberStrings.length > 0) {
+    debugLog(`First 10 number strings: ${numberStrings.slice(0, 10).map(n => `${n.raw}=${n.value}`).join(" | ")}`);
+  }
+  
+  let numIdx = 0;
+  for (let rowIdx = 0; rowIdx < accountNames.length; rowIdx++) {
+    const name = accountNames[rowIdx];
+    
+    // Add account name in column 0
+    newCells.push({ row: rowIdx, col: 0, value: name, type: "string" });
+    
+    // Add numbers in columns 1, 2, etc.
+    for (let c = 0; c < numPerRow && numIdx < numberStrings.length; c++) {
+      newCells.push({ 
+        row: rowIdx, 
+        col: c + 1, 
+        value: numberStrings[numIdx].value, 
+        type: "number" 
+      });
+      numIdx++;
+    }
+  }
+  
+  debugLog(`Cells created from strings: ${newCells.length} (${newCells.filter(c => c.type === "number").length} numeric)`);
+  
+  return newCells;
 }
