@@ -354,7 +354,9 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
       binaryString += String.fromCharCode(uint8Array[i]);
     }
 
+    // Configurações agressivas para leitura
     const readConfigs: XLSX.ParsingOptions[] = [
+      { type: "binary", cellFormula: false, cellNF: true, cellText: true, raw: true, sheetStubs: true },
       { type: "binary", WTF: true, sheetStubs: true, cellStyles: true, bookVBA: true, bookFiles: true },
       { type: "binary", sheetStubs: true, dense: true },
       { type: "binary", raw: true, sheetStubs: true },
@@ -406,6 +408,20 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
       } catch (e) {
         debugLog("Tentativa falhou");
       }
+    }
+
+    // Se encontramos sheet, tentar extrair célula por célula primeiro
+    if (sheet) {
+      debugLog("Tentando extração célula por célula...");
+      const cellRows = extractCellByCell(sheet);
+      const totalNumeric = cellRows.reduce((acc, r) => acc + (r.numericValues?.length || 0), 0);
+      
+      if (cellRows.length > 0 && totalNumeric > 0) {
+        debugLog(`Extração célula por célula SUCCESS: ${cellRows.length} rows, ${totalNumeric} números`);
+        return cellRows;
+      }
+      
+      debugLog("Extração célula por célula falhou, tentando sheet_to_json...");
     }
 
     if (!sheet && workbook) {
@@ -481,57 +497,78 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
       return rowsFromSheet;
     }
 
-    // Cell-by-cell fallback
-    const sheetRef = sheet["!ref"];
-    if (!sheetRef) return [];
-
-    const range = XLSX.utils.decode_range(sheetRef);
-    const rows: XLSRow[] = [];
-
-    for (let rowIdx = range.s.r; rowIdx <= range.e.r; rowIdx++) {
-      const cells: string[] = [];
-      let firstText = { text: "", index: -1 };
-      const numericValues: { value: number; raw: string }[] = [];
-
-      for (let colIdx = range.s.c; colIdx <= range.e.c; colIdx++) {
-        const addr = XLSX.utils.encode_cell({ r: rowIdx, c: colIdx });
-        const cell = sheet[addr];
-        
-        let cellValue = "";
-        let numericValue: number | null = null;
-
-        if (cell) {
-          if (typeof cell.v === "number") {
-            numericValue = cell.v;
-            cellValue = String(cell.v);
-          } else if (cell.v !== undefined && cell.v !== null) {
-            cellValue = String(cell.v).trim();
-          }
-        }
-
-        cells.push(cellValue);
-
-        if (firstText.index === -1 && isTextCell(cellValue)) {
-          firstText = { text: cellValue.trim(), index: colIdx };
-        }
-
-        if (numericValue !== null) {
-          numericValues.push({ value: numericValue, raw: cellValue });
-        } else if (cellValue && isNumericCell(cellValue)) {
-          numericValues.push({ value: parseSimpleBrazilianNumber(cellValue), raw: cellValue });
-        }
-      }
-
-      if (cells.some(c => c.trim() !== "") || numericValues.length > 0) {
-        rows.push({ cells, firstTextCell: firstText, numericValues });
-      }
-    }
-
-    return rows;
+    // Cell-by-cell fallback final
+    return extractCellByCell(sheet);
   } catch (error) {
     debugLog("ERRO ao processar XLS:", error);
     return [];
   }
+}
+
+/**
+ * Extrai dados célula por célula da sheet, incluindo valores formatados
+ */
+function extractCellByCell(sheet: XLSX.WorkSheet): XLSRow[] {
+  const sheetRef = sheet["!ref"];
+  if (!sheetRef) return [];
+
+  const range = XLSX.utils.decode_range(sheetRef);
+  const rows: XLSRow[] = [];
+  
+  debugLog(`Cell-by-cell range: R${range.s.r}-${range.e.r}, C${range.s.c}-${range.e.c}`);
+
+  for (let rowIdx = range.s.r; rowIdx <= range.e.r; rowIdx++) {
+    const cells: string[] = [];
+    let firstText = { text: "", index: -1 };
+    const numericValues: { value: number; raw: string }[] = [];
+
+    for (let colIdx = range.s.c; colIdx <= range.e.c; colIdx++) {
+      const addr = XLSX.utils.encode_cell({ r: rowIdx, c: colIdx });
+      const cell = sheet[addr];
+      
+      let cellValue = "";
+      let numericValue: number | null = null;
+
+      if (cell) {
+        // Tentar obter valor numérico direto
+        if (typeof cell.v === "number") {
+          numericValue = cell.v;
+          cellValue = String(cell.v);
+        } 
+        // Se tiver valor formatado (w), usar também
+        else if (cell.w !== undefined) {
+          cellValue = String(cell.w).trim();
+          // Tentar parsear como número
+          if (isNumericCell(cellValue)) {
+            numericValue = parseSimpleBrazilianNumber(cellValue);
+          }
+        }
+        // Fallback para valor raw
+        else if (cell.v !== undefined && cell.v !== null) {
+          cellValue = String(cell.v).trim();
+          if (isNumericCell(cellValue)) {
+            numericValue = parseSimpleBrazilianNumber(cellValue);
+          }
+        }
+      }
+
+      cells.push(cellValue);
+
+      if (firstText.index === -1 && isTextCell(cellValue)) {
+        firstText = { text: cellValue.trim(), index: colIdx };
+      }
+
+      if (numericValue !== null && Number.isFinite(numericValue) && numericValue !== 0) {
+        numericValues.push({ value: numericValue, raw: cellValue });
+      }
+    }
+
+    if (cells.some(c => c.trim() !== "") || numericValues.length > 0) {
+      rows.push({ cells, firstTextCell: firstText, numericValues });
+    }
+  }
+
+  return rows;
 }
 
 function reconstructRowsFromStrings(strings: string[]): XLSRow[] {

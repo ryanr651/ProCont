@@ -117,59 +117,13 @@ function isAccountName(text: string): boolean {
 }
 
 /**
- * Scan binary data for IEEE 754 doubles that look like accounting values
- * Returns values in ORDER OF OFFSET (preserves position in file)
+ * Check if a string looks like a numeric value (Brazilian format)
  */
-function scanForAccountingDoubles(data: Uint8Array): { value: number; offset: number }[] {
-  const found: Map<string, { value: number; offset: number }> = new Map();
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  
-  // Scan every 4 bytes (most values align at 4 bytes)
-  for (let i = 0; i + 8 <= data.byteLength; i += 4) {
-    try {
-      const val = view.getFloat64(i, true); // Little endian
-      
-      // Filter for reasonable accounting values
-      if (!Number.isFinite(val)) continue;
-      
-      const absVal = Math.abs(val);
-      
-      // Skip very small values (not accounting amounts)
-      if (absVal < 0.01) continue;
-      
-      // Skip unreasonably large values
-      if (absVal > 1e12) continue;
-      
-      // Skip powers of 2 (likely garbage/metadata)
-      const log2 = Math.log2(absVal);
-      if (Number.isInteger(log2) && absVal >= 256) continue;
-      
-      // Skip values that are exact large powers (likely garbage)
-      if (absVal >= 1e6 && absVal === Math.round(absVal) && String(absVal).match(/^[1-9]0{6,}$/)) continue;
-      
-      // Skip if exponent byte pattern looks like text (0x40-0x5A = @-Z)
-      const expByte = data[i + 7];
-      if (expByte >= 0x40 && expByte <= 0x5A) continue;
-      
-      // Round to 2 decimal places for deduplication
-      const rounded = Math.round(val * 100) / 100;
-      const key = rounded.toFixed(2);
-      
-      // Keep first occurrence (by offset)
-      if (!found.has(key)) {
-        found.set(key, { value: rounded, offset: i });
-      }
-      
-    } catch {
-      continue;
-    }
-  }
-  
-  // Return sorted by OFFSET (preserves file order)
-  const values = Array.from(found.values());
-  values.sort((a, b) => a.offset - b.offset);
-  
-  return values;
+function isNumericString(text: string): boolean {
+  if (!text) return false;
+  const cleaned = text.trim().replace(/^[\"']|[\"']$/g, "").replace(/R\$\s*/gi, "");
+  // Brazilian number: 1.234,56 or (1.234,56) or 1234,56 D/C
+  return /^[\d.,()R$\s-]+[dcDC]?$/.test(cleaned) && /\d/.test(cleaned);
 }
 
 function parseBIFFStream(stream: Uint8Array, strings: string[]): BIFFCell[] {
@@ -182,6 +136,7 @@ function parseBIFFStream(stream: Uint8Array, strings: string[]): BIFFCell[] {
   let labelRecords = 0;
   let rkRecords = 0;
   let mulrkRecords = 0;
+  let formulaRecords = 0;
 
   while (offset + 4 <= len) {
     const recordType = data.getUint16(offset, true);
@@ -204,16 +159,14 @@ function parseBIFFStream(stream: Uint8Array, strings: string[]): BIFFCell[] {
       }
     }
 
-    // FORMULA (0x0006) - muitas planilhas guardam totais como fórmulas com resultado numérico
+    // FORMULA (0x0006)
     else if (recordType === 0x0006 && recordLen >= 20) {
       const row = data.getUint16(offset + 4, true);
       const col = data.getUint16(offset + 6, true);
       const value = data.getFloat64(offset + 10, true);
-
-      // Observação: resultados especiais (string/bool/error) usam um padrão específico; aqui filtramos só números finitos.
       if (Number.isFinite(value) && row < 100000 && col < 256) {
         cells.push({ row, col, value, type: "number" });
-        numRecords++;
+        formulaRecords++;
       }
     }
 
@@ -263,17 +216,37 @@ function parseBIFFStream(stream: Uint8Array, strings: string[]): BIFFCell[] {
     offset = next;
   }
 
-  debugLog(`Records: NUMBER=${numRecords}, RK=${rkRecords}, MULRK=${mulrkRecords}, LABELSST=${labelRecords}`);
+  debugLog(`Records: NUMBER=${numRecords}, FORMULA=${formulaRecords}, RK=${rkRecords}, MULRK=${mulrkRecords}, LABELSST=${labelRecords}`);
   return cells;
+}
+
+/**
+ * Try to extract numbers from SST strings that look like formatted numbers
+ */
+function extractNumbersFromStrings(strings: string[]): Map<string, number> {
+  const numberMap = new Map<string, number>();
+  
+  for (const str of strings) {
+    const text = String(str || "").trim();
+    if (isNumericString(text)) {
+      const num = parseBrazilianNumberFromString(text);
+      if (num !== null) {
+        numberMap.set(text, num);
+      }
+    }
+  }
+  
+  debugLog(`Numbers found in SST strings: ${numberMap.size}`);
+  return numberMap;
 }
 
 /**
  * Extract cells from legacy XLS (BIFF8).
  * 
  * Strategy:
- * 1. Try BIFF record parsing first
- * 2. If no numbers found, analyze strings for account names and embedded numbers
- * 3. Build rows with text in col 0, numbers in cols 1+
+ * 1. Try BIFF record parsing first (preserves row/col positions)
+ * 2. If no numbers found, check if numbers are stored as formatted strings in SST
+ * 3. Build rows preserving the original structure
  */
 export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): BIFFCell[] {
   debugLog(`Parsing XLS: ${buffer.byteLength} bytes, ${strings.length} strings`);
@@ -333,61 +306,104 @@ export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): 
     return cells;
   }
 
-  // FALLBACK: Use IEEE double scanner since numbers are in binary format
-  debugLog("No BIFF numbers found, using IEEE double scanner...");
+  // STRATEGY 2: Check if numbers are in SST as formatted strings
+  debugLog("No BIFF numbers found, checking SST for formatted number strings...");
   
-  // Extract account names from SST
-  const accountNames: string[] = [];
-  for (const str of strings) {
-    const text = String(str || "").trim();
-    if (text && isAccountName(text)) {
-      accountNames.push(text);
+  const numberStringsMap = extractNumbersFromStrings(strings);
+  
+  if (numberStringsMap.size > 0) {
+    debugLog(`Found ${numberStringsMap.size} formatted numbers in SST`);
+    
+    // Now we need to find the row/col positions of these strings
+    // We'll use the LABELSST records we already parsed
+    const stringCellsList = cells.filter(c => c.type === "string");
+    
+    for (const cell of stringCellsList) {
+      const text = String(cell.value).trim();
+      if (numberStringsMap.has(text)) {
+        const numValue = numberStringsMap.get(text)!;
+        // Add a numeric cell at same position (different column would be better, but we use col+1)
+        cells.push({
+          row: cell.row,
+          col: cell.col,
+          value: numValue,
+          type: "number"
+        });
+      }
+    }
+    
+    const newNumericCount = cells.filter(c => c.type === "number").length;
+    debugLog(`After SST number extraction: ${newNumericCount} numeric cells`);
+    
+    if (newNumericCount > 0) {
+      return cells;
     }
   }
   
-  debugLog(`Account names found: ${accountNames.length}`);
-  debugLog(`First 10 account names: ${accountNames.slice(0, 10).join(" | ")}`);
+  // STRATEGY 3: Build rows from account names and try to find their values
+  // This is the last resort - we scan strings sequentially
+  debugLog("Building rows from sequential SST analysis...");
+  
+  const accountNames: string[] = [];
+  const numericStrings: { value: number; index: number }[] = [];
+  
+  for (let i = 0; i < strings.length; i++) {
+    const text = String(strings[i] || "").trim();
+    if (!text) continue;
+    
+    if (isAccountName(text)) {
+      accountNames.push(text);
+    } else if (isNumericString(text)) {
+      const num = parseBrazilianNumberFromString(text);
+      if (num !== null) {
+        numericStrings.push({ value: num, index: i });
+      }
+    }
+  }
+  
+  debugLog(`Account names: ${accountNames.length}, Numeric strings: ${numericStrings.length}`);
   
   if (accountNames.length === 0) {
-    debugLog("No account names found in strings");
+    debugLog("No account names found");
     return cells;
   }
   
-  // Scan for IEEE doubles in the binary (sorted by file offset to preserve order)
-  const doublesWithOffset = scanForAccountingDoubles(uint8);
-  debugLog(`IEEE doubles found: ${doublesWithOffset.length}`);
-  
-  if (doublesWithOffset.length > 0) {
-    debugLog(`Sample doubles (by offset): ${doublesWithOffset.slice(0, 20).map(d => d.value.toFixed(2)).join(", ")}`);
-  }
-  
-  // Build cells: account names in col 0, numbers distributed per row
-  // Typical Brazilian reports have 1-2 value columns per row
+  // Build cells with sequential assignment
+  // In PROCONT files, numbers usually follow their account name in SST order
   const newCells: BIFFCell[] = [];
-  const numPerRow = doublesWithOffset.length > 0 ? Math.max(1, Math.round(doublesWithOffset.length / accountNames.length)) : 0;
-  
-  debugLog(`Building ${accountNames.length} rows with ~${numPerRow} numbers each`);
-  
   let numIdx = 0;
+  
   for (let rowIdx = 0; rowIdx < accountNames.length; rowIdx++) {
     const name = accountNames[rowIdx];
     
     // Add account name in column 0
     newCells.push({ row: rowIdx, col: 0, value: name, type: "string" });
     
-    // Add numbers in columns 1, 2, etc.
-    for (let c = 0; c < numPerRow && numIdx < doublesWithOffset.length; c++) {
+    // Try to find the next numeric value that should belong to this row
+    // Simple heuristic: take the next available number
+    if (numIdx < numericStrings.length) {
       newCells.push({ 
         row: rowIdx, 
-        col: c + 1, 
-        value: doublesWithOffset[numIdx].value, 
+        col: 1, 
+        value: numericStrings[numIdx].value, 
         type: "number" 
       });
       numIdx++;
+      
+      // Check if there's a second value (valor_anterior)
+      if (numIdx < numericStrings.length) {
+        newCells.push({ 
+          row: rowIdx, 
+          col: 2, 
+          value: numericStrings[numIdx].value, 
+          type: "number" 
+        });
+        numIdx++;
+      }
     }
   }
   
-  debugLog(`Cells created: ${newCells.length} (${newCells.filter(c => c.type === "number").length} numeric)`);
+  debugLog(`Cells created from SST: ${newCells.length} (${newCells.filter(c => c.type === "number").length} numeric)`);
   
   return newCells;
 }
