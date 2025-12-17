@@ -448,6 +448,13 @@ export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): 
         /^DEMONSTRA[CÇ]/i,
         /^BALAN[CÇ]O/i,
         /^RESULTADO/i,
+        /COMERCIO/i, // Nome de empresa
+        /LTDA/i,     // Nome de empresa
+        /EIRELI/i,   // Nome de empresa
+        /^Empresa:/i,
+        /^Descri[çc][aã]o$/i,
+        /^Saldo/i,
+        /^Conta$/i,
       ];
       
       for (let i = 0; i < accountNames.length; i++) {
