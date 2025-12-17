@@ -266,7 +266,192 @@ async function parseCSVFile(file: File): Promise<string[][]> {
   });
 }
 
+// ============= BIFF8 MANUAL PARSER =============
+
+interface BIFFCell {
+  row: number;
+  col: number;
+  value: number | string;
+  type: "number" | "string";
+}
+
+/**
+ * Manually parse BIFF8 (Excel 97-2003) file to extract cell data
+ * This is a fallback when xlsx library fails to read the Sheets properly
+ */
+function parseBIFF8Manual(buffer: ArrayBuffer, strings: string[]): BIFFCell[] {
+  const data = new DataView(buffer);
+  const cells: BIFFCell[] = [];
+  const len = buffer.byteLength;
+  
+  debugLog("BIFF8 Manual Parser: buffer size = " + len + ", strings = " + strings.length);
+  
+  // Find numbers in buffer by scanning for IEEE 754 doubles
+  const doubles: { offset: number; value: number }[] = [];
+  
+  for (let i = 0; i < len - 8; i++) {
+    try {
+      const value = data.getFloat64(i, true); // Little endian
+      
+      // Filter for reasonable accounting values
+      if (value !== 0 && isFinite(value) && !isNaN(value)) {
+        const absVal = Math.abs(value);
+        // Accept values between 0.01 and 100 billion (typical accounting range)
+        if (absVal >= 0.01 && absVal <= 100000000000) {
+          // Numbers from accounting usually have at most 2 decimal places
+          const rounded = Math.round(value * 100) / 100;
+          if (Math.abs(value - rounded) < 0.001) {
+            doubles.push({ offset: i, value: rounded });
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+  
+  debugLog("BIFF8: Found " + doubles.length + " candidate doubles");
+  
+  // Deduplicate (same value within 8 bytes = same cell)
+  const uniqueDoubles: number[] = [];
+  for (const d of doubles) {
+    const isDupe = uniqueDoubles.length > 0 && 
+      doubles.some(other => 
+        Math.abs(other.offset - d.offset) < 8 && 
+        Math.abs(other.offset - d.offset) > 0 &&
+        other.value === d.value
+      );
+    if (!isDupe && !uniqueDoubles.includes(d.value)) {
+      uniqueDoubles.push(d.value);
+    }
+  }
+  
+  // Remove duplicates that are very close (within 0.01)
+  const finalDoubles: number[] = [];
+  for (const val of uniqueDoubles) {
+    const hasSimilar = finalDoubles.some(v => Math.abs(v - val) < 0.01);
+    if (!hasSimilar) {
+      finalDoubles.push(val);
+    }
+  }
+  
+  debugLog("BIFF8: " + finalDoubles.length + " unique doubles after dedup");
+  if (finalDoubles.length > 0) {
+    debugLog("BIFF8: First 20 doubles:", finalDoubles.slice(0, 20));
+  }
+  
+  // Get account names from strings (filter out headers)
+  const accountNames: string[] = [];
+  for (const str of strings) {
+    const text = typeof str === 'object' && (str as any).t ? (str as any).t : String(str || "");
+    const trimmed = text.trim();
+    
+    // Skip headers, metadata, signatures
+    if (!trimmed || 
+        trimmed.includes("Empresa:") || 
+        trimmed.includes("C.N.P.J.") || 
+        trimmed.includes("Período:") ||
+        trimmed.includes("Folha:") || 
+        trimmed.includes("CONSOLIDADO") || 
+        trimmed.includes("DEMONSTRAÇÃO") ||
+        trimmed.includes("BALANÇO") || 
+        trimmed.includes("________") || 
+        trimmed.includes("CPF:") ||
+        trimmed.includes("CRC") || 
+        trimmed.includes("GERENTE") ||
+        trimmed.includes("Sistema licenciado") ||
+        trimmed.includes("CNPJ") ||
+        trimmed.includes("Número livro") ||
+        /^\d{2}\.\d{3}\.\d{3}/.test(trimmed) || // CNPJ pattern
+        trimmed.length < 3) {
+      continue;
+    }
+    
+    accountNames.push(trimmed);
+  }
+  
+  debugLog("BIFF8: " + accountNames.length + " account names found");
+  
+  // Build cells: associate text and numeric values
+  // Heuristic: numbers appear in order matching the account names
+  let numIdx = 0;
+  for (let rowIdx = 0; rowIdx < accountNames.length; rowIdx++) {
+    const accountName = accountNames[rowIdx];
+    
+    // Add text cell
+    cells.push({ row: rowIdx, col: 0, value: accountName, type: "string" });
+    
+    // Add up to 2 numeric values per row (current and previous period)
+    // Check if we have numbers available
+    if (numIdx < finalDoubles.length) {
+      cells.push({ row: rowIdx, col: 1, value: finalDoubles[numIdx], type: "number" });
+      numIdx++;
+      
+      // Check for second value (previous period)
+      if (numIdx < finalDoubles.length) {
+        cells.push({ row: rowIdx, col: 2, value: finalDoubles[numIdx], type: "number" });
+        numIdx++;
+      }
+    }
+  }
+  
+  debugLog("BIFF8: Created " + cells.length + " cells");
+  
+  return cells;
+}
+
+/**
+ * Convert BIFF cells to XLSRow format
+ */
+function biffCellsToXLSRows(cells: BIFFCell[]): XLSRow[] {
+  if (cells.length === 0) return [];
+  
+  // Group cells by row
+  const rowMap = new Map<number, BIFFCell[]>();
+  for (const cell of cells) {
+    if (!rowMap.has(cell.row)) {
+      rowMap.set(cell.row, []);
+    }
+    rowMap.get(cell.row)!.push(cell);
+  }
+  
+  const sortedRows = Array.from(rowMap.entries()).sort((a, b) => a[0] - b[0]);
+  const rows: XLSRow[] = [];
+  
+  for (const [, rowCells] of sortedRows) {
+    rowCells.sort((a, b) => a.col - b.col);
+    
+    const xlsRow: XLSRow = {
+      cells: [],
+      firstTextCell: { text: "", index: -1 },
+      numericValues: [],
+    };
+    
+    for (const cell of rowCells) {
+      const cellStr = String(cell.value);
+      xlsRow.cells.push(cellStr);
+      
+      if (cell.type === "string" && xlsRow.firstTextCell.index === -1) {
+        xlsRow.firstTextCell = { text: cellStr, index: cell.col };
+      }
+      
+      if (cell.type === "number" && typeof cell.value === "number") {
+        xlsRow.numericValues.push({ value: cell.value, raw: cellStr });
+      }
+    }
+    
+    if (xlsRow.cells.length > 0 && (xlsRow.firstTextCell.text || xlsRow.numericValues.length > 0)) {
+      rows.push(xlsRow);
+    }
+  }
+  
+  debugLog("BIFF to XLSRow: converted " + rows.length + " rows");
+  
+  return rows;
+}
+
 // ============= XLS/XLSX PARSING =============
+
 
 async function parseXLSFile(file: File): Promise<XLSRow[]> {
   const extension = getFileExtension(file.name);
@@ -336,12 +521,32 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
     }
 
     if (!sheet && workbook) {
-      // Try BIFF8 manual parsing with Strings
+      // Try BIFF8 manual parsing
       const strings = (workbook as any)?.Strings || [];
-      debugLog("Tentando reconstruir a partir de Strings:", strings.length);
+      debugLog("Sheet não acessível, tentando BIFF8 manual parser...");
+      debugLog("Strings disponíveis:", strings.length);
       
-      if (strings.length > 0) {
-        const rows = reconstructRowsFromStrings(strings);
+      // Extract string values
+      const stringValues: string[] = [];
+      for (const str of strings) {
+        const text = typeof str === 'object' && (str as any).t ? (str as any).t : String(str || "");
+        stringValues.push(text);
+      }
+      
+      // Parse BIFF8 manually to extract numbers
+      const biffCells = parseBIFF8Manual(buffer, stringValues);
+      
+      if (biffCells.length > 0) {
+        const biffRows = biffCellsToXLSRows(biffCells);
+        if (biffRows.length > 0) {
+          debugLog("BIFF8 manual parser SUCCESS: " + biffRows.length + " rows");
+          return biffRows;
+        }
+      }
+      
+      // Fallback to strings-only
+      if (stringValues.length > 0) {
+        const rows = reconstructRowsFromStrings(stringValues);
         if (rows.length > 0) {
           return rows;
         }
@@ -420,11 +625,11 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
   }
 }
 
-function reconstructRowsFromStrings(strings: any[]): XLSRow[] {
+function reconstructRowsFromStrings(strings: string[]): XLSRow[] {
   const rows: XLSRow[] = [];
   
   for (const str of strings) {
-    const text = typeof str === 'object' && str.t ? str.t : String(str || "");
+    const text = String(str || "");
     if (!text || text.trim() === "") continue;
     
     const trimmed = text.trim();
