@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { MetricCard } from "@/components/MetricCard";
 import { ProgressBar } from "@/components/ProgressBar";
+import { XLSValidationMode, ValidationRow } from "@/components/XLSValidationMode";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -19,7 +20,8 @@ import {
   Receipt,
   Calculator,
   LogOut,
-  Loader2
+  Loader2,
+  FileSearch
 } from "lucide-react";
 
 interface DREEntry {
@@ -88,6 +90,9 @@ const Resultado = () => {
   const [balancoData, setBalancoData] = useState<CalculatedBalanco | null>(null);
   const [insights, setInsights] = useState<string[]>([]);
   const [diagnosticLines, setDiagnosticLines] = useState<DiagnosticLine[]>([]);
+  const [validationRows, setValidationRows] = useState<ValidationRow[]>([]);
+  const [validationFilename, setValidationFilename] = useState<string>("balanco.xls");
+  const [showValidation, setShowValidation] = useState(false);
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
 
@@ -137,8 +142,22 @@ const Resultado = () => {
       const diagnostic = generateDiagnosticLines(balancoEntries as BalancoEntry[]);
       setDiagnosticLines(diagnostic);
 
+      // Load validation logs from database
+      const { data: validationLogs } = await supabase
+        .from("xls_validation_logs")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("tipo", "balanco")
+        .order("created_at", { ascending: false })
+        .limit(1);
 
-      // Generate insights
+      if (validationLogs && validationLogs.length > 0) {
+        const log = validationLogs[0];
+        // Cast from Json to ValidationRow[]
+        const rows = (log.validation_rows as unknown) as ValidationRow[];
+        setValidationRows(Array.isArray(rows) ? rows : []);
+        setValidationFilename(log.filename || "balanco.xls");
+      }
 
       // Generate insights
       setInsights(generateInsights(dre, balanco));
@@ -758,6 +777,33 @@ const Resultado = () => {
                 </table>
               </div>
             </div>
+          </section>
+        )}
+
+        {/* XLS Validation Mode */}
+        {validationRows.length > 0 && (
+          <section className="mb-12">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="font-display text-2xl font-bold flex items-center gap-3">
+                <FileSearch className="w-6 h-6 text-primary" />
+                Validação XLS
+              </h2>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowValidation(!showValidation)}
+              >
+                <FileSearch className="w-4 h-4 mr-2" />
+                {showValidation ? "Ocultar" : "Ver"} Validação ({validationRows.length} linhas)
+              </Button>
+            </div>
+            {showValidation && (
+              <XLSValidationMode
+                rows={validationRows}
+                filename={validationFilename}
+                onClose={() => setShowValidation(false)}
+              />
+            )}
           </section>
         )}
 
