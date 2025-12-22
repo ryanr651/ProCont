@@ -359,20 +359,29 @@ export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): 
   // Estratégia para arquivos PROCONT: usar IEEE doubles com mapeamento inteligente
   debugLog("No BIFF numbers found - attempting PROCONT-style IEEE mapping");
   
-  // Extract account names from SST in order
-  const accountNames: { name: string; index: number; hasIndent: boolean }[] = [];
+  // Extract account names from SST in order, preserving indentation level
+  const accountNames: { name: string; index: number; indentLevel: number; isLeaf: boolean }[] = [];
   for (let i = 0; i < strings.length; i++) {
     const text = String(strings[i] || "");
     const trimmed = text.trim();
     if (trimmed && isAccountName(trimmed)) {
-      // Detectar indentação (contas com espaços no início são subcontas)
-      const hasIndent = text.startsWith("   ") || text.startsWith("\t");
-      accountNames.push({ name: trimmed, index: i, hasIndent });
+      // Contar nível de indentação (cada 3 espaços = 1 nível)
+      const leadingSpaces = text.length - text.trimStart().length;
+      const indentLevel = Math.floor(leadingSpaces / 3);
+      accountNames.push({ name: trimmed, index: i, indentLevel, isLeaf: false });
     }
   }
   
+  // Marcar contas-folha (não têm subconta depois delas)
+  for (let i = 0; i < accountNames.length; i++) {
+    const current = accountNames[i];
+    const next = accountNames[i + 1];
+    // É folha se: não tem próxima, ou próxima tem indentação igual ou menor
+    current.isLeaf = !next || next.indentLevel <= current.indentLevel;
+  }
+  
   debugLog(`Account names found: ${accountNames.length}`);
-  debugLog(`First 10 account names: ${accountNames.slice(0, 10).map(a => a.name).join(" | ")}`);
+  debugLog(`First 10 account names: ${accountNames.slice(0, 10).map(a => `${a.name}(L${a.indentLevel}${a.isLeaf ? '*' : ''})`).join(" | ")}`);
   
   if (accountNames.length === 0) {
     debugLog("No account names found in strings");
@@ -448,7 +457,7 @@ export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): 
   debugLog(`Cells after SST formatted: ${newCells.length} (${numericCount} numeric)`);
   
   // Se ainda não temos números, tentar IEEE fallback INTELIGENTE
-  // Estratégia: associar IEEE doubles apenas a contas que DEVEM ter valores
+  // Nova estratégia: associar valores às FOLHAS (contas que não têm subcontas)
   if (numericCount === 0) {
     debugLog("Using SMART IEEE fallback for PROCONT-style files");
     
@@ -461,25 +470,45 @@ export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): 
       // Filtrar valores claramente inválidos
       const validDoubles = doublesWithOffset.filter(d => {
         const abs = Math.abs(d.value);
-        if (abs < 10 && abs !== 0) return false; // Flags
+        if (abs < 10 && abs !== 0) return false; // Flags pequenos
         if (abs > 0 && Math.log2(abs) % 1 === 0 && abs > 100) return false; // Potências de 2
         return true;
       });
       
       debugLog(`Valid IEEE doubles after filtering: ${validDoubles.length}`);
       
-      // Como isAccountName já filtrou metadata, todas as contas aqui são válidas
-      // Precisamos apenas associar valores em ordem
+      // ESTRATÉGIA: Priorizar contas-folha para receber valores
+      // Mas também incluir totais importantes (ATIVO, PASSIVO, CIRCULANTE, etc.)
       const accountsWithValues: number[] = [];
       
+      // Primeiro: adicionar contas de nível 0 e 1 que são totais/subtotais importantes
+      const importantPatterns = [
+        /^ATIVO$/i,
+        /^PASSIVO$/i,
+        /^PATRIMONIO\s*LIQUIDO$/i,
+        /^CIRCULANTE$/i,
+        /^NAO\s*CIRCULANTE$/i,
+        /^DISPONIBILIDADES$/i,
+        /^ESTOQUES$/i,
+        /^CREDITOS$/i,
+        /^OBRIGACOES$/i,
+      ];
+      
       for (let i = 0; i < accountNames.length; i++) {
-        accountsWithValues.push(i);
+        const acc = accountNames[i];
+        const normalized = acc.name.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        
+        // Incluir se: é folha OU é um total/subtotal importante
+        const isImportant = importantPatterns.some(p => p.test(normalized));
+        if (acc.isLeaf || isImportant) {
+          accountsWithValues.push(i);
+        }
       }
       
       debugLog(`Accounts expected to have values: ${accountsWithValues.length}`);
       debugLog(`First 15 accounts with values: ${accountsWithValues.slice(0, 15).map(i => accountNames[i].name).join(" | ")}`);
       
-      // Associar IEEE doubles em ordem às contas que devem ter valores
+      // Associar IEEE doubles em ordem às contas selecionadas
       const numToAssign = Math.min(validDoubles.length, accountsWithValues.length);
       debugLog(`Associating ${numToAssign} IEEE doubles to ${accountsWithValues.length} accounts`);
       
