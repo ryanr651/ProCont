@@ -42,20 +42,21 @@ function findFirstBofOffset(stream: Uint8Array): number {
 
 /**
  * Check if string looks like an account name (not a number or metadata)
+ * IMPORTANTE: Esta função NÃO deve excluir nomes de contas válidos como ATIVO, PASSIVO
+ * Ela apenas filtra metadata do documento (cabeçalhos, rodapés, dados da empresa)
  */
 function isAccountName(text: string): boolean {
   if (!text || text.length < 2 || text.length > 100) return false;
   
   const t = text.trim();
+  const upper = t.toUpperCase();
   
-  // Skip metadata
+  // Skip metadata (cabeçalhos, rodapés, dados empresa - NÃO contas contábeis)
   if (
     t.includes("Empresa:") ||
     t.includes("C.N.P.J.") ||
     t.includes("Período:") ||
     t.includes("Folha:") ||
-    t.includes("DEMONSTRAÇÃO") ||
-    t.includes("BALANÇO") ||
     t.includes("________") ||
     t.includes("CPF:") ||
     t.includes("CRC") ||
@@ -63,9 +64,25 @@ function isAccountName(text: string): boolean {
     t.includes("Sistema licenciado") ||
     t.includes("CNPJ") ||
     t.includes("Número livro") ||
-    /^\d{2}\.\d{3}\.\d{3}/.test(t) ||
-    /^[\d.,\s]+$/.test(t) ||
-    t === "[object Object]"
+    /^\d{2}\.\d{3}\.\d{3}/.test(t) || // CNPJ pattern
+    /^[\d.,\s]+$/.test(t) ||           // Pure numbers
+    t === "[object Object]" ||
+    // Cabeçalhos de colunas
+    /^Descri[çc][aã]o$/i.test(t) ||
+    /^Saldo\s*(Atual)?$/i.test(t) ||
+    /^Conta$/i.test(t) ||
+    /^Valor$/i.test(t) ||
+    // Título do documento (não a linha de conta "ATIVO"/"PASSIVO")
+    /^DEMONSTRA[ÇC][AÃ]O/i.test(upper) ||
+    /^BALAN[ÇC]O\s*(PATRIMONIAL|ENCERRADO)/i.test(upper) ||
+    // Nome de empresa
+    /\bLTDA\b/i.test(t) ||
+    /\bEIRELI\b/i.test(t) ||
+    /\bS\/?A\b/i.test(t) || // S.A. ou S/A
+    /\bME\b$/i.test(t) ||   // Microempresa
+    /\bEPP\b$/i.test(t) ||  // Empresa pequeno porte
+    /COM[EÉ]RCIO/i.test(t) ||
+    /REPRESENTA[ÇC][OÕ]ES/i.test(t)
   ) {
     return false;
   }
@@ -451,56 +468,33 @@ export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): 
       
       debugLog(`Valid IEEE doubles after filtering: ${validDoubles.length}`);
       
-      // Identificar contas que DEVEM ter valores (não são apenas títulos de seção)
-      // Regra: contas com indentação ou que não são cabeçalhos puros
+      // Como isAccountName já filtrou metadata, todas as contas aqui são válidas
+      // Precisamos apenas associar valores em ordem
       const accountsWithValues: number[] = [];
       
-      const headerPatterns = [
-        /^ATIVO$/i,
-        /^PASSIVO$/i,
-        /^PATRIMONIO LIQUIDO$/i,
-        /^DEMONSTRA[CÇ]/i,
-        /^BALAN[CÇ]O/i,
-        /^RESULTADO/i,
-        /COMERCIO/i, // Nome de empresa
-        /LTDA/i,     // Nome de empresa
-        /EIRELI/i,   // Nome de empresa
-        /^Empresa:/i,
-        /^Descri[çc][aã]o$/i,
-        /^Saldo/i,
-        /^Conta$/i,
-      ];
-      
       for (let i = 0; i < accountNames.length; i++) {
-        const name = accountNames[i].name.toUpperCase()
-          .normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-        
-        // Se tem indentação, provavelmente tem valor
-        if (accountNames[i].hasIndent) {
-          accountsWithValues.push(i);
-          continue;
-        }
-        
-        // Se é um cabeçalho puro, pular
-        const isHeader = headerPatterns.some(p => p.test(name));
-        if (isHeader) continue;
-        
-        // Outras contas provavelmente têm valores
         accountsWithValues.push(i);
       }
       
       debugLog(`Accounts expected to have values: ${accountsWithValues.length}`);
+      debugLog(`First 15 accounts with values: ${accountsWithValues.slice(0, 15).map(i => accountNames[i].name).join(" | ")}`);
       
       // Associar IEEE doubles em ordem às contas que devem ter valores
       const numToAssign = Math.min(validDoubles.length, accountsWithValues.length);
-      debugLog(`Associating ${numToAssign} IEEE doubles to accounts`);
+      debugLog(`Associating ${numToAssign} IEEE doubles to ${accountsWithValues.length} accounts`);
       
+      // Log detalhado da associação
       for (let i = 0; i < numToAssign; i++) {
         const rowIdx = accountsWithValues[i];
+        const accountName = accountNames[rowIdx].name;
+        const value = validDoubles[i].value;
+        
+        debugLog(`  [${i}] ${accountName} <- ${value.toFixed(2)}`);
+        
         newCells.push({
           row: rowIdx,
           col: 1,
-          value: validDoubles[i].value,
+          value: value,
           type: "number",
         });
       }
