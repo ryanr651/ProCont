@@ -477,15 +477,17 @@ export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): 
       
       debugLog(`Valid IEEE doubles after filtering: ${validDoubles.length}`);
       
-      // ESTRATÉGIA: Priorizar contas-folha para receber valores
-      // Mas também incluir totais importantes (ATIVO, PASSIVO, CIRCULANTE, etc.)
+      // ESTRATÉGIA: Priorizar contas-folha para receber valores.
+      // Subtotais (ex: CIRCULANTE) costumam ter valor, mas cabeçalhos (ATIVO/PASSIVO) geralmente NÃO.
       const accountsWithValues: number[] = [];
-      
-      // Primeiro: adicionar contas de nível 0 e 1 que são totais/subtotais importantes
-      const importantPatterns = [
+
+      const headerPatterns = [
         /^ATIVO$/i,
         /^PASSIVO$/i,
         /^PATRIMONIO\s*LIQUIDO$/i,
+      ];
+
+      const subtotalPatterns = [
         /^CIRCULANTE$/i,
         /^NAO\s*CIRCULANTE$/i,
         /^DISPONIBILIDADES$/i,
@@ -493,14 +495,21 @@ export function parseBIFF8CellsFromXls(buffer: ArrayBuffer, strings: string[]): 
         /^CREDITOS$/i,
         /^OBRIGACOES$/i,
       ];
-      
+
       for (let i = 0; i < accountNames.length; i++) {
         const acc = accountNames[i];
-        const normalized = acc.name.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        
-        // Incluir se: é folha OU é um total/subtotal importante
-        const isImportant = importantPatterns.some(p => p.test(normalized));
-        if (acc.isLeaf || isImportant) {
+        const normalized = acc.name
+          .toUpperCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '');
+
+        const isHeader = headerPatterns.some((p) => p.test(normalized));
+        if (isHeader) continue;
+
+        const isSubtotal = subtotalPatterns.some((p) => p.test(normalized));
+
+        // Incluir se: é folha OU é subtotal (normalmente indentado) que costuma ter valor
+        if (acc.isLeaf || (isSubtotal && acc.indentLevel > 0)) {
           accountsWithValues.push(i);
         }
       }
