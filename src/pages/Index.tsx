@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAuth } from "@/contexts/AuthContext";
 import { ArrowRight, BarChart3, FileSpreadsheet, Sparkles, Zap, LogIn, LogOut } from "lucide-react";
 
@@ -21,6 +22,7 @@ const Index = () => {
       <nav className="relative z-10 container mx-auto px-6 py-6 flex items-center justify-between">
         <Logo />
         <div className="flex items-center gap-4">
+          <ThemeToggle />
           <Link to="/showcase">
             <Button variant="ghost" size="sm">
               Ver Exemplo
