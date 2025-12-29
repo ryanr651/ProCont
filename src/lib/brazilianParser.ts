@@ -896,7 +896,7 @@ if (normalConta === "CIRCULANTE") {
 
     // === DETECÇÃO DE SEÇÃO E CLASSIFICAÇÃO ===
 
- //   if (normalConta === "ATIVO") {
+    if (normalConta === "ATIVO") {
       console.log("=== ATIVO DETECTADO ===");
       console.log("Linha:", i, "| valor:", valor);
       currentSection = "ATIVO";
@@ -908,7 +908,7 @@ if (normalConta === "CIRCULANTE") {
         metrics.ativoTotal = roundTo2Decimals(Math.abs(valor));
         console.log("→ metrics.ativoTotal =", metrics.ativoTotal);
       }
-//    } else if (normalConta === "PASSIVO") {
+    } else if (normalConta === "PASSIVO") {
       console.log("=== PASSIVO DETECTADO ===");
       console.log("Linha:", i, "| valor:", valor);
       console.log("foundAtivoCirculante neste momento:", foundAtivoCirculante);
@@ -921,7 +921,7 @@ if (normalConta === "CIRCULANTE") {
         metrics.passivoTotal = roundTo2Decimals(Math.abs(valor));
         console.log("→ metrics.passivoTotal =", metrics.passivoTotal);
       }
- //   } else if (normalConta === "CIRCULANTE" || normalConta.startsWith("CIRCULANTE")) {
+   } else if (normalConta === "CIRCULANTE" || normalConta.startsWith("CIRCULANTE")) {
       // LOG DETALHADO PARA DEBUG
       debugContabil("CIRCULANTE DETECTADO", {
         rowIndex: i,
@@ -946,7 +946,7 @@ if (normalConta === "CIRCULANTE") {
           metrics.ativoCirculante = roundTo2Decimals(Math.abs(valor));
           console.log("→ metrics.ativoCirculante =", metrics.ativoCirculante);
         }
- //     } else if (currentSection === "PASSIVO" && !foundPassivoCirculante) {
+   } else if (currentSection === "PASSIVO" && !foundPassivoCirculante) {
         // PRIMEIRO CIRCULANTE na seção PASSIVO = PASSIVO_CIRCULANTE
         currentTipo = "PASSIVO_CIRCULANTE";
         tipoEntry = "PASSIVO_CIRCULANTE";
@@ -962,7 +962,7 @@ if (normalConta === "CIRCULANTE") {
         tipoEntry = currentTipo;
         console.log("→ Já encontrou circulante desta seção, herdando tipo:", currentTipo);
       }
-//    } else if (normalConta === "ATIVO CIRCULANTE") {
+    } else if (normalConta === "ATIVO CIRCULANTE") {
       currentTipo = "ATIVO_CIRCULANTE";
       tipoEntry = "ATIVO_CIRCULANTE";
       foundAtivoCirculante = true;
@@ -971,7 +971,7 @@ if (normalConta === "CIRCULANTE") {
         metrics.ativoCirculante = roundTo2Decimals(Math.abs(valor));
         debugLog("ATIVO CIRCULANTE (explícito):", metrics.ativoCirculante);
       }
- //   } else if (normalConta === "PASSIVO CIRCULANTE") {
+    } else if (normalConta === "PASSIVO CIRCULANTE") {
       currentTipo = "PASSIVO_CIRCULANTE";
       tipoEntry = "PASSIVO_CIRCULANTE";
       foundPassivoCirculante = true;
@@ -980,7 +980,7 @@ if (normalConta === "CIRCULANTE") {
         metrics.passivoCirculante = roundTo2Decimals(Math.abs(valor));
         debugLog("PASSIVO CIRCULANTE (explícito):", metrics.passivoCirculante);
       }
- //   } else if (
+    } else if (
       normalConta === "ATIVO NAO CIRCULANTE" ||
       (normalConta === "NAO CIRCULANTE" && currentSection === "ATIVO")
     ) {
@@ -991,7 +991,7 @@ if (normalConta === "CIRCULANTE") {
         metrics.ativoNaoCirculante = roundTo2Decimals(Math.abs(valor));
         debugLog("ATIVO NAO CIRCULANTE (do arquivo):", metrics.ativoNaoCirculante);
       }
- //   } else if (
+    } else if (
       normalConta === "PASSIVO NAO CIRCULANTE" ||
       (normalConta === "NAO CIRCULANTE" && currentSection === "PASSIVO")
     ) {
@@ -1002,7 +1002,7 @@ if (normalConta === "CIRCULANTE") {
         metrics.passivoNaoCirculante = roundTo2Decimals(Math.abs(valor));
         debugLog("PASSIVO NAO CIRCULANTE (do arquivo):", metrics.passivoNaoCirculante);
       }
- //   } else if (normalConta === "PATRIMONIO LIQUIDO" || normalConta.includes("PATRIMONIO LIQUIDO")) {
+    } else if (normalConta === "PATRIMONIO LIQUIDO" || normalConta.includes("PATRIMONIO LIQUIDO")) {
       currentSection = "PL";
       currentTipo = "PATRIMONIO_LIQUIDO";
       tipoEntry = "PATRIMONIO_LIQUIDO";
