@@ -16,7 +16,6 @@ function extrairValorDaLinha(
   if (typeof parsed !== "number" || isNaN(parsed)) {
     return null;
   }
-
   debugContabil("EXTRAÇÃO DE VALOR", {
     context,
     numerosDetectados,
@@ -852,6 +851,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
     // Get numeric values WITHIN THIS ROW ONLY
     // Regra: usar o valor mais à direita (último) como valor do período corrente
     // e o anterior (penúltimo) como valor_anterior.
+
     const numericRight = getNumericValuesRightOfText(row);
     debugContabil("LINHA BALANÇO LIDA", {
       rowIndex: i,
@@ -865,7 +865,6 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         col: v.col,
       })),
     });
-
     // último valor à direita = período atual
     const valorLinha = extrairValorDaLinha(
       numericRight.map((v) => ({ value: v.value, raw: v.raw })),
@@ -1415,14 +1414,6 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
     // >2 números = usar apenas os dois primeiros
     const valor = roundTo2Decimals(numericValues[0]?.value || 0);
     const valorAnterior = numericValues.length > 1 ? roundTo2Decimals(numericValues[1].value) : null;
-    debugContabil("GRAVAÇÃO ENTRY", {
-      rowIndex: i,
-      conta,
-      tipoEntry,
-      secaoFinal: currentSection,
-      valor,
-      valorAnterior,
-    });
 
     entries.push({
       descricao,
@@ -1501,14 +1492,6 @@ function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
     const valor = roundTo2Decimals(parseSimpleBrazilianNumber(numericValues[0]));
     const valorAnterior =
       numericValues.length > 1 ? roundTo2Decimals(parseSimpleBrazilianNumber(numericValues[1])) : null;
-    debugContabil("GRAVAÇÃO ENTRY", {
-      rowIndex: i,
-      conta,
-      tipoEntry,
-      secaoFinal: currentSection,
-      valor,
-      valorAnterior,
-    });
 
     entries.push({
       descricao,
