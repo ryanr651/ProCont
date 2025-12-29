@@ -17,7 +17,6 @@ function extrairValorDaLinha(
     return null;
   }
   debugContabil("EXTRAÇÃO DE VALOR", {
-    context,
     numerosDetectados,
     escolhido: last,
     parsed,
@@ -810,7 +809,6 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
     // e o anterior (penúltimo) como valor_anterior.
     const numericRight = getNumericValuesRightOfText(row);
     debugContabil("EXTRAÇÃO DE VALOR", {
-      context,
       numerosDetectados,
       escolhido: last,
       parsed,
