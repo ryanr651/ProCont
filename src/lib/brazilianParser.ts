@@ -1,6 +1,23 @@
 import * as XLSX from "xlsx";
 import Papa from "papaparse";
 import { BIFFCell, parseBIFF8CellsFromXls } from "./biff8Parser";
+function extrairValorDaLinha(
+  numerosDetectados: { value: number; raw: string }[],
+  context?: BalancoSectionType,
+): number | null {
+  if (!numerosDetectados || numerosDetectados.length === 0) {
+    return null;
+  }
+
+  const raw = numerosDetectados[0].raw;
+  const parsed = parseBrazilianNumber(raw, context);
+
+  if (typeof parsed !== "number" || isNaN(parsed)) {
+    return null;
+  }
+
+  return roundTo2Decimals(parsed);
+}
 
 // ============= DEBUG LOGGING =============
 const DEBUG = true;
@@ -116,7 +133,7 @@ function roundTo2Decimals(value: number): number {
  * - PASSIVO/PL: C = soma (positivo), D = subtrai (negativo)
  */
 export function parseBrazilianNumber(value: string | number | undefined | null, context?: BalancoSectionType): number {
-  if (value === undefined || value === null || value === "") return 0;
+  if (value === undefined || value === null || value === "") return NaN;
   if (typeof value === "number") return value;
 
   let cleaned = value.toString().trim();
@@ -151,7 +168,7 @@ export function parseBrazilianNumber(value: string | number | undefined | null, 
   }
 
   let num = parseFloat(cleaned);
-  if (isNaN(num)) return 0;
+  if (isNaN(num)) return NaN;
 
   // Apply D/C accounting rules based on context
   if (context && (hasDebitSuffix || hasCreditSuffix)) {
@@ -184,7 +201,7 @@ export function parseBrazilianNumber(value: string | number | undefined | null, 
  * Simple number parser without D/C context
  */
 export function parseSimpleBrazilianNumber(value: string | number | undefined | null): number {
-  if (value === undefined || value === null || value === "") return 0;
+  if (value === undefined || value === null || value === "") return NaN;
   if (typeof value === "number") return value;
 
   let cleaned = value.toString().trim();
@@ -203,7 +220,7 @@ export function parseSimpleBrazilianNumber(value: string | number | undefined | 
   }
 
   let num = parseFloat(cleaned);
-  if (isNaN(num)) return 0;
+  if (isNaN(num)) return NaN;
 
   return isNegativeParens ? -Math.abs(num) : num;
 }
@@ -779,32 +796,42 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
     ) {
       continue;
     }
-    // Get numeric values to the RIGHT of the text cell (same row only)
+
+    // Get numeric values WITHIN THIS ROW ONLY
+    // Regra: usar o valor mais à direita (último) como valor do período corrente
+    // e o anterior (penúltimo) como valor_anterior.
     const numericRight = getNumericValuesRightOfText(row);
 
     // último valor à direita = período atual
-    const valor =
-      numericRight.length > 0
-        ? roundTo2Decimals(parseBrazilianNumber(numericRight[numericRight.length - 1].raw, currentSection))
-        : 0;
+    const valorLinha = extrairValorDaLinha(
+      numericRight.map((v) => ({ value: v.value, raw: v.raw })),
+      currentSection,
+    );
 
-    // penúltimo valor à direita = período anterior
     const valorAnterior =
       numericRight.length > 1
         ? roundTo2Decimals(parseBrazilianNumber(numericRight[numericRight.length - 2].raw, currentSection))
         : null;
 
-    // Criar registro de validação ANTES de classificar
+    // Se não existe valor NA LINHA, não inventar
     const validationRow: ValidationRow = {
       rowIndex: i,
       textoConta: conta,
       numerosDetectados: numericRight.map((v) => ({
-        value: roundTo2Decimals(parseBrazilianNumber(v.raw, currentSection)),
+        value: v.value,
         raw: v.raw,
       })),
-
       secaoAtual: currentSection,
     };
+
+    // Se não existe valor NA LINHA, não inventar
+    if (valorLinha === null) {
+      validationRow.alerta = "Sem valor na linha";
+      validationRows.push(validationRow);
+      continue;
+    }
+
+    const valor = valorLinha;
 
     let tipoEntry: BalancoTipoCompleto = currentTipo;
 
@@ -931,10 +958,9 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
     validationRow.secaoAtual = currentSection;
 
     // Detectar alertas
-    const isKeyAccount = ["ATIVO", "PASSIVO", "CIRCULANTE", "NAO CIRCULANTE", "PATRIMONIO LIQUIDO"].some(
-      (k) => normalConta.includes(k) || normalConta === k,
-    );
-    if (isKeyAccount && numericRight.length === 0) {
+    const hasNumeric = numericRight.length > 0;
+
+    if (!hasNumeric && !validationRow.alerta) {
       validationRow.alerta = "Sem valor na linha";
     }
 
@@ -949,7 +975,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         tipo: tipoEntry,
         valor: roundTo2Decimals(Math.abs(valor)),
         valor_anterior: valorAnterior !== null ? roundTo2Decimals(Math.abs(valorAnterior)) : null,
-        hierarchy: `${currentSection}/${currentTipo}/${conta}`,
+        hierarchy: conta,
         raw_row: safeGetCells(row),
       });
 
@@ -1096,7 +1122,7 @@ function parseBalancoFromCSV(rows: string[][], filename: string): BalancoParseRe
         tipo: tipoEntry,
         valor: roundTo2Decimals(Math.abs(valor)),
         valor_anterior: valorAnterior !== null ? roundTo2Decimals(Math.abs(valorAnterior)) : null,
-        hierarchy: `${currentSection}/${currentTipo}/${conta}`,
+        hierarchy: conta,
         raw_row: row.map(String),
       });
     }
