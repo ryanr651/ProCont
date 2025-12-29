@@ -794,47 +794,46 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
     const normalConta = normalizeText(conta);
     // ================== TÍTULOS ESTRUTURAIS (NÃO GERAM ENTRY) ==================
 
-if (normalConta === "ATIVO") {
-  currentSection = "ATIVO";
-  currentTipo = "ATIVO_CIRCULANTE";
-  foundAtivoCirculante = false;
-  continue;
-}
+    if (normalConta === "ATIVO") {
+      currentSection = "ATIVO";
+      currentTipo = "ATIVO_CIRCULANTE";
+      foundAtivoCirculante = false;
+      continue;
+    }
 
-if (normalConta === "PASSIVO") {
-  currentSection = "PASSIVO";
-  currentTipo = "PASSIVO_CIRCULANTE";
-  foundPassivoCirculante = false;
-  continue;
-}
+    if (normalConta === "PASSIVO") {
+      currentSection = "PASSIVO";
+      currentTipo = "PASSIVO_CIRCULANTE";
+      foundPassivoCirculante = false;
+      continue;
+    }
 
-if (normalConta === "PATRIMONIO LIQUIDO") {
-  currentSection = "PL";
-  currentTipo = "PATRIMONIO_LIQUIDO";
-  continue;
-}
+    if (normalConta === "PATRIMONIO LIQUIDO") {
+      currentSection = "PL";
+      currentTipo = "PATRIMONIO_LIQUIDO";
+      continue;
+    }
 
-if (normalConta === "ATIVO NAO CIRCULANTE") {
-  currentSection = "ATIVO";
-  currentTipo = "ATIVO_NAO_CIRCULANTE";
-  continue;
-}
+    if (normalConta === "ATIVO NAO CIRCULANTE") {
+      currentSection = "ATIVO";
+      currentTipo = "ATIVO_NAO_CIRCULANTE";
+      continue;
+    }
 
-if (normalConta === "PASSIVO NAO CIRCULANTE") {
-  currentSection = "PASSIVO";
-  currentTipo = "PASSIVO_NAO_CIRCULANTE";
-  continue;
-}
+    if (normalConta === "PASSIVO NAO CIRCULANTE") {
+      currentSection = "PASSIVO";
+      currentTipo = "PASSIVO_NAO_CIRCULANTE";
+      continue;
+    }
 
-if (normalConta === "CIRCULANTE") {
-  if (currentSection === "ATIVO") {
-    currentTipo = "ATIVO_CIRCULANTE";
-  } else if (currentSection === "PASSIVO") {
-    currentTipo = "PASSIVO_CIRCULANTE";
-  }
-  continue;
-}
-
+    if (normalConta === "CIRCULANTE") {
+      if (currentSection === "ATIVO") {
+        currentTipo = "ATIVO_CIRCULANTE";
+      } else if (currentSection === "PASSIVO") {
+        currentTipo = "PASSIVO_CIRCULANTE";
+      }
+      continue;
+    }
 
     // Skip headers
     if (
@@ -921,7 +920,7 @@ if (normalConta === "CIRCULANTE") {
         metrics.passivoTotal = roundTo2Decimals(Math.abs(valor));
         console.log("→ metrics.passivoTotal =", metrics.passivoTotal);
       }
-   } else if (normalConta === "CIRCULANTE" || normalConta.startsWith("CIRCULANTE")) {
+    } else if (normalConta === "CIRCULANTE" || normalConta.startsWith("CIRCULANTE")) {
       // LOG DETALHADO PARA DEBUG
       debugContabil("CIRCULANTE DETECTADO", {
         rowIndex: i,
@@ -946,7 +945,7 @@ if (normalConta === "CIRCULANTE") {
           metrics.ativoCirculante = roundTo2Decimals(Math.abs(valor));
           console.log("→ metrics.ativoCirculante =", metrics.ativoCirculante);
         }
-   } else if (currentSection === "PASSIVO" && !foundPassivoCirculante) {
+      } else if (currentSection === "PASSIVO" && !foundPassivoCirculante) {
         // PRIMEIRO CIRCULANTE na seção PASSIVO = PASSIVO_CIRCULANTE
         currentTipo = "PASSIVO_CIRCULANTE";
         tipoEntry = "PASSIVO_CIRCULANTE";
@@ -1011,8 +1010,7 @@ if (normalConta === "CIRCULANTE") {
         metrics.patrimonioLiquido = roundTo2Decimals(Math.abs(valor));
         debugLog("PATRIMONIO LIQUIDO (do arquivo):", metrics.patrimonioLiquido);
       }
-    /}
-    else {
+    } else {
       tipoEntry = currentTipo;
     }
 
@@ -1040,32 +1038,32 @@ if (normalConta === "CIRCULANTE") {
         valor,
         valorAnterior,
       });
-// ===== ACUMULAÇÃO CONTÁBIL REAL =====
-switch (tipoEntry) {
-  case "ATIVO_CIRCULANTE":
-    metrics.ativoCirculante += Math.abs(valor);
-    metrics.ativoTotal += Math.abs(valor);
-    break;
+      // ===== ACUMULAÇÃO CONTÁBIL REAL =====
+      switch (tipoEntry) {
+        case "ATIVO_CIRCULANTE":
+          metrics.ativoCirculante += Math.abs(valor);
+          metrics.ativoTotal += Math.abs(valor);
+          break;
 
-  case "ATIVO_NAO_CIRCULANTE":
-    metrics.ativoNaoCirculante += Math.abs(valor);
-    metrics.ativoTotal += Math.abs(valor);
-    break;
+        case "ATIVO_NAO_CIRCULANTE":
+          metrics.ativoNaoCirculante += Math.abs(valor);
+          metrics.ativoTotal += Math.abs(valor);
+          break;
 
-  case "PASSIVO_CIRCULANTE":
-    metrics.passivoCirculante += Math.abs(valor);
-    metrics.passivoTotal += Math.abs(valor);
-    break;
+        case "PASSIVO_CIRCULANTE":
+          metrics.passivoCirculante += Math.abs(valor);
+          metrics.passivoTotal += Math.abs(valor);
+          break;
 
-  case "PASSIVO_NAO_CIRCULANTE":
-    metrics.passivoNaoCirculante += Math.abs(valor);
-    metrics.passivoTotal += Math.abs(valor);
-    break;
+        case "PASSIVO_NAO_CIRCULANTE":
+          metrics.passivoNaoCirculante += Math.abs(valor);
+          metrics.passivoTotal += Math.abs(valor);
+          break;
 
-  case "PATRIMONIO_LIQUIDO":
-    metrics.patrimonioLiquido += Math.abs(valor);
-    break;
-}
+        case "PATRIMONIO_LIQUIDO":
+          metrics.patrimonioLiquido += Math.abs(valor);
+          break;
+      }
 
       entries.push({
         conta,
