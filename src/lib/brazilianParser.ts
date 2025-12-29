@@ -807,9 +807,16 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
     // Regra: usar o valor mais à direita (último) como valor do período corrente
     // e o anterior (penúltimo) como valor_anterior.
     const numericRight = getNumericValuesRightOfText(row);
-    debugContabil("EXTRAÇÃO DE VALOR", {
-      escolhido: last,
-      parsed,
+
+    debugContabil("NUMÉRICOS À DIREITA DO TEXTO", {
+      rowIndex: i,
+      conta,
+      secaoAtual: currentSection,
+      numerosDetectados: numericRight.map((v) => ({
+        col: v.col,
+        raw: v.raw,
+        parsed: parseBrazilianNumber(v.raw, currentSection),
+      })),
     });
     // último valor à direita = período atual
     const valorLinha = extrairValorDaLinha(
