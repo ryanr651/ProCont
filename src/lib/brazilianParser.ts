@@ -16,10 +16,17 @@ function extrairValorDaLinha(
   if (typeof parsed !== "number" || isNaN(parsed)) {
     return null;
   }
-
+  debugContabil("EXTRAÇÃO DE VALOR", {
+    context,
+    numerosDetectados,
+    escolhido: last,
+    parsed,
+  });
   return roundTo2Decimals(parsed);
 }
-
+function debugContabil(label: string, payload: any) {
+  console.log("%c[DEBUG CONTÁBIL]", "color:#0ea5e9;font-weight:bold", label, JSON.stringify(payload, null, 2));
+}
 // ============= DEBUG LOGGING =============
 const DEBUG = true;
 
@@ -802,7 +809,12 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
     // Regra: usar o valor mais à direita (último) como valor do período corrente
     // e o anterior (penúltimo) como valor_anterior.
     const numericRight = getNumericValuesRightOfText(row);
-
+    debugContabil("EXTRAÇÃO DE VALOR", {
+      context,
+      numerosDetectados,
+      escolhido: last,
+      parsed,
+    });
     // último valor à direita = período atual
     const valorLinha = extrairValorDaLinha(
       numericRight.map((v) => ({ value: v.value, raw: v.raw })),
@@ -865,13 +877,16 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
       }
     } else if (normalConta === "CIRCULANTE" || normalConta.startsWith("CIRCULANTE")) {
       // LOG DETALHADO PARA DEBUG
-      console.log("=== DEBUG CIRCULANTE ENCONTRADO ===");
-      console.log("Linha:", i, "| Conta:", conta);
-      console.log("currentSection:", currentSection);
-      console.log("foundAtivoCirculante:", foundAtivoCirculante);
-      console.log("foundPassivoCirculante:", foundPassivoCirculante);
-      console.log("numerosDetectados:", numericRight);
-      console.log("valor:", valor);
+      debugContabil("CIRCULANTE DETECTADO", {
+        rowIndex: i,
+        conta,
+        currentSection,
+        currentTipoAntes: currentTipo,
+        foundAtivoCirculante,
+        foundPassivoCirculante,
+        numeros: numericRight.map((v) => v.raw),
+        valorCalculado: valor,
+      });
 
       // CIRCULANTE genérico - usar currentSection para determinar
       if (currentSection === "ATIVO" && !foundAtivoCirculante) {
@@ -970,6 +985,14 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
     // Criar entry se tiver valor
     if (valor !== 0 || (valorAnterior !== null && valorAnterior !== 0)) {
       const level = textIndex >= 0 ? textIndex : 0;
+      debugContabil("GRAVAÇÃO ENTRY", {
+        rowIndex: i,
+        conta,
+        tipoEntry,
+        secaoFinal: currentSection,
+        valor,
+        valorAnterior,
+      });
 
       entries.push({
         conta,
