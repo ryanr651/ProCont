@@ -792,58 +792,48 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
     if (!conta || conta.length < 2) continue;
 
     const normalConta = normalizeText(conta);
-
     // ================== TÍTULOS ESTRUTURAIS (NÃO GERAM ENTRY) ==================
 
     if (normalConta === "ATIVO") {
       currentSection = "ATIVO";
-      currentTipo = null; // só será definido ao encontrar CIRCULANTE
+      currentTipo = "ATIVO_CIRCULANTE";
       foundAtivoCirculante = false;
       continue;
     }
 
     if (normalConta === "PASSIVO") {
       currentSection = "PASSIVO";
-      currentTipo = null;
+      currentTipo = "PASSIVO_CIRCULANTE";
       foundPassivoCirculante = false;
+      continue;
+    }
+
+    if (normalConta === "PATRIMONIO LIQUIDO") {
+      currentSection = "PL";
+      currentTipo = "PATRIMONIO_LIQUIDO";
+      continue;
+    }
+
+    if (normalConta === "ATIVO NAO CIRCULANTE") {
+      currentSection = "ATIVO";
+      currentTipo = "ATIVO_NAO_CIRCULANTE";
+      continue;
+    }
+
+    if (normalConta === "PASSIVO NAO CIRCULANTE") {
+      currentSection = "PASSIVO";
+      currentTipo = "PASSIVO_NAO_CIRCULANTE";
       continue;
     }
 
     if (normalConta === "CIRCULANTE") {
       if (currentSection === "ATIVO") {
         currentTipo = "ATIVO_CIRCULANTE";
-        foundAtivoCirculante = true;
       } else if (currentSection === "PASSIVO") {
         currentTipo = "PASSIVO_CIRCULANTE";
-        foundPassivoCirculante = true;
       }
       continue;
     }
-
-    if (normalConta.includes("NAO CIRCULANTE")) {
-      if (currentSection === "ATIVO") {
-        currentTipo = "ATIVO_NAO_CIRCULANTE";
-      } else if (currentSection === "PASSIVO") {
-        currentTipo = "PASSIVO_NAO_CIRCULANTE";
-      }
-      continue;
-    }
-
-    if (normalConta.includes("NAO CIRCULANTE")) {
-      if (currentSection === "ATIVO") {
-        currentTipo = "ATIVO_NAO_CIRCULANTE";
-      } else if (currentSection === "PASSIVO") {
-        currentTipo = "PASSIVO_NAO_CIRCULANTE";
-      }
-      continue;
-    }
-    console.log({
-      linha,
-      conta,
-      currentSection,
-      currentTipo,
-      valor,
-    });
 
     // Skip headers
     if (
@@ -858,10 +848,13 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
     // Get numeric values WITHIN THIS ROW ONLY
     // Regra: usar o valor mais à direita (último) como valor do período corrente
     // e o anterior (penúltimo) como valor_anterior.
-    const valorLinha = extrairValorDaLinha(
-      numericRight.map((v) => ({ value: v.value, raw: v.raw })),
-      currentSection,
-    );
+    const numericRight = row
+      .slice(1)
+      .map((v) => parseBrazilianNumber(v))
+      .filter((v) => v !== null)
+      .map((v) => ({
+        value: Math.round(v * 100) / 100,
+      }));
 
     debugContabil("NUMÉRICOS À DIREITA DO TEXTO", {
       rowIndex: i,
@@ -874,17 +867,10 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
       })),
     });
     // último valor à direita = período atual
-    // REGRA CONTÁBIL CORRETA:
-    // Se houver 2 ou mais números:
-    // - último = valor_anterior OU variação
-    // - penúltimo = valor atual
-    let valorLinha: number | null = null;
-
-    if (numericRight.length >= 2) {
-      valorLinha = roundTo2Decimals(parseBrazilianNumber(numericRight[numericRight.length - 2].raw, currentSection));
-    } else if (numericRight.length === 1) {
-      valorLinha = roundTo2Decimals(parseBrazilianNumber(numericRight[0].raw, currentSection));
-    }
+    const valorLinha = extrairValorDaLinha(
+      numericRight.map((v) => ({ value: v.value, raw: v.raw })),
+      currentSection,
+    );
 
     const valorAnterior =
       numericRight.length > 1
@@ -1059,34 +1045,30 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         valorAnterior,
       });
       // ===== ACUMULAÇÃO CONTÁBIL REAL =====
-      const isTotalLine =
-        tipoEntry === "ATIVO_TOTAL" ||
-        tipoEntry === "PASSIVO_TOTAL" ||
-        normalConta === "ATIVO" ||
-        normalConta === "PASSIVO";
+      switch (tipoEntry) {
+        case "ATIVO_CIRCULANTE":
+          metrics.ativoCirculante += Math.abs(valor);
+          metrics.ativoTotal += Math.abs(valor);
+          break;
 
-      if (!isTotalLine) {
-        switch (tipoEntry) {
-          case "ATIVO_CIRCULANTE":
-            metrics.ativoCirculante += Math.abs(valor);
-            break;
+        case "ATIVO_NAO_CIRCULANTE":
+          metrics.ativoNaoCirculante += Math.abs(valor);
+          metrics.ativoTotal += Math.abs(valor);
+          break;
 
-          case "ATIVO_NAO_CIRCULANTE":
-            metrics.ativoNaoCirculante += Math.abs(valor);
-            break;
+        case "PASSIVO_CIRCULANTE":
+          metrics.passivoCirculante += Math.abs(valor);
+          metrics.passivoTotal += Math.abs(valor);
+          break;
 
-          case "PASSIVO_CIRCULANTE":
-            metrics.passivoCirculante += Math.abs(valor);
-            break;
+        case "PASSIVO_NAO_CIRCULANTE":
+          metrics.passivoNaoCirculante += Math.abs(valor);
+          metrics.passivoTotal += Math.abs(valor);
+          break;
 
-          case "PASSIVO_NAO_CIRCULANTE":
-            metrics.passivoNaoCirculante += Math.abs(valor);
-            break;
-
-          case "PATRIMONIO_LIQUIDO":
-            metrics.patrimonioLiquido += Math.abs(valor);
-            break;
-        }
+        case "PATRIMONIO_LIQUIDO":
+          metrics.patrimonioLiquido += Math.abs(valor);
+          break;
       }
 
       entries.push({
