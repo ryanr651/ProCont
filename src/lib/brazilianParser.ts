@@ -16,10 +16,14 @@ function extrairValorDaLinha(
   if (typeof parsed !== "number" || isNaN(parsed)) {
     return null;
   }
+
   debugContabil("EXTRAÇÃO DE VALOR", {
+    context,
+    numerosDetectados,
     escolhido: last,
     parsed,
   });
+
   return roundTo2Decimals(parsed);
 }
 function debugContabil(label: string, payload: any) {
@@ -849,17 +853,19 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
     // Regra: usar o valor mais à direita (último) como valor do período corrente
     // e o anterior (penúltimo) como valor_anterior.
     const numericRight = getNumericValuesRightOfText(row);
-
-    debugContabil("NUMÉRICOS À DIREITA DO TEXTO", {
+    debugContabil("LINHA BALANÇO LIDA", {
       rowIndex: i,
       conta,
-      secaoAtual: currentSection,
-      numerosDetectados: numericRight.map((v) => ({
-        col: v.col,
+      normalConta,
+      currentSection,
+      currentTipo,
+      numericRight: numericRight.map((v) => ({
         raw: v.raw,
-        parsed: parseBrazilianNumber(v.raw, currentSection),
+        value: v.value,
+        col: v.col,
       })),
     });
+
     // último valor à direita = período atual
     const valorLinha = extrairValorDaLinha(
       numericRight.map((v) => ({ value: v.value, raw: v.raw })),
@@ -890,10 +896,6 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
     }
 
     const valor = valorLinha;
-
-    if (!currentTipo) {
-      continue; // nunca gravar sem tipo contábil definido
-    }
 
     let tipoEntry: BalancoTipoCompleto = currentTipo;
 
@@ -1042,6 +1044,40 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         valor,
         valorAnterior,
       });
+      // ===== ACUMULAÇÃO CONTÁBIL REAL =====
+      switch (tipoEntry) {
+        case "ATIVO_CIRCULANTE":
+          metrics.ativoCirculante += Math.abs(valor);
+          metrics.ativoTotal += Math.abs(valor);
+          break;
+
+        case "ATIVO_NAO_CIRCULANTE":
+          metrics.ativoNaoCirculante += Math.abs(valor);
+          metrics.ativoTotal += Math.abs(valor);
+          break;
+
+        case "PASSIVO_CIRCULANTE":
+          metrics.passivoCirculante += Math.abs(valor);
+          metrics.passivoTotal += Math.abs(valor);
+          break;
+
+        case "PASSIVO_NAO_CIRCULANTE":
+          metrics.passivoNaoCirculante += Math.abs(valor);
+          metrics.passivoTotal += Math.abs(valor);
+          break;
+
+        case "PATRIMONIO_LIQUIDO":
+          metrics.patrimonioLiquido += Math.abs(valor);
+          break;
+      }
+      debugContabil("GRAVAÇÃO ENTRY", {
+        rowIndex: i,
+        conta,
+        tipoEntry,
+        secaoFinal: currentSection,
+        valor,
+        valorAnterior,
+      });
 
       entries.push({
         conta,
@@ -1127,10 +1163,6 @@ function parseBalancoFromCSV(rows: string[][], filename: string): BalancoParseRe
       numericValues.length > 0 ? roundTo2Decimals(parseBrazilianNumber(numericValues[0], currentSection)) : 0;
     const valorAnterior =
       numericValues.length > 1 ? roundTo2Decimals(parseBrazilianNumber(numericValues[1], currentSection)) : null;
-
-    if (!currentTipo) {
-      continue; // nunca gravar sem tipo contábil definido
-    }
 
     let tipoEntry: BalancoTipoCompleto = currentTipo;
 
@@ -1383,6 +1415,14 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
     // >2 números = usar apenas os dois primeiros
     const valor = roundTo2Decimals(numericValues[0]?.value || 0);
     const valorAnterior = numericValues.length > 1 ? roundTo2Decimals(numericValues[1].value) : null;
+    debugContabil("GRAVAÇÃO ENTRY", {
+      rowIndex: i,
+      conta,
+      tipoEntry,
+      secaoFinal: currentSection,
+      valor,
+      valorAnterior,
+    });
 
     entries.push({
       descricao,
@@ -1461,6 +1501,14 @@ function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
     const valor = roundTo2Decimals(parseSimpleBrazilianNumber(numericValues[0]));
     const valorAnterior =
       numericValues.length > 1 ? roundTo2Decimals(parseSimpleBrazilianNumber(numericValues[1])) : null;
+    debugContabil("GRAVAÇÃO ENTRY", {
+      rowIndex: i,
+      conta,
+      tipoEntry,
+      secaoFinal: currentSection,
+      valor,
+      valorAnterior,
+    });
 
     entries.push({
       descricao,
