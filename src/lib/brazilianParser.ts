@@ -794,46 +794,47 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
     const normalConta = normalizeText(conta);
     // ================== TÍTULOS ESTRUTURAIS (NÃO GERAM ENTRY) ==================
 
-    if (normalConta === "ATIVO") {
-      currentSection = "ATIVO";
-      currentTipo = "ATIVO_CIRCULANTE";
-      foundAtivoCirculante = false;
-      continue;
-    }
+if (normalConta === "ATIVO") {
+  currentSection = "ATIVO";
+  currentTipo = "ATIVO_CIRCULANTE";
+  foundAtivoCirculante = false;
+  continue;
+}
 
-    if (normalConta === "PASSIVO") {
-      currentSection = "PASSIVO";
-      currentTipo = "PASSIVO_CIRCULANTE";
-      foundPassivoCirculante = false;
-      continue;
-    }
+if (normalConta === "PASSIVO") {
+  currentSection = "PASSIVO";
+  currentTipo = "PASSIVO_CIRCULANTE";
+  foundPassivoCirculante = false;
+  continue;
+}
 
-    if (normalConta === "PATRIMONIO LIQUIDO") {
-      currentSection = "PL";
-      currentTipo = "PATRIMONIO_LIQUIDO";
-      continue;
-    }
+if (normalConta === "PATRIMONIO LIQUIDO") {
+  currentSection = "PL";
+  currentTipo = "PATRIMONIO_LIQUIDO";
+  continue;
+}
 
-    if (normalConta === "ATIVO NAO CIRCULANTE") {
-      currentSection = "ATIVO";
-      currentTipo = "ATIVO_NAO_CIRCULANTE";
-      continue;
-    }
+if (normalConta === "ATIVO NAO CIRCULANTE") {
+  currentSection = "ATIVO";
+  currentTipo = "ATIVO_NAO_CIRCULANTE";
+  continue;
+}
 
-    if (normalConta === "PASSIVO NAO CIRCULANTE") {
-      currentSection = "PASSIVO";
-      currentTipo = "PASSIVO_NAO_CIRCULANTE";
-      continue;
-    }
+if (normalConta === "PASSIVO NAO CIRCULANTE") {
+  currentSection = "PASSIVO";
+  currentTipo = "PASSIVO_NAO_CIRCULANTE";
+  continue;
+}
 
-    if (normalConta === "CIRCULANTE") {
-      if (currentSection === "ATIVO") {
-        currentTipo = "ATIVO_CIRCULANTE";
-      } else if (currentSection === "PASSIVO") {
-        currentTipo = "PASSIVO_CIRCULANTE";
-      }
-      continue;
-    }
+if (normalConta === "CIRCULANTE") {
+  if (currentSection === "ATIVO") {
+    currentTipo = "ATIVO_CIRCULANTE";
+  } else if (currentSection === "PASSIVO") {
+    currentTipo = "PASSIVO_CIRCULANTE";
+  }
+  continue;
+}
+
 
     // Skip headers
     if (
@@ -891,15 +892,11 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
 
     const valor = valorLinha;
 
-    if (!currentTipo) {
-      continue; // nunca gravar sem tipo contábil definido
-    }
-
     let tipoEntry: BalancoTipoCompleto = currentTipo;
 
     // === DETECÇÃO DE SEÇÃO E CLASSIFICAÇÃO ===
 
-    if (normalConta === "ATIVO") {
+ //   if (normalConta === "ATIVO") {
       console.log("=== ATIVO DETECTADO ===");
       console.log("Linha:", i, "| valor:", valor);
       currentSection = "ATIVO";
@@ -911,7 +908,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         metrics.ativoTotal = roundTo2Decimals(Math.abs(valor));
         console.log("→ metrics.ativoTotal =", metrics.ativoTotal);
       }
-    } else if (normalConta === "PASSIVO") {
+//    } else if (normalConta === "PASSIVO") {
       console.log("=== PASSIVO DETECTADO ===");
       console.log("Linha:", i, "| valor:", valor);
       console.log("foundAtivoCirculante neste momento:", foundAtivoCirculante);
@@ -924,7 +921,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         metrics.passivoTotal = roundTo2Decimals(Math.abs(valor));
         console.log("→ metrics.passivoTotal =", metrics.passivoTotal);
       }
-    } else if (normalConta === "CIRCULANTE" || normalConta.startsWith("CIRCULANTE")) {
+ //   } else if (normalConta === "CIRCULANTE" || normalConta.startsWith("CIRCULANTE")) {
       // LOG DETALHADO PARA DEBUG
       debugContabil("CIRCULANTE DETECTADO", {
         rowIndex: i,
@@ -949,7 +946,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
           metrics.ativoCirculante = roundTo2Decimals(Math.abs(valor));
           console.log("→ metrics.ativoCirculante =", metrics.ativoCirculante);
         }
-      } else if (currentSection === "PASSIVO" && !foundPassivoCirculante) {
+ //     } else if (currentSection === "PASSIVO" && !foundPassivoCirculante) {
         // PRIMEIRO CIRCULANTE na seção PASSIVO = PASSIVO_CIRCULANTE
         currentTipo = "PASSIVO_CIRCULANTE";
         tipoEntry = "PASSIVO_CIRCULANTE";
@@ -965,7 +962,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         tipoEntry = currentTipo;
         console.log("→ Já encontrou circulante desta seção, herdando tipo:", currentTipo);
       }
-    } else if (normalConta === "ATIVO CIRCULANTE") {
+//    } else if (normalConta === "ATIVO CIRCULANTE") {
       currentTipo = "ATIVO_CIRCULANTE";
       tipoEntry = "ATIVO_CIRCULANTE";
       foundAtivoCirculante = true;
@@ -974,7 +971,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         metrics.ativoCirculante = roundTo2Decimals(Math.abs(valor));
         debugLog("ATIVO CIRCULANTE (explícito):", metrics.ativoCirculante);
       }
-    } else if (normalConta === "PASSIVO CIRCULANTE") {
+ //   } else if (normalConta === "PASSIVO CIRCULANTE") {
       currentTipo = "PASSIVO_CIRCULANTE";
       tipoEntry = "PASSIVO_CIRCULANTE";
       foundPassivoCirculante = true;
@@ -983,7 +980,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         metrics.passivoCirculante = roundTo2Decimals(Math.abs(valor));
         debugLog("PASSIVO CIRCULANTE (explícito):", metrics.passivoCirculante);
       }
-    } else if (
+ //   } else if (
       normalConta === "ATIVO NAO CIRCULANTE" ||
       (normalConta === "NAO CIRCULANTE" && currentSection === "ATIVO")
     ) {
@@ -994,7 +991,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         metrics.ativoNaoCirculante = roundTo2Decimals(Math.abs(valor));
         debugLog("ATIVO NAO CIRCULANTE (do arquivo):", metrics.ativoNaoCirculante);
       }
-    } else if (
+ //   } else if (
       normalConta === "PASSIVO NAO CIRCULANTE" ||
       (normalConta === "NAO CIRCULANTE" && currentSection === "PASSIVO")
     ) {
@@ -1005,7 +1002,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         metrics.passivoNaoCirculante = roundTo2Decimals(Math.abs(valor));
         debugLog("PASSIVO NAO CIRCULANTE (do arquivo):", metrics.passivoNaoCirculante);
       }
-    } else if (normalConta === "PATRIMONIO LIQUIDO" || normalConta.includes("PATRIMONIO LIQUIDO")) {
+ //   } else if (normalConta === "PATRIMONIO LIQUIDO" || normalConta.includes("PATRIMONIO LIQUIDO")) {
       currentSection = "PL";
       currentTipo = "PATRIMONIO_LIQUIDO";
       tipoEntry = "PATRIMONIO_LIQUIDO";
@@ -1014,7 +1011,8 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         metrics.patrimonioLiquido = roundTo2Decimals(Math.abs(valor));
         debugLog("PATRIMONIO LIQUIDO (do arquivo):", metrics.patrimonioLiquido);
       }
-    } else {
+    /}
+    else {
       tipoEntry = currentTipo;
     }
 
@@ -1042,6 +1040,32 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         valor,
         valorAnterior,
       });
+// ===== ACUMULAÇÃO CONTÁBIL REAL =====
+switch (tipoEntry) {
+  case "ATIVO_CIRCULANTE":
+    metrics.ativoCirculante += Math.abs(valor);
+    metrics.ativoTotal += Math.abs(valor);
+    break;
+
+  case "ATIVO_NAO_CIRCULANTE":
+    metrics.ativoNaoCirculante += Math.abs(valor);
+    metrics.ativoTotal += Math.abs(valor);
+    break;
+
+  case "PASSIVO_CIRCULANTE":
+    metrics.passivoCirculante += Math.abs(valor);
+    metrics.passivoTotal += Math.abs(valor);
+    break;
+
+  case "PASSIVO_NAO_CIRCULANTE":
+    metrics.passivoNaoCirculante += Math.abs(valor);
+    metrics.passivoTotal += Math.abs(valor);
+    break;
+
+  case "PATRIMONIO_LIQUIDO":
+    metrics.patrimonioLiquido += Math.abs(valor);
+    break;
+}
 
       entries.push({
         conta,
@@ -1127,10 +1151,6 @@ function parseBalancoFromCSV(rows: string[][], filename: string): BalancoParseRe
       numericValues.length > 0 ? roundTo2Decimals(parseBrazilianNumber(numericValues[0], currentSection)) : 0;
     const valorAnterior =
       numericValues.length > 1 ? roundTo2Decimals(parseBrazilianNumber(numericValues[1], currentSection)) : null;
-
-    if (!currentTipo) {
-      continue; // nunca gravar sem tipo contábil definido
-    }
 
     let tipoEntry: BalancoTipoCompleto = currentTipo;
 
