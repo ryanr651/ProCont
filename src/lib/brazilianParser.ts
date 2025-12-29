@@ -828,34 +828,6 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
       }
       continue;
     }
-    const normalConta = normalizeText(conta);
-
-    // ================== TÍTULOS ESTRUTURAIS (NÃO GERAM ENTRY) ==================
-
-    if (normalConta === "ATIVO") {
-      currentSection = "ATIVO";
-      currentTipo = null; // só será definido ao encontrar CIRCULANTE
-      foundAtivoCirculante = false;
-      continue;
-    }
-
-    if (normalConta === "PASSIVO") {
-      currentSection = "PASSIVO";
-      currentTipo = null;
-      foundPassivoCirculante = false;
-      continue;
-    }
-
-    if (normalConta === "CIRCULANTE") {
-      if (currentSection === "ATIVO") {
-        currentTipo = "ATIVO_CIRCULANTE";
-        foundAtivoCirculante = true;
-      } else if (currentSection === "PASSIVO") {
-        currentTipo = "PASSIVO_CIRCULANTE";
-        foundPassivoCirculante = true;
-      }
-      continue;
-    }
 
     if (normalConta.includes("NAO CIRCULANTE")) {
       if (currentSection === "ATIVO") {
