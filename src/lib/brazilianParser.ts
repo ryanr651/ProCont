@@ -9,8 +9,9 @@ function extrairValorDaLinha(
     return null;
   }
 
-  const raw = numerosDetectados[0].raw;
-  const parsed = parseBrazilianNumber(raw, context);
+  // REGRA CONTÁBIL: valor do período = ÚLTIMO número à direita
+  const last = numerosDetectados[numerosDetectados.length - 1];
+  const parsed = parseBrazilianNumber(last.raw, context);
 
   if (typeof parsed !== "number" || isNaN(parsed)) {
     return null;
@@ -825,7 +826,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
     };
 
     // Se não existe valor NA LINHA, não inventar
-    if (valorLinha === null) {
+    if (valorLinha === null || Number.isNaN(valorLinha)) {
       validationRow.alerta = "Sem valor na linha";
       validationRows.push(validationRow);
       continue;
