@@ -326,3 +326,22 @@ export async function parseDREFromXLS(file: File): Promise<{
 
   return { entries, errors };
 }
+/* =========================================================
+   AUTO DISPATCHER (COMPATIBILIDADE COM UPLOAD)
+========================================================= */
+
+export async function parseBalancoFileAuto(file: File) {
+  const fileName = file.name.toLowerCase();
+
+  if (fileName.includes("dre") || fileName.includes("resultado") || fileName.includes("d.r.e")) {
+    return {
+      type: "DRE",
+      ...(await parseDREFromXLS(file)),
+    };
+  }
+
+  return {
+    type: "BALANCO",
+    ...(await parseBalancoFromXLS(file)),
+  };
+}
