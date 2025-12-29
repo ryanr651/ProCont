@@ -848,15 +848,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
     // Get numeric values WITHIN THIS ROW ONLY
     // Regra: usar o valor mais à direita (último) como valor do período corrente
     // e o anterior (penúltimo) como valor_anterior.
-    const rowArray = Array.isArray(row) ? row : Object.values(row);
-
-    const numericRight = rowArray
-      .slice(1)
-      .map((v) => parseBrazilianNumber(v))
-      .filter((v) => v !== null)
-      .map((v) => ({
-        value: Math.round(v * 100) / 100,
-      }));
+    const numericRight = getNumericValuesRightOfText(row);
 
     debugContabil("NUMÉRICOS À DIREITA DO TEXTO", {
       rowIndex: i,
@@ -898,6 +890,10 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
     }
 
     const valor = valorLinha;
+
+    if (!currentTipo) {
+      continue; // nunca gravar sem tipo contábil definido
+    }
 
     let tipoEntry: BalancoTipoCompleto = currentTipo;
 
@@ -1046,32 +1042,6 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         valor,
         valorAnterior,
       });
-      // ===== ACUMULAÇÃO CONTÁBIL REAL =====
-      switch (tipoEntry) {
-        case "ATIVO_CIRCULANTE":
-          metrics.ativoCirculante += Math.abs(valor);
-          metrics.ativoTotal += Math.abs(valor);
-          break;
-
-        case "ATIVO_NAO_CIRCULANTE":
-          metrics.ativoNaoCirculante += Math.abs(valor);
-          metrics.ativoTotal += Math.abs(valor);
-          break;
-
-        case "PASSIVO_CIRCULANTE":
-          metrics.passivoCirculante += Math.abs(valor);
-          metrics.passivoTotal += Math.abs(valor);
-          break;
-
-        case "PASSIVO_NAO_CIRCULANTE":
-          metrics.passivoNaoCirculante += Math.abs(valor);
-          metrics.passivoTotal += Math.abs(valor);
-          break;
-
-        case "PATRIMONIO_LIQUIDO":
-          metrics.patrimonioLiquido += Math.abs(valor);
-          break;
-      }
 
       entries.push({
         conta,
@@ -1149,6 +1119,7 @@ function parseBalancoFromCSV(rows: string[][], filename: string): BalancoParseRe
     const conta = findFirstTextInRow(row);
     if (!conta || conta.length < 2) continue;
 
+    const normalConta = normalizeText(conta);
     if (normalConta.includes("DESCRICAO") || normalConta === "CONTA") continue;
 
     const numericValues = findNumericValuesInRow(row);
@@ -1156,6 +1127,10 @@ function parseBalancoFromCSV(rows: string[][], filename: string): BalancoParseRe
       numericValues.length > 0 ? roundTo2Decimals(parseBrazilianNumber(numericValues[0], currentSection)) : 0;
     const valorAnterior =
       numericValues.length > 1 ? roundTo2Decimals(parseBrazilianNumber(numericValues[1], currentSection)) : null;
+
+    if (!currentTipo) {
+      continue; // nunca gravar sem tipo contábil definido
+    }
 
     let tipoEntry: BalancoTipoCompleto = currentTipo;
 
