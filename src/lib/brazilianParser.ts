@@ -779,10 +779,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
     ) {
       continue;
     }
-
-    // Get numeric values WITHIN THIS ROW ONLY
-    // Regra: usar o valor mais à direita (último) como valor do período corrente
-    // e o anterior (penúltimo) como valor_anterior.
+    // Get numeric values to the RIGHT of the text cell (same row only)
     const numericRight = getNumericValuesRightOfText(row);
 
     // último valor à direita = período atual
@@ -802,9 +799,10 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
       rowIndex: i,
       textoConta: conta,
       numerosDetectados: numericRight.map((v) => ({
-        value: v.value,
+        value: roundTo2Decimals(parseBrazilianNumber(v.raw, currentSection)),
         raw: v.raw,
       })),
+
       secaoAtual: currentSection,
     };
 
@@ -844,7 +842,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
       console.log("currentSection:", currentSection);
       console.log("foundAtivoCirculante:", foundAtivoCirculante);
       console.log("foundPassivoCirculante:", foundPassivoCirculante);
-      console.log("rawValues:", rawValues);
+      console.log("numerosDetectados:", numericRight);
       console.log("valor:", valor);
 
       // CIRCULANTE genérico - usar currentSection para determinar
@@ -936,7 +934,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
     const isKeyAccount = ["ATIVO", "PASSIVO", "CIRCULANTE", "NAO CIRCULANTE", "PATRIMONIO LIQUIDO"].some(
       (k) => normalConta.includes(k) || normalConta === k,
     );
-    if (isKeyAccount && rawValues.length === 0) {
+    if (isKeyAccount && numericRight.length === 0) {
       validationRow.alerta = "Sem valor na linha";
     }
 
@@ -951,7 +949,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         tipo: tipoEntry,
         valor: roundTo2Decimals(Math.abs(valor)),
         valor_anterior: valorAnterior !== null ? roundTo2Decimals(Math.abs(valorAnterior)) : null,
-        hierarchy: conta,
+        hierarchy: `${currentSection}/${currentTipo}/${conta}`,
         raw_row: safeGetCells(row),
       });
 
@@ -1098,7 +1096,7 @@ function parseBalancoFromCSV(rows: string[][], filename: string): BalancoParseRe
         tipo: tipoEntry,
         valor: roundTo2Decimals(Math.abs(valor)),
         valor_anterior: valorAnterior !== null ? roundTo2Decimals(Math.abs(valorAnterior)) : null,
-        hierarchy: conta,
+        hierarchy: `${currentSection}/${currentTipo}/${conta}`,
         raw_row: row.map(String),
       });
     }
