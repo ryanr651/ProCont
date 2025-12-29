@@ -848,7 +848,9 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
     // Get numeric values WITHIN THIS ROW ONLY
     // Regra: usar o valor mais à direita (último) como valor do período corrente
     // e o anterior (penúltimo) como valor_anterior.
-    const numericRight = row
+    const rowArray = Array.isArray(row) ? row : Object.values(row);
+
+    const numericRight = rowArray
       .slice(1)
       .map((v) => parseBrazilianNumber(v))
       .filter((v) => v !== null)
