@@ -326,6 +326,7 @@ export async function parseDREFromXLS(file: File): Promise<{
 
   return { entries, errors };
 }
+
 /* =========================================================
    AUTO DISPATCHER (COMPATIBILIDADE COM UPLOAD)
 ========================================================= */
