@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
@@ -98,7 +98,6 @@ const Resultado = () => {
   const [isExporting, setIsExporting] = useState(false);
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
-  const pdfContentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!user) {
@@ -437,9 +436,13 @@ const Resultado = () => {
   };
 
   const handleExportPDF = async () => {
-    if (!pdfContentRef.current) return;
+    if (!dreData || !balancoData) {
+      console.error('No data available for PDF export');
+      return;
+    }
     
     setIsExporting(true);
+    console.log('Starting PDF export...');
     
     const currentDate = new Date().toLocaleDateString('pt-BR', {
       day: '2-digit',
@@ -746,9 +749,12 @@ const Resultado = () => {
     };
 
     try {
+      console.log('Generating PDF with html2pdf...');
       await html2pdf().from(pdfWrapper).set(opt).save();
+      console.log('PDF generated successfully');
     } catch (error) {
       console.error('Error generating PDF:', error);
+      alert('Erro ao gerar PDF. Tente novamente.');
     } finally {
       setIsExporting(false);
     }
