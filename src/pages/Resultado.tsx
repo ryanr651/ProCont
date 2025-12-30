@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
@@ -7,6 +7,7 @@ import { ProgressBar } from "@/components/ProgressBar";
 import { XLSValidationMode, ValidationRow } from "@/components/XLSValidationMode";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import html2pdf from "html2pdf.js";
 import {
   ArrowLeft,
   TrendingUp,
@@ -21,7 +22,8 @@ import {
   Calculator,
   LogOut,
   Loader2,
-  FileSearch
+  FileSearch,
+  FileDown
 } from "lucide-react";
 
 interface DREEntry {
@@ -93,8 +95,10 @@ const Resultado = () => {
   const [validationRows, setValidationRows] = useState<ValidationRow[]>([]);
   const [validationFilename, setValidationFilename] = useState<string>("balanco.xls");
   const [showValidation, setShowValidation] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
+  const pdfContentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!user) {
@@ -430,6 +434,324 @@ const Resultado = () => {
   const handleLogout = async () => {
     await signOut();
     navigate("/");
+  };
+
+  const handleExportPDF = async () => {
+    if (!pdfContentRef.current) return;
+    
+    setIsExporting(true);
+    
+    const currentDate = new Date().toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    // Create PDF wrapper with custom styling
+    const pdfWrapper = document.createElement('div');
+    pdfWrapper.innerHTML = `
+      <style>
+        * {
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          box-sizing: border-box;
+        }
+        .pdf-container {
+          padding: 40px;
+          background: #ffffff;
+          color: #1a1a2e;
+        }
+        .pdf-header {
+          text-align: center;
+          margin-bottom: 40px;
+          padding-bottom: 30px;
+          border-bottom: 3px solid #3b82f6;
+        }
+        .pdf-logo {
+          font-size: 32px;
+          font-weight: bold;
+          color: #3b82f6;
+          margin-bottom: 8px;
+        }
+        .pdf-title {
+          font-size: 24px;
+          color: #374151;
+          margin-bottom: 8px;
+        }
+        .pdf-date {
+          font-size: 14px;
+          color: #6b7280;
+        }
+        .pdf-section {
+          margin-bottom: 35px;
+          page-break-inside: avoid;
+        }
+        .pdf-section-title {
+          font-size: 18px;
+          font-weight: bold;
+          color: #1e40af;
+          margin-bottom: 20px;
+          padding-bottom: 8px;
+          border-bottom: 2px solid #e5e7eb;
+        }
+        .pdf-metrics-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 15px;
+          margin-bottom: 20px;
+        }
+        .pdf-metric-card {
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          border-radius: 8px;
+          padding: 16px;
+        }
+        .pdf-metric-label {
+          font-size: 12px;
+          color: #64748b;
+          margin-bottom: 4px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        .pdf-metric-value {
+          font-size: 18px;
+          font-weight: bold;
+          color: #1e293b;
+        }
+        .pdf-metric-highlight {
+          background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+          color: white;
+        }
+        .pdf-metric-highlight .pdf-metric-label {
+          color: rgba(255,255,255,0.8);
+        }
+        .pdf-metric-highlight .pdf-metric-value {
+          color: white;
+        }
+        .pdf-margins-table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-top: 15px;
+        }
+        .pdf-margins-table th,
+        .pdf-margins-table td {
+          padding: 12px;
+          text-align: left;
+          border-bottom: 1px solid #e5e7eb;
+        }
+        .pdf-margins-table th {
+          background: #f1f5f9;
+          font-weight: 600;
+          color: #475569;
+          font-size: 13px;
+        }
+        .pdf-margins-table td {
+          font-size: 14px;
+          color: #374151;
+        }
+        .pdf-progress-bar {
+          background: #e5e7eb;
+          border-radius: 4px;
+          height: 8px;
+          overflow: hidden;
+        }
+        .pdf-progress-fill {
+          height: 100%;
+          border-radius: 4px;
+        }
+        .pdf-progress-blue { background: #3b82f6; }
+        .pdf-progress-green { background: #10b981; }
+        .pdf-progress-purple { background: #8b5cf6; }
+        .pdf-insight {
+          background: #f0fdf4;
+          border-left: 4px solid #22c55e;
+          padding: 12px 16px;
+          margin-bottom: 10px;
+          font-size: 14px;
+          color: #166534;
+          border-radius: 0 6px 6px 0;
+        }
+        .pdf-footer {
+          margin-top: 50px;
+          padding-top: 20px;
+          border-top: 2px solid #e5e7eb;
+          text-align: center;
+          font-size: 12px;
+          color: #9ca3af;
+        }
+        .pdf-footer-brand {
+          font-weight: 600;
+          color: #3b82f6;
+        }
+      </style>
+      <div class="pdf-container">
+        <div class="pdf-header">
+          <div class="pdf-logo">📊 ProCont</div>
+          <div class="pdf-title">Relatório de Resultados Financeiros</div>
+          <div class="pdf-date">Gerado em: ${currentDate}</div>
+        </div>
+
+        <div class="pdf-section">
+          <div class="pdf-section-title">📈 Demonstração do Resultado (DRE)</div>
+          <div class="pdf-metrics-grid">
+            <div class="pdf-metric-card pdf-metric-highlight">
+              <div class="pdf-metric-label">Receita Bruta</div>
+              <div class="pdf-metric-value">${dreData?.receitaBruta.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+            </div>
+            <div class="pdf-metric-card">
+              <div class="pdf-metric-label">Receita Líquida</div>
+              <div class="pdf-metric-value">${dreData?.receitaLiquida.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+            </div>
+            <div class="pdf-metric-card">
+              <div class="pdf-metric-label">CMV / Custos</div>
+              <div class="pdf-metric-value">${dreData?.cmv.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+            </div>
+            <div class="pdf-metric-card">
+              <div class="pdf-metric-label">Lucro Bruto</div>
+              <div class="pdf-metric-value">${dreData?.lucroBruto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+            </div>
+            <div class="pdf-metric-card">
+              <div class="pdf-metric-label">Despesas Operacionais</div>
+              <div class="pdf-metric-value">${dreData?.despesasOperacionais.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+            </div>
+            <div class="pdf-metric-card">
+              <div class="pdf-metric-label">Lucro Operacional</div>
+              <div class="pdf-metric-value">${dreData?.lucroOperacional.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+            </div>
+            <div class="pdf-metric-card">
+              <div class="pdf-metric-label">Resultado Financeiro</div>
+              <div class="pdf-metric-value">${dreData?.resultadoFinanceiro.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+            </div>
+            <div class="pdf-metric-card pdf-metric-highlight">
+              <div class="pdf-metric-label">Lucro Líquido</div>
+              <div class="pdf-metric-value">${dreData?.lucroLiquido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+            </div>
+          </div>
+          
+          <table class="pdf-margins-table">
+            <thead>
+              <tr>
+                <th>Indicador</th>
+                <th>Valor</th>
+                <th>Análise</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Margem Bruta</td>
+                <td><strong>${dreData?.margemBruta.toFixed(2)}%</strong></td>
+                <td>
+                  <div class="pdf-progress-bar">
+                    <div class="pdf-progress-fill pdf-progress-purple" style="width: ${Math.min(dreData?.margemBruta || 0, 100)}%"></div>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>Margem Operacional</td>
+                <td><strong>${dreData?.margemOperacional.toFixed(2)}%</strong></td>
+                <td>
+                  <div class="pdf-progress-bar">
+                    <div class="pdf-progress-fill pdf-progress-blue" style="width: ${Math.min(dreData?.margemOperacional || 0, 100)}%"></div>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>Margem Líquida</td>
+                <td><strong>${dreData?.margemLiquida.toFixed(2)}%</strong></td>
+                <td>
+                  <div class="pdf-progress-bar">
+                    <div class="pdf-progress-fill pdf-progress-green" style="width: ${Math.min(dreData?.margemLiquida || 0, 100)}%"></div>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="pdf-section">
+          <div class="pdf-section-title">⚖️ Balanço Patrimonial</div>
+          <div class="pdf-metrics-grid">
+            <div class="pdf-metric-card pdf-metric-highlight">
+              <div class="pdf-metric-label">Ativo Total</div>
+              <div class="pdf-metric-value">${balancoData?.ativoTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+            </div>
+            <div class="pdf-metric-card">
+              <div class="pdf-metric-label">Passivo Total</div>
+              <div class="pdf-metric-value">${balancoData?.passivoTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+            </div>
+            <div class="pdf-metric-card">
+              <div class="pdf-metric-label">Patrimônio Líquido</div>
+              <div class="pdf-metric-value">${balancoData?.patrimonioLiquido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+            </div>
+          </div>
+
+          <table class="pdf-margins-table">
+            <thead>
+              <tr>
+                <th>Componente</th>
+                <th>Valor</th>
+                <th>% do Ativo</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Ativo Circulante</td>
+                <td>${balancoData?.ativoCirculante.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                <td>${balancoData?.ativoTotal ? ((balancoData.ativoCirculante / balancoData.ativoTotal) * 100).toFixed(1) : 0}%</td>
+              </tr>
+              <tr>
+                <td>Ativo Não Circulante</td>
+                <td>${balancoData?.ativoNaoCirculante.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                <td>${balancoData?.ativoTotal ? ((balancoData.ativoNaoCirculante / balancoData.ativoTotal) * 100).toFixed(1) : 0}%</td>
+              </tr>
+              <tr>
+                <td>Passivo Circulante</td>
+                <td>${balancoData?.passivoCirculante.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                <td>${balancoData?.ativoTotal ? ((balancoData.passivoCirculante / balancoData.ativoTotal) * 100).toFixed(1) : 0}%</td>
+              </tr>
+              <tr>
+                <td>Passivo Não Circulante</td>
+                <td>${balancoData?.passivoNaoCirculante.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                <td>${balancoData?.ativoTotal ? ((balancoData.passivoNaoCirculante / balancoData.ativoTotal) * 100).toFixed(1) : 0}%</td>
+              </tr>
+              <tr>
+                <td><strong>Patrimônio Líquido</strong></td>
+                <td><strong>${balancoData?.patrimonioLiquido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong></td>
+                <td><strong>${balancoData?.ativoTotal ? ((balancoData.patrimonioLiquido / balancoData.ativoTotal) * 100).toFixed(1) : 0}%</strong></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="pdf-section">
+          <div class="pdf-section-title">💡 Insights e Recomendações</div>
+          ${insights.map(insight => `<div class="pdf-insight">${insight}</div>`).join('')}
+        </div>
+
+        <div class="pdf-footer">
+          <div class="pdf-footer-brand">Gerado por ProCont</div>
+          <div>Sistema de Análise Financeira Contábil</div>
+        </div>
+      </div>
+    `;
+
+    const opt = {
+      margin: 10,
+      filename: `relatorio-procont-${new Date().toISOString().split('T')[0]}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, logging: false },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
+      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+    };
+
+    try {
+      await html2pdf().from(pdfWrapper).set(opt).save();
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   if (loading) {
@@ -821,6 +1143,36 @@ const Resultado = () => {
                 <p className="text-foreground">{insight}</p>
               </div>
             ))}
+          </div>
+        </section>
+
+        {/* Export PDF Button */}
+        <section className="mb-12">
+          <div className="glass-card p-8 text-center">
+            <h3 className="font-display text-xl font-bold mb-3">
+              📄 Exportar Relatório
+            </h3>
+            <p className="text-muted-foreground mb-6">
+              Gere um PDF profissional com todos os dados desta análise para enviar aos seus clientes.
+            </p>
+            <Button 
+              variant="hero" 
+              size="xl" 
+              onClick={handleExportPDF}
+              disabled={isExporting}
+            >
+              {isExporting ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  Gerando PDF...
+                </>
+              ) : (
+                <>
+                  <FileDown className="w-5 h-5 mr-2" />
+                  Exportar relatório em PDF
+                </>
+              )}
+            </Button>
           </div>
         </section>
 
