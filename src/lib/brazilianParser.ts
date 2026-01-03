@@ -1,10 +1,7 @@
 import * as XLSX from "xlsx";
 import Papa from "papaparse";
 import { BIFFCell, parseBIFF8CellsFromXls } from "./biff8Parser";
-function extrairValorDaLinha(
-  numerosDetectados: { value: number; raw: string }[],
-  context?: BalancoSectionType,
-): number | null {
+function extrairValorDaLinha(numerosDetectados: { raw: string }[], context?: BalancoSectionType): number | null {
   if (!numerosDetectados || numerosDetectados.length === 0) {
     return null;
   }
@@ -16,10 +13,7 @@ function extrairValorDaLinha(
   if (typeof parsed !== "number" || isNaN(parsed)) {
     return null;
   }
-  debugContabil("EXTRAÇÃO DE VALOR", {
-    escolhido: last,
-    parsed,
-  });
+
   return roundTo2Decimals(parsed);
 }
 function debugContabil(label: string, payload: any) {
@@ -862,7 +856,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
     });
     // último valor à direita = período atual
     const valorLinha = extrairValorDaLinha(
-      numericRight.map((v) => ({ value: v.value, raw: v.raw })),
+      numericRight.map((v) => ({ raw: v.raw })),
       currentSection,
     );
 
