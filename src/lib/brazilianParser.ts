@@ -30,9 +30,12 @@ export interface BalancoMetrics {
 }
 
 export interface ValidationRow {
-  conta: string;
-  valor: number;
-  tipo: string | null;
+  rowIndex: number;
+  textoConta: string;
+  numerosDetectados: { value: number; raw: string }[];
+  classificacao?: string;
+  secaoAtual?: string;
+  alerta?: string;
 }
 
 interface ParseResult<T> {
@@ -97,8 +100,10 @@ export async function parseBalancoFileAuto(file: File): Promise<ParseResult<Pars
     let currentSection: "ATIVO" | "PASSIVO" | null = null;
     let currentTipo: string | null = null;
     let hierarchyStack: string[] = [];
+    let rowIndex = 0;
 
     for (const row of rows) {
+      rowIndex++;
       const cells = Object.values(row)
         .map((v) => (typeof v === "string" ? v.trim() : v))
         .filter((v) => v !== null && v !== "");
@@ -171,9 +176,11 @@ export async function parseBalancoFileAuto(file: File): Promise<ParseResult<Pars
       });
 
       validationRows.push({
-        conta,
-        valor: valorAtual,
-        tipo: currentTipo,
+        rowIndex,
+        textoConta: conta,
+        numerosDetectados: numericValues.map(v => ({ value: v, raw: String(v) })),
+        classificacao: currentTipo || undefined,
+        secaoAtual: currentSection || undefined,
       });
     }
 
