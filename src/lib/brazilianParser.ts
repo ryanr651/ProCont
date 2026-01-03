@@ -32,19 +32,17 @@ export interface BalancoMetrics {
 export interface ValidationRow {
   rowIndex: number;
   textoConta: string;
-  numerosDetectados: { value: number; raw: string }[];
-  classificacao?: string;
-  secaoAtual?: string;
-  alerta?: string;
+  numerosDetectados: number[];
+  mensagem: string;
 }
 
-interface ParseResult<T> {
+export interface ParseResult<T> {
   parsed: boolean;
   periodo: string | null;
   entries: T[];
-  errors: string[];
   metrics?: BalancoMetrics;
   validationRows?: ValidationRow[];
+  errors: string[];
 }
 
 /* =========================
@@ -66,11 +64,12 @@ function isTotalLine(text: string): boolean {
 }
 
 /* =========================
-   LEITURA XLS GENÉRICA
+   LEITURA XLS
 ========================= */
 
 function readXLS(file: File): XLSX.WorkSheet {
-  return XLSX.read(file, { type: "array" }).Sheets[XLSX.read(file, { type: "array" }).SheetNames[0]];
+  const workbook = XLSX.read(file, { type: "array" });
+  return workbook.Sheets[workbook.SheetNames[0]];
 }
 
 /* =========================
@@ -99,90 +98,75 @@ export async function parseBalancoFileAuto(file: File): Promise<ParseResult<Pars
 
     let currentSection: "ATIVO" | "PASSIVO" | null = null;
     let currentTipo: string | null = null;
-    let hierarchyStack: string[] = [];
-    let rowIndex = 0;
 
-    for (const row of rows) {
-      rowIndex++;
+    rows.forEach((row, index) => {
       const cells = Object.values(row)
         .map((v) => (typeof v === "string" ? v.trim() : v))
         .filter((v) => v !== null && v !== "");
 
-      if (cells.length === 0) continue;
+      if (!cells.length) return;
 
       const contaCell = cells.find((v) => typeof v === "string") as string | undefined;
-      if (!contaCell) continue;
+      if (!contaCell) return;
 
       const conta = contaCell;
       const normalConta = normalizeText(conta);
 
-      // ===== SEÇÕES =====
       if (normalConta === "ATIVO") {
         currentSection = "ATIVO";
         currentTipo = "ATIVO_CIRCULANTE";
-        hierarchyStack = ["ATIVO"];
-        continue;
+        return;
       }
 
       if (normalConta === "PASSIVO") {
         currentSection = "PASSIVO";
         currentTipo = "PASSIVO_CIRCULANTE";
-        hierarchyStack = ["PASSIVO"];
-        continue;
+        return;
       }
 
-      if (!currentSection) continue;
+      if (!currentSection) return;
 
-      // ===== NUMÉRICOS =====
       const numericValues = cells.filter((v) => typeof v === "number" && !isNaN(v)) as number[];
 
-      if (numericValues.length === 0) continue;
+      if (!numericValues.length) {
+        validationRows.push({
+          rowIndex: index + 1,
+          textoConta: conta,
+          numerosDetectados: [],
+          mensagem: "Linha sem valores numéricos detectáveis",
+        });
+        return;
+      }
 
       const valorAtual = numericValues[0];
       const valorAnterior = numericValues.length > 1 ? numericValues[1] : null;
-
       const totalLine = isTotalLine(conta);
 
-      // ===== MÉTRICAS =====
       if (!totalLine) {
         if (currentSection === "ATIVO") {
           metrics.ativoTotal += Math.abs(valorAtual);
-          if (currentTipo === "ATIVO_CIRCULANTE") {
-            metrics.ativoCirculante += Math.abs(valorAtual);
-          } else {
-            metrics.ativoNaoCirculante += Math.abs(valorAtual);
-          }
+          currentTipo === "ATIVO_CIRCULANTE"
+            ? (metrics.ativoCirculante += Math.abs(valorAtual))
+            : (metrics.ativoNaoCirculante += Math.abs(valorAtual));
         }
 
         if (currentSection === "PASSIVO") {
           metrics.passivoTotal += Math.abs(valorAtual);
-          if (currentTipo === "PASSIVO_CIRCULANTE") {
-            metrics.passivoCirculante += Math.abs(valorAtual);
-          } else {
-            metrics.passivoNaoCirculante += Math.abs(valorAtual);
-          }
+          currentTipo === "PASSIVO_CIRCULANTE"
+            ? (metrics.passivoCirculante += Math.abs(valorAtual))
+            : (metrics.passivoNaoCirculante += Math.abs(valorAtual));
         }
       }
-
-      hierarchyStack = [currentSection, conta];
 
       entries.push({
         conta,
         tipo: currentTipo,
         valor: valorAtual,
         valor_anterior: valorAnterior,
-        hierarchy: hierarchyStack.join("."),
+        hierarchy: `${currentSection}.${conta}`,
         raw_row: JSON.stringify(row),
       });
-
-      validationRows.push({
-        rowIndex,
-        textoConta: conta,
-        numerosDetectados: numericValues.map(v => ({ value: v, raw: String(v) })),
-        classificacao: currentTipo || undefined,
-        secaoAtual: currentSection || undefined,
-      });
-    }
+    });
 
     return {
       parsed: true,
@@ -197,6 +181,8 @@ export async function parseBalancoFileAuto(file: File): Promise<ParseResult<Pars
       parsed: false,
       periodo: null,
       entries: [],
+      metrics,
+      validationRows,
       errors: [err instanceof Error ? err.message : "Erro desconhecido no parser do Balanço"],
     };
   }
@@ -216,32 +202,27 @@ export async function parseDREFileAuto(file: File): Promise<ParseResult<ParsedDR
       defval: null,
     });
 
-    for (const row of rows) {
+    rows.forEach((row) => {
       const cells = Object.values(row)
         .map((v) => (typeof v === "string" ? v.trim() : v))
         .filter((v) => v !== null && v !== "");
 
-      if (cells.length === 0) continue;
+      if (!cells.length) return;
 
-      const descricaoCell = cells.find((v) => typeof v === "string") as string | undefined;
-      if (!descricaoCell) continue;
-
-      const descricao = descricaoCell;
+      const descricao = cells.find((v) => typeof v === "string") as string | undefined;
+      if (!descricao) return;
 
       const numericValues = cells.filter((v) => typeof v === "number" && !isNaN(v)) as number[];
 
-      if (numericValues.length === 0) continue;
-
-      const valorAtual = numericValues[0];
-      const valorAnterior = numericValues.length > 1 ? numericValues[1] : null;
+      if (!numericValues.length) return;
 
       entries.push({
         descricao,
-        valor: valorAtual,
-        valor_anterior: valorAnterior,
+        valor: numericValues[0],
+        valor_anterior: numericValues[1] ?? null,
         raw_row: JSON.stringify(row),
       });
-    }
+    });
 
     return {
       parsed: true,
