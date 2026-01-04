@@ -32,8 +32,10 @@ export interface BalancoMetrics {
 export interface ValidationRow {
   rowIndex: number;
   textoConta: string;
-  numerosDetectados: number[];
-  mensagem: string;
+  numerosDetectados: { value: number; raw: string }[];
+  classificacao?: string;
+  secaoAtual?: string;
+  alerta?: string;
 }
 
 export interface ParseResult<T> {
@@ -133,7 +135,8 @@ export async function parseBalancoFileAuto(file: File): Promise<ParseResult<Pars
           rowIndex: index + 1,
           textoConta: conta,
           numerosDetectados: [],
-          mensagem: "Linha sem valores numéricos detectáveis",
+          secaoAtual: currentSection ?? undefined,
+          alerta: "Linha sem valores numéricos detectáveis",
         });
         return;
       }

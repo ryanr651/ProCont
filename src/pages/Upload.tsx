@@ -73,8 +73,8 @@ const Upload = () => {
       </nav>
 
       <main className="container mx-auto px-6 py-12 max-w-2xl">
-        <FileUpload label="DRE" onFileSelect={setDreFile} />
-        <FileUpload label="Balanço Patrimonial" onFileSelect={setBalancoFile} />
+        <FileUpload label="DRE" description="Demonstração do Resultado do Exercício" onFileSelect={setDreFile} />
+        <FileUpload label="Balanço Patrimonial" description="Balanço Patrimonial da empresa" onFileSelect={setBalancoFile} />
 
         <Button className="mt-6 w-full" onClick={handleProcess} disabled={isProcessing}>
           {isProcessing ? <Loader2 className="animate-spin" /> : "Processar"}
