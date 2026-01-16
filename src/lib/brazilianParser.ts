@@ -1158,81 +1158,145 @@ function parseBalancoFromCSV(rows: string[][], filename: string): BalancoParseRe
   return { entries, metrics, periodo, errors, parsed: true };
 }
 
-// ============= DRE PARSING - REGRAS CONTÁBEIS =============
+// ============= DRE PARSING - REGRAS CONTÁBEIS v2 =============
 
-// Tipo de grupo DRE
+// Tipo de grupo DRE (padrão brasileiro)
 type DREGrupo =
-  | "RECEITA_OPERACIONAL"
-  | "DEDUCOES"
-  | "CUSTOS"
+  | "RECEITA_BRUTA"
+  | "RECEITA_LIQUIDA"
+  | "CMV"
+  | "LUCRO_BRUTO"
   | "DESPESAS_OPERACIONAIS"
+  | "LUCRO_OPERACIONAL"
   | "RESULTADO_FINANCEIRO"
   | "LUCRO_LIQUIDO"
   | "OUTROS";
 
+// Tipo de linha DRE
+type DRELineTipo = "normal" | "subtotal" | "total_final";
+
+interface DREClassificationResult {
+  grupo: DREGrupo;
+  tipo: DRELineTipo;
+  isGroupChange: boolean;
+}
+
 /**
- * Determina o grupo DRE baseado no texto da linha
- * REGRA 5: Mapeamento automático do grupo
+ * Classifica uma linha da DRE baseado no texto
+ * REGRAS:
+ * 1. Classificação sempre pelo texto, nunca pela posição
+ * 2. Ignora maiúsculas/minúsculas, acentuação, espaços extras
+ * 3. Linhas de subtotal contêm TOTAL, RESULTADO, LUCRO
  */
-function determineDREGrupo(descricao: string, currentGrupo: DREGrupo): DREGrupo {
+function classificarLinhaDRE(descricao: string, currentGrupo: DREGrupo): DREClassificationResult {
   const normalDesc = normalizeText(descricao);
 
-  // Receita
-  if (normalDesc.includes("RECEITA") && !normalDesc.includes("FINANCEIRA")) {
-    return "RECEITA_OPERACIONAL";
-  }
-  // Deduções
-  if (
-    normalDesc.includes("IMPOSTO") ||
-    normalDesc.includes("DEDUCAO") ||
-    normalDesc.includes("DEVOLUC") ||
-    normalDesc.includes("ABATIMENTO") ||
-    normalDesc.startsWith("(-)") ||
-    normalDesc.includes("SIMPLES NACIONAL")
-  ) {
-    if (currentGrupo === "RECEITA_OPERACIONAL") {
-      return "DEDUCOES";
-    }
-  }
-  // Custos
-  if (
-    normalDesc.includes("CUSTO") ||
-    normalDesc.includes("CMV") ||
-    normalDesc.includes("ESTOQUE") ||
-    normalDesc.includes("COMPRA")
-  ) {
-    return "CUSTOS";
-  }
-  // Despesas
-  if (
-    normalDesc.includes("DESPESA") ||
-    normalDesc.includes("SALARIO") ||
-    normalDesc.includes("PRO-LABORE") ||
-    normalDesc.includes("FGTS") ||
-    normalDesc.includes("FERIAS") ||
-    normalDesc.includes("13") ||
-    normalDesc.includes("AGUA") ||
-    normalDesc.includes("ENERGIA") ||
-    normalDesc.includes("ALUGUEL") ||
-    normalDesc.includes("DEPRECIACAO")
-  ) {
-    return "DESPESAS_OPERACIONAIS";
-  }
-  // Resultado Financeiro
-  if (normalDesc.includes("FINANCEIRO") || normalDesc.includes("JUROS") || normalDesc.includes("DESCONTO")) {
-    return "RESULTADO_FINANCEIRO";
-  }
-  // Lucro Líquido
+  // LUCRO LÍQUIDO (total final)
   if (
     normalDesc.includes("LUCRO LIQUIDO") ||
-    normalDesc.includes("RESULTADO DO EXERCICIO") ||
-    normalDesc.includes("LUCRO DO EXERCICIO") ||
-    normalDesc.includes("PREJUIZO")
+    normalDesc.includes("RESULTADO LIQUIDO DO EXERCICIO") ||
+    normalDesc.includes("RESULTADO LIQUIDO") ||
+    normalDesc === "LUCRO DO EXERCICIO"
   ) {
-    return "LUCRO_LIQUIDO";
+    return { grupo: "LUCRO_LIQUIDO", tipo: "total_final", isGroupChange: true };
   }
 
-  return currentGrupo;
+  // LUCRO OPERACIONAL (subtotal)
+  if (normalDesc.includes("LUCRO OPERACIONAL") || normalDesc.includes("RESULTADO OPERACIONAL")) {
+    return { grupo: "LUCRO_OPERACIONAL", tipo: "subtotal", isGroupChange: true };
+  }
+
+  // LUCRO BRUTO (subtotal)
+  if (normalDesc.includes("LUCRO BRUTO") || normalDesc.includes("RESULTADO BRUTO")) {
+    return { grupo: "LUCRO_BRUTO", tipo: "subtotal", isGroupChange: true };
+  }
+
+  // RECEITA LÍQUIDA (subtotal)
+  if (normalDesc.includes("RECEITA LIQUIDA") && !normalDesc.includes("BRUTA")) {
+    return { grupo: "RECEITA_LIQUIDA", tipo: "subtotal", isGroupChange: true };
+  }
+
+  // RECEITA BRUTA
+  if (
+    normalDesc.includes("RECEITA BRUTA") ||
+    normalDesc.includes("RECEITA DE VENDAS") ||
+    normalDesc.includes("FATURAMENTO BRUTO") ||
+    normalDesc.includes("VENDAS DE PRODUTOS") ||
+    normalDesc.includes("PRESTACAO DE SERVICOS") ||
+    normalDesc.includes("RECEITA OPERACIONAL BRUTA")
+  ) {
+    return { grupo: "RECEITA_BRUTA", tipo: "normal", isGroupChange: true };
+  }
+
+  // CMV / CUSTOS
+  if (
+    normalDesc.includes("CMV") ||
+    normalDesc.includes("CUSTO DA MERCADORIA VENDIDA") ||
+    normalDesc.includes("CUSTO DAS MERCADORIAS VENDIDAS") ||
+    normalDesc.includes("CUSTO DOS PRODUTOS VENDIDOS") ||
+    normalDesc.includes("CUSTO DOS SERVICOS PRESTADOS") ||
+    normalDesc.includes("CUSTO DAS VENDAS") ||
+    normalDesc.includes("CUSTO OPERACIONAL")
+  ) {
+    return { grupo: "CMV", tipo: "normal", isGroupChange: true };
+  }
+
+  // DESPESAS OPERACIONAIS
+  if (
+    normalDesc.includes("DESPESAS OPERACIONAIS") ||
+    normalDesc.includes("DESPESAS ADMINISTRATIVAS") ||
+    normalDesc.includes("DESPESAS COM VENDAS") ||
+    normalDesc.includes("DESPESAS GERAIS") ||
+    normalDesc.includes("DESPESA OPERACIONAL") ||
+    normalDesc.includes("DESPESAS COMERCIAIS")
+  ) {
+    return { grupo: "DESPESAS_OPERACIONAIS", tipo: "normal", isGroupChange: true };
+  }
+
+  // RESULTADO FINANCEIRO
+  if (
+    normalDesc.includes("RESULTADO FINANCEIRO") ||
+    normalDesc.includes("RECEITAS FINANCEIRAS") ||
+    normalDesc.includes("DESPESAS FINANCEIRAS") ||
+    normalDesc.includes("JUROS SOBRE") ||
+    normalDesc.includes("VARIACAO MONETARIA") ||
+    normalDesc.includes("RECEITA FINANCEIRA") ||
+    normalDesc.includes("DESPESA FINANCEIRA")
+  ) {
+    return { grupo: "RESULTADO_FINANCEIRO", tipo: "normal", isGroupChange: true };
+  }
+
+  // Detectar subtotais genéricos (palavras que indicam fechamento de grupo)
+  if (
+    normalDesc.startsWith("TOTAL") ||
+    normalDesc.includes("TOTAL DE") ||
+    normalDesc.includes("SUBTOTAL")
+  ) {
+    return { grupo: currentGrupo, tipo: "subtotal", isGroupChange: false };
+  }
+
+  // Deduções da receita (ficam no grupo RECEITA_BRUTA até aparecer RECEITA_LIQUIDA)
+  if (
+    currentGrupo === "RECEITA_BRUTA" &&
+    (normalDesc.includes("IMPOSTO") ||
+      normalDesc.includes("DEDUCAO") ||
+      normalDesc.includes("DEDUCOES") ||
+      normalDesc.includes("DEVOLUCAO") ||
+      normalDesc.includes("DEVOLUCOES") ||
+      normalDesc.includes("ABATIMENTO") ||
+      normalDesc.includes("SIMPLES NACIONAL") ||
+      normalDesc.includes("ISS") ||
+      normalDesc.includes("ICMS") ||
+      normalDesc.includes("PIS") ||
+      normalDesc.includes("COFINS") ||
+      normalDesc.startsWith("(-)"))
+  ) {
+    // Continua no grupo RECEITA_BRUTA até o subtotal RECEITA_LIQUIDA
+    return { grupo: "RECEITA_BRUTA", tipo: "normal", isGroupChange: false };
+  }
+
+  // Fallback: mantém grupo atual, linha normal
+  return { grupo: currentGrupo, tipo: "normal", isGroupChange: false };
 }
 
 /**
@@ -1293,7 +1357,7 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
   }
 
   // Estado de grupo atual
-  let currentGrupo: DREGrupo = "RECEITA_OPERACIONAL";
+  let currentGrupo: DREGrupo = "RECEITA_BRUTA";
 
   // Processar linhas DRE
   for (let i = startRow; i < rows.length; i++) {
@@ -1316,8 +1380,9 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
       continue;
     }
 
-    // Atualizar grupo baseado na linha
-    currentGrupo = determineDREGrupo(descricao, currentGrupo);
+    // Classificar linha usando nova lógica
+    const classification = classificarLinhaDRE(descricao, currentGrupo);
+    currentGrupo = classification.grupo;
 
     const numericValues = safeGetNumericValues(row);
 
@@ -1327,10 +1392,7 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
       continue;
     }
 
-    // REGRA 2: Mapeamento de colunas numéricas
-    // 1 número = valor
-    // 2 números = 1º valor, 2º valor_anterior
-    // >2 números = usar apenas os dois primeiros
+    // REGRA: Primeiro número = valor do período atual, segundo = valor anterior
     const valor = roundTo2Decimals(numericValues[0]?.value || 0);
     const valorAnterior = numericValues.length > 1 ? roundTo2Decimals(numericValues[1].value) : null;
 
@@ -1342,7 +1404,7 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
       raw_row: safeGetCells(row),
     });
 
-    debugLog(`DRE Entry: ${descricao} | Grupo: ${currentGrupo} | Valor: ${valor}`);
+    debugLog(`DRE Entry: ${descricao} | Grupo: ${currentGrupo} | Tipo: ${classification.tipo} | Valor: ${valor}`);
   }
 
   debugLog("Total entries DRE:", entries.length);
@@ -1389,7 +1451,7 @@ function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
   if (!found) startRow = Math.min(7, rows.length - 1);
 
   // Estado de grupo atual
-  let currentGrupo: DREGrupo = "RECEITA_OPERACIONAL";
+  let currentGrupo: DREGrupo = "RECEITA_BRUTA";
 
   for (let i = startRow; i < rows.length; i++) {
     const row = rows[i];
@@ -1401,13 +1463,14 @@ function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
     const normalDesc = normalizeText(descricao);
     if (normalDesc.includes("DESCRICAO") || normalDesc === "CONTA") continue;
 
-    // Atualizar grupo baseado na linha
-    currentGrupo = determineDREGrupo(descricao, currentGrupo);
+    // Classificar linha usando nova lógica
+    const classification = classificarLinhaDRE(descricao, currentGrupo);
+    currentGrupo = classification.grupo;
 
     const numericValues = findNumericValuesInRow(row);
     if (numericValues.length === 0) continue;
 
-    // REGRA 2: Mapeamento de colunas numéricas com arredondamento
+    // REGRA: Primeiro número = valor do período atual, segundo = valor anterior
     const valor = roundTo2Decimals(parseSimpleBrazilianNumber(numericValues[0]));
     const valorAnterior =
       numericValues.length > 1 ? roundTo2Decimals(parseSimpleBrazilianNumber(numericValues[1])) : null;
@@ -1517,6 +1580,7 @@ export function parseBalancoFile(rows: string[][], filename: string): BalancoPar
 /**
  * Calculate DRE metrics from entries
  * REGRA: Usar valores do arquivo, não recalcular
+ * Prioriza linhas explícitas de subtotal/total
  */
 export function calculateDREMetrics(entries: ParsedDREEntry[]): DREMetrics {
   const metrics: DREMetrics = {
@@ -1530,19 +1594,49 @@ export function calculateDREMetrics(entries: ParsedDREEntry[]): DREMetrics {
     const normalDesc = normalizeText(entry.descricao);
     const valor = Math.abs(entry.valor);
 
-    // Usar valores diretos das linhas de total
-    if (normalDesc.includes("RECEITA OPERACIONAL") || normalDesc === "RECEITA LIQUIDA") {
+    // RECEITA LÍQUIDA (subtotal após deduções)
+    if (
+      normalDesc.includes("RECEITA LIQUIDA") ||
+      normalDesc.includes("RECEITA OPERACIONAL LIQUIDA")
+    ) {
       metrics.receitaOperacional = valor;
-    } else if (normalDesc === "LUCRO BRUTO" || normalDesc.includes("LUCRO BRUTO")) {
+    }
+    // LUCRO BRUTO
+    else if (normalDesc.includes("LUCRO BRUTO") || normalDesc.includes("RESULTADO BRUTO")) {
       metrics.lucroBruto = valor;
-    } else if (
+    }
+    // LUCRO LÍQUIDO (total final)
+    else if (
       normalDesc.includes("LUCRO LIQUIDO") ||
+      normalDesc.includes("RESULTADO LIQUIDO") ||
       normalDesc.includes("RESULTADO DO EXERCICIO") ||
-      normalDesc.includes("LUCRO LIQUIDO DO EXERCICIO")
+      normalDesc.includes("LUCRO DO EXERCICIO")
     ) {
       metrics.lucroLiquido = valor;
-    } else if (normalDesc.includes("DESPESAS OPERACIONAIS") || normalDesc === "TOTAL DESPESAS") {
+    }
+    // DESPESAS OPERACIONAIS
+    else if (
+      normalDesc.includes("TOTAL DESPESAS OPERACIONAIS") ||
+      normalDesc.includes("TOTAL DAS DESPESAS") ||
+      (normalDesc.includes("DESPESAS OPERACIONAIS") && normalDesc.includes("TOTAL"))
+    ) {
       metrics.despesasOperacionais = valor;
+    }
+  }
+
+  // Fallback: Se não encontrou receita líquida, somar receitas brutas
+  if (metrics.receitaOperacional === 0) {
+    for (const entry of entries) {
+      if (entry.grupo === "RECEITA_BRUTA" && entry.valor > 0) {
+        const normalDesc = normalizeText(entry.descricao);
+        if (
+          normalDesc.includes("RECEITA BRUTA") ||
+          normalDesc.includes("RECEITA OPERACIONAL BRUTA")
+        ) {
+          metrics.receitaOperacional = Math.abs(entry.valor);
+          break;
+        }
+      }
     }
   }
 
