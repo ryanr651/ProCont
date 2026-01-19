@@ -1496,13 +1496,12 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
 
   if (!rows || rows.length === 0) {
     return {
-  parsed: true,
-  periodo,
-  entries,
-  metrics,
-  errors: [], // ✅ GARANTE CONTRATO
-};
-
+      parsed: true,
+      periodo,
+      entries,
+      errors: [],
+    };
+  }
 
   // REGRA 7: Encontrar header DRE
   let startRow = 0;
@@ -1745,15 +1744,11 @@ export async function parseDREFileAuto(file: File): Promise<DREParseResult> {
   if (extension === "csv") {
     const rows = await parseCSVFile(file);
     return parseDREFromCSV(rows, file.name);
-} else if (extension === "xls" || extension === "xlsx") {
-  const result = await parseDREFromXLSFile(file);
-
-  return {
-    ...result,
-    errors: result.errors ?? [],
-    warnings: result.warnings ?? [],
-  };
-}
+  } else if (extension === "xls" || extension === "xlsx") {
+    // Usar parser DRE específico para XLS/XLSX
+    const xlsRows = await parseDREFromXLSFile(file);
+    return parseDREFromXLS(xlsRows, file.name);
+  }
 
 
   throw new Error("Formato não suportado. Use CSV, XLS ou XLSX.");
