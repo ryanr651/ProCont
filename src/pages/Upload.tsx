@@ -65,8 +65,13 @@ const Upload = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <nav className="container mx-auto px-6 py-6 flex justify-between">
-        <Logo />
+      <nav className="container mx-auto px-6 py-6 flex justify-between items-center">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <Logo />
+        </div>
         <Button onClick={signOut} variant="ghost">
           <LogOut className="w-4 h-4 mr-2" /> Sair
         </Button>
