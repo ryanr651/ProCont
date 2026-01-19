@@ -477,21 +477,6 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
 // Mantendo a função auxiliar de números necessária para a DRE
 function parseBrazilianNumberForDRE(value: string | number): number {
   if (typeof value === "number") return value;
-  let cleaned = value
-    .toString()
-    .trim()
-    .replace(/R\$\s*/gi, "")
-    .replace(/\s*[dcDC]\s*$/i, "");
-  const isNegativeParens = cleaned.includes("(") && cleaned.includes(")");
-  cleaned = cleaned.replace(/[()]/g, "").replace(/\s/g, "");
-  if (!/^-?\d+(\.\d+)?$/.test(cleaned)) {
-    cleaned = cleaned.replace(/\./g, "").replace(",", ".");
-  }
-  const num = parseFloat(cleaned);
-  return isNegativeParens ? -Math.abs(num) : num;
-}
-function parseBrazilianNumberForDRE(value: string | number): number {
-  if (typeof value === "number") return value;
   if (!value || value.toString().trim() === "") return NaN;
 
   let cleaned = value.toString().trim();
@@ -1714,9 +1699,8 @@ export async function parseDREFileAuto(file: File): Promise<DREParseResult> {
     const rows = await parseCSVFile(file);
     return parseDREFromCSV(rows, file.name);
   } else if (extension === "xls" || extension === "xlsx") {
-    // USAR PARSER ESPECÍFICO PARA DRE XLS/XLSX
-    const xlsRows = await parseDREFromXLSFile(file);
-    return parseDREFromXLS(xlsRows, file.name);
+    // parseDREFromXLSFile já retorna DREParseResult completo
+    return await parseDREFromXLSFile(file);
   }
 
   throw new Error("Formato não suportado. Use CSV, XLS ou XLSX.");
