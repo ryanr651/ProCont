@@ -385,6 +385,167 @@ function biffCellsToXLSRows(cells: BIFFCell[]): XLSRow[] {
 
 // ============= XLS/XLSX PARSING =============
 
+/**
+ * Parser XLS/XLSX ESPECÍFICO PARA DRE
+ * Regras:
+ * 1. Usar XLSX.read com cellFormula: false, cellText: false
+ * 2. Usar XLSX.utils.sheet_to_json com header: 1, defval: null
+ * 3. Trabalhar com índices fixos de coluna
+ * 4. O texto da conta é o primeiro campo string não vazio
+ * 5. O valor do período é o primeiro valor numérico válido após o texto
+ * 6. O valor anterior é o próximo valor numérico após o valor atual
+ * 7. Normalizar números brasileiros corretamente
+ */
+async function parseDREFromXLSFile(file: File): Promise<XLSRow[]> {
+  debugLog("=== Parser DRE XLS/XLSX ===", file.name);
+
+  try {
+    const buffer = await file.arrayBuffer();
+    
+    // REGRA: Usar cellFormula: false para obter valores calculados
+    const workbook = XLSX.read(buffer, {
+      type: "array",
+      cellFormula: false,
+      cellText: false,
+    });
+
+    if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
+      debugLog("Workbook vazio");
+      return [];
+    }
+
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+
+    if (!sheet) {
+      debugLog("Sheet não encontrada");
+      return [];
+    }
+
+    // REGRA: Usar header: 1, defval: null para manter estrutura de colunas
+    const rawData = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+      header: 1,
+      defval: null,
+    }) as unknown[][];
+
+    debugLog("Linhas brutas obtidas:", rawData?.length || 0);
+
+    if (!rawData || rawData.length === 0) {
+      return [];
+    }
+
+    const rows: XLSRow[] = [];
+
+    for (let rowIdx = 0; rowIdx < rawData.length; rowIdx++) {
+      const rawRow = rawData[rowIdx];
+      if (!Array.isArray(rawRow)) continue;
+
+      const cells: string[] = [];
+      let firstText = { text: "", index: -1 };
+      const numericValues: { value: number; raw: string }[] = [];
+
+      // Processar cada célula MANTENDO ÍNDICES FIXOS
+      for (let colIdx = 0; colIdx < rawRow.length; colIdx++) {
+        const rawCell = rawRow[colIdx];
+        
+        // Converter célula para string para armazenar
+        let cellStr = "";
+        let numericValue: number | null = null;
+
+        if (rawCell === null || rawCell === undefined) {
+          cellStr = "";
+        } else if (typeof rawCell === "number") {
+          // Valor numérico direto do Excel (já calculado)
+          cellStr = String(rawCell);
+          numericValue = rawCell;
+        } else if (typeof rawCell === "string") {
+          cellStr = rawCell.trim();
+          
+          // REGRA: Tentar parsear string como número brasileiro
+          if (cellStr !== "" && isNumericCell(cellStr)) {
+            numericValue = parseBrazilianNumberForDRE(cellStr);
+          }
+        } else {
+          cellStr = String(rawCell);
+        }
+
+        cells.push(cellStr);
+
+        // REGRA: O texto da conta é o primeiro campo string não vazio
+        if (firstText.index === -1 && cellStr !== "" && isTextCell(cellStr)) {
+          firstText = { text: cellStr.trim(), index: colIdx };
+        }
+
+        // REGRA: Coletar valores numéricos válidos APÓS o texto
+        if (numericValue !== null && Number.isFinite(numericValue) && firstText.index !== -1 && colIdx > firstText.index) {
+          numericValues.push({ value: numericValue, raw: cellStr });
+        }
+      }
+
+      // Se não encontrou texto mas tem numéricos, verificar se tem texto antes
+      if (firstText.index === -1 && numericValues.length === 0) {
+        // Linha vazia, ignorar
+        continue;
+      }
+
+      // Se encontrou texto, adicionar linha
+      if (firstText.index !== -1 || numericValues.length > 0) {
+        rows.push({
+          cells,
+          firstTextCell: firstText,
+          numericValues,
+        });
+      }
+    }
+
+    debugLog(`DRE XLS Parser: ${rows.length} linhas processadas`);
+    return rows;
+  } catch (error) {
+    debugLog("ERRO ao processar DRE XLS:", error);
+    return [];
+  }
+}
+
+/**
+ * Parsear número brasileiro para DRE
+ * Regras:
+ * 1. Se vier como string: remover separador de milhar (.), substituir vírgula por ponto
+ * 2. Tratar valores negativos: (1.234,56) → -1234.56
+ * 3. Converter explicitamente para Number
+ */
+function parseBrazilianNumberForDRE(value: string | number): number {
+  if (typeof value === "number") return value;
+  if (!value || value.toString().trim() === "") return NaN;
+
+  let cleaned = value.toString().trim();
+
+  // Remover R$ e símbolos de moeda
+  cleaned = cleaned.replace(/R\$\s*/gi, "");
+  
+  // Remover sufixo D/C
+  cleaned = cleaned.replace(/\s*[dcDC]\s*$/i, "");
+
+  // REGRA: Tratar valores negativos com parênteses
+  const isNegativeParens = cleaned.includes("(") && cleaned.includes(")");
+  cleaned = cleaned.replace(/[()]/g, "");
+
+  // Remover espaços
+  cleaned = cleaned.replace(/\s/g, "");
+
+  // Verificar se já é formato numérico puro (do Excel): 12345.67
+  const isPureNumeric = /^-?\d+(\.\d+)?$/.test(cleaned);
+
+  if (!isPureNumeric) {
+    // REGRA: Formato brasileiro - remover pontos de milhar, trocar vírgula por ponto
+    cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+  }
+
+  const num = parseFloat(cleaned);
+  if (isNaN(num)) return NaN;
+
+  return isNegativeParens ? -Math.abs(num) : num;
+}
+
 async function parseXLSFile(file: File): Promise<XLSRow[]> {
   const extension = getFileExtension(file.name);
   debugLog("=== Usando fluxo XLS/XLSX para:", file.name);
@@ -1318,6 +1479,12 @@ function classificarLinhaDRE(descricao: string, currentGrupo: DREGrupo): DREClas
  * 3. Preservar estrutura hierárquica
  * 4. Aplicar arredondamento 2 casas decimais
  * 5. Classificar grupo automaticamente
+ * 
+ * REGRAS ESPECÍFICAS PARA XLS/XLSX:
+ * - O texto da conta é o primeiro campo string não vazio
+ * - O valor do período é o PRIMEIRO valor numérico válido APÓS o texto
+ * - O valor anterior é o PRÓXIMO valor numérico após o valor atual
+ * - Valores numéricos já vêm normalizados do parser XLS
  */
 function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
   debugLog("=== Iniciando parseDREFromXLS (REGRAS CONTÁBEIS) ===");
@@ -1374,7 +1541,7 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
   // Processar linhas DRE
   for (let i = startRow; i < rows.length; i++) {
     const row = rows[i];
-    const { text: descricao } = safeGetFirstText(row);
+    const { text: descricao, index: textIndex } = safeGetFirstText(row);
 
     if (!descricao || descricao.length < 2) continue;
 
@@ -1396,7 +1563,9 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
     const classification = classificarLinhaDRE(descricao, currentGrupo);
     currentGrupo = classification.grupo;
 
-    const numericValues = safeGetNumericValues(row);
+    // REGRA: Usar numericValues já extraídos (valores APÓS o texto da conta)
+    // O parser DRE específico já garantiu que numericValues são os números à direita do texto
+    const numericValues = row.numericValues || [];
 
     // Linhas sem valor são títulos de grupo - não salvar
     if (numericValues.length === 0) {
@@ -1404,9 +1573,22 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
       continue;
     }
 
-    // REGRA: Primeiro número = valor do período atual, segundo = valor anterior
-    const valor = roundTo2Decimals(numericValues[0]?.value || 0);
-    const valorAnterior = numericValues.length > 1 ? roundTo2Decimals(numericValues[1].value) : null;
+    // REGRA: Primeiro número = valor do período atual
+    // Os valores já vêm parseados corretamente do parser XLS
+    const valorPeriodo = numericValues[0]?.value;
+    
+    // Validar se é um número válido
+    if (valorPeriodo === undefined || valorPeriodo === null || !Number.isFinite(valorPeriodo)) {
+      debugLog(`Valor inválido na linha: ${descricao}`, numericValues);
+      continue;
+    }
+
+    const valor = roundTo2Decimals(valorPeriodo);
+    
+    // REGRA: Segundo número = valor do período anterior (se existir)
+    const valorAnterior = numericValues.length > 1 && Number.isFinite(numericValues[1]?.value) 
+      ? roundTo2Decimals(numericValues[1].value) 
+      : null;
 
     entries.push({
       descricao,
@@ -1416,12 +1598,12 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
       raw_row: safeGetCells(row),
     });
 
-    debugLog(`DRE Entry: ${descricao} | Grupo: ${currentGrupo} | Tipo: ${classification.tipo} | Valor: ${valor}`);
+    debugLog(`DRE Entry: ${descricao} | Grupo: ${currentGrupo} | Valor: ${valor} | Anterior: ${valorAnterior}`);
   }
 
   debugLog("Total entries DRE:", entries.length);
 
-  const hasAnyNumeric = rows.some((r) => safeGetNumericValues(r).length > 0);
+  const hasAnyNumeric = rows.some((r) => (r.numericValues?.length || 0) > 0);
   const parsed = rows.length > 0 && (hasAnyNumeric || entries.length > 0);
 
   return { entries, periodo, errors, parsed };
@@ -1558,7 +1740,8 @@ export async function parseDREFileAuto(file: File): Promise<DREParseResult> {
     const rows = await parseCSVFile(file);
     return parseDREFromCSV(rows, file.name);
   } else if (extension === "xls" || extension === "xlsx") {
-    const xlsRows = await parseXLSFile(file);
+    // USAR PARSER ESPECÍFICO PARA DRE XLS/XLSX
+    const xlsRows = await parseDREFromXLSFile(file);
     return parseDREFromXLS(xlsRows, file.name);
   }
 
