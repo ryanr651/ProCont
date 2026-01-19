@@ -95,6 +95,16 @@ function normalizeText(text: string): string {
     .trim();
 }
 
+// Types for DRE classification debug
+interface DREClassifiedEntry {
+  descricao: string;
+  valor: number;
+  valorAnterior: number | null;
+  grupo: 'receita_bruta' | 'receita_liquida' | 'cmv' | 'lucro_bruto' | 'despesas_operacionais' | 'lucro_operacional' | 'resultado_financeiro' | 'lucro_liquido' | 'nao_classificado';
+  isExplicit: boolean;
+  motivo: string;
+}
+
 const Resultado = () => {
   const [loading, setLoading] = useState(true);
   const [dreData, setDreData] = useState<CalculatedDRE | null>(null);
@@ -105,6 +115,8 @@ const Resultado = () => {
   const [validationFilename, setValidationFilename] = useState<string>("balanco.xls");
   const [showValidation, setShowValidation] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [dreClassifiedEntries, setDreClassifiedEntries] = useState<DREClassifiedEntry[]>([]);
+  const [showDreDebug, setShowDreDebug] = useState(false);
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
 
@@ -142,9 +154,10 @@ const Resultado = () => {
         return;
       }
 
-      // Calculate DRE metrics
-      const dre = calculateDREMetrics(dreEntries as DREEntry[]);
+      // Calculate DRE metrics and classify entries
+      const { metrics: dre, classifiedEntries } = calculateDREMetricsWithClassification(dreEntries as DREEntry[]);
       setDreData(dre);
+      setDreClassifiedEntries(classifiedEntries);
 
       // Calculate Balanço metrics from key lines
       const balanco = calculateBalancoMetrics(balancoEntries as BalancoEntry[]);
@@ -181,14 +194,85 @@ const Resultado = () => {
   };
 
   /**
-   * Calculate DRE metrics using the new aggregation rules
-   * 
-   * REGRAS DE AGREGAÇÃO:
-   * 1. Linha explícita de subtotal → usar esse valor (fonte da verdade)
-   * 2. Soma das linhas do grupo → fallback
-   * 3. NUNCA recalcular valores já informados
+   * Classify a DRE entry into its group
    */
-  const calculateDREMetrics = (entries: DREEntry[]): CalculatedDRE => {
+  const classifyDREEntry = (desc: string, valor: number): { grupo: DREClassifiedEntry['grupo']; isExplicit: boolean; motivo: string } => {
+    // ===== RECEITA BRUTA =====
+    if (desc.includes('RECEITA BRUTA') || desc.includes('RECEITA OPERACIONAL BRUTA')) {
+      const isExplicit = desc === 'RECEITA BRUTA' || desc === 'RECEITA OPERACIONAL BRUTA' || desc.includes('TOTAL');
+      return { 
+        grupo: 'receita_bruta', 
+        isExplicit, 
+        motivo: isExplicit ? 'Linha explícita de Receita Bruta' : 'Componente da Receita Bruta' 
+      };
+    }
+    if (desc.includes('VENDAS DE MERCADORIAS') || desc.includes('PRESTACAO DE SERVICOS') || desc.includes('FATURAMENTO')) {
+      return { grupo: 'receita_bruta', isExplicit: false, motivo: 'Componente da Receita Bruta (vendas/serviços)' };
+    }
+
+    // ===== RECEITA LÍQUIDA =====
+    if (desc.includes('RECEITA LIQUIDA') || desc.includes('RECEITA OPERACIONAL LIQUIDA')) {
+      return { grupo: 'receita_liquida', isExplicit: true, motivo: 'Linha explícita de Receita Líquida' };
+    }
+
+    // ===== CMV =====
+    if (desc.includes('CMV') || desc.includes('CPV') || 
+        desc.includes('CUSTO DA MERCADORIA') || desc.includes('CUSTO DAS MERCADORIAS') ||
+        desc.includes('CUSTO DOS PRODUTOS') || desc.includes('CUSTO DOS SERVICOS')) {
+      const isExplicit = desc === 'CMV' || desc === 'CPV' || 
+                         desc === 'CUSTO DA MERCADORIA VENDIDA' || 
+                         desc === 'CUSTO DAS MERCADORIAS VENDIDAS' ||
+                         desc === 'CUSTO DOS PRODUTOS VENDIDOS' ||
+                         desc === 'CUSTO DOS SERVICOS PRESTADOS' ||
+                         desc.includes('TOTAL');
+      return { grupo: 'cmv', isExplicit, motivo: isExplicit ? 'Linha explícita de CMV' : 'Componente de CMV' };
+    }
+
+    // ===== LUCRO BRUTO =====
+    if (desc === 'LUCRO BRUTO' || desc === 'RESULTADO BRUTO') {
+      return { grupo: 'lucro_bruto', isExplicit: true, motivo: 'Linha explícita de Lucro Bruto' };
+    }
+
+    // ===== DESPESAS OPERACIONAIS =====
+    if (desc.includes('DESPESAS OPERACIONAIS') || desc.includes('DESPESAS ADMINISTRATIVAS') ||
+        desc.includes('DESPESAS COM VENDAS') || desc.includes('DESPESAS GERAIS') ||
+        desc.includes('DESPESAS TRABALHISTAS')) {
+      const isExplicit = desc === 'DESPESAS OPERACIONAIS' || 
+                         desc === 'TOTAL DESPESAS OPERACIONAIS' ||
+                         desc === 'TOTAL DAS DESPESAS OPERACIONAIS' ||
+                         (desc.includes('TOTAL') && desc.includes('DESPESAS'));
+      return { grupo: 'despesas_operacionais', isExplicit, motivo: isExplicit ? 'Linha explícita de Despesas Operacionais' : 'Componente de Despesas Operacionais' };
+    }
+
+    // ===== LUCRO OPERACIONAL =====
+    if (desc === 'LUCRO OPERACIONAL' || desc === 'RESULTADO OPERACIONAL') {
+      return { grupo: 'lucro_operacional', isExplicit: true, motivo: 'Linha explícita de Lucro Operacional' };
+    }
+
+    // ===== RESULTADO FINANCEIRO =====
+    if (desc.includes('RESULTADO FINANCEIRO') || desc.includes('RECEITAS FINANCEIRAS') ||
+        desc.includes('DESPESAS FINANCEIRAS') || desc.includes('JUROS') || 
+        desc.includes('VARIACAO MONETARIA')) {
+      const isExplicit = desc === 'RESULTADO FINANCEIRO' || 
+                         desc === 'RESULTADO FINANCEIRO LIQUIDO' ||
+                         (desc.includes('TOTAL') && desc.includes('FINANCEIRO'));
+      return { grupo: 'resultado_financeiro', isExplicit, motivo: isExplicit ? 'Linha explícita de Resultado Financeiro' : 'Componente do Resultado Financeiro' };
+    }
+
+    // ===== LUCRO LÍQUIDO =====
+    if (desc.includes('LUCRO LIQUIDO') || desc.includes('RESULTADO LIQUIDO') ||
+        desc.includes('LUCRO DO EXERCICIO') || desc.includes('RESULTADO DO EXERCICIO') ||
+        desc.includes('LUCRO DO PERIODO')) {
+      return { grupo: 'lucro_liquido', isExplicit: true, motivo: 'Linha explícita de Lucro Líquido' };
+    }
+
+    return { grupo: 'nao_classificado', isExplicit: false, motivo: 'Não classificado' };
+  };
+
+  /**
+   * Calculate DRE metrics with classification for debug
+   */
+  const calculateDREMetricsWithClassification = (entries: DREEntry[]): { metrics: CalculatedDRE; classifiedEntries: DREClassifiedEntry[] } => {
     const metrics: CalculatedDRE = {
       receitaBruta: 0,
       receitaBrutaOrigem: 'soma_contas',
@@ -211,6 +295,8 @@ const Resultado = () => {
       margemLiquida: 0,
     };
 
+    const classifiedEntries: DREClassifiedEntry[] = [];
+
     // Acumuladores para soma (fallback)
     let somaReceitaBruta = 0;
     let somaCMV = 0;
@@ -231,6 +317,17 @@ const Resultado = () => {
       const desc = normalizeText(entry.descricao);
       const valor = entry.valor;
       const valorAbs = Math.abs(valor);
+
+      // Classify entry
+      const classification = classifyDREEntry(desc, valor);
+      classifiedEntries.push({
+        descricao: entry.descricao,
+        valor: entry.valor,
+        valorAnterior: entry.valor_anterior,
+        grupo: classification.grupo,
+        isExplicit: classification.isExplicit,
+        motivo: classification.motivo
+      });
 
       // ===== RECEITA BRUTA =====
       if (desc.includes('RECEITA BRUTA') || desc.includes('RECEITA OPERACIONAL BRUTA')) {
@@ -372,7 +469,43 @@ const Resultado = () => {
     metrics.margemOperacional = receitaBase > 0 ? (metrics.lucroOperacional / receitaBase) * 100 : 0;
     metrics.margemLiquida = receitaBase > 0 ? (metrics.lucroLiquido / receitaBase) * 100 : 0;
 
-    return metrics;
+    return { metrics, classifiedEntries };
+  };
+
+  /**
+   * Get color class for DRE group
+   */
+  const getDREGroupColor = (grupo: DREClassifiedEntry['grupo']): string => {
+    const colors: Record<DREClassifiedEntry['grupo'], string> = {
+      receita_bruta: 'bg-green-500/20 text-green-400 border-green-500/30',
+      receita_liquida: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+      cmv: 'bg-red-500/20 text-red-400 border-red-500/30',
+      lucro_bruto: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+      despesas_operacionais: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+      lucro_operacional: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
+      resultado_financeiro: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+      lucro_liquido: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+      nao_classificado: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+    };
+    return colors[grupo];
+  };
+
+  /**
+   * Get label for DRE group
+   */
+  const getDREGroupLabel = (grupo: DREClassifiedEntry['grupo']): string => {
+    const labels: Record<DREClassifiedEntry['grupo'], string> = {
+      receita_bruta: 'Receita Bruta',
+      receita_liquida: 'Receita Líquida',
+      cmv: 'CMV',
+      lucro_bruto: 'Lucro Bruto',
+      despesas_operacionais: 'Despesas Operacionais',
+      lucro_operacional: 'Lucro Operacional',
+      resultado_financeiro: 'Resultado Financeiro',
+      lucro_liquido: 'Lucro Líquido',
+      nao_classificado: 'Não Classificado',
+    };
+    return labels[grupo];
   };
 
   /**
@@ -1083,6 +1216,112 @@ const Resultado = () => {
               </div>
             </div>
           </div>
+
+          {/* DRE Debug Table */}
+          {dreClassifiedEntries.length > 0 && (
+            <div className="mt-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-display font-semibold flex items-center gap-2">
+                  🔬 Debug: Classificação DRE
+                </h3>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowDreDebug(!showDreDebug)}
+                >
+                  <FileSearch className="w-4 h-4 mr-2" />
+                  {showDreDebug ? "Ocultar" : "Ver"} Classificação ({dreClassifiedEntries.length} linhas)
+                </Button>
+              </div>
+              {showDreDebug && (
+                <div className="glass-card p-6">
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Todas as linhas DRE importadas com seu grupo e classificação:
+                  </p>
+                  
+                  {/* Group Legend */}
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {(['receita_bruta', 'receita_liquida', 'cmv', 'lucro_bruto', 'despesas_operacionais', 'lucro_operacional', 'resultado_financeiro', 'lucro_liquido', 'nao_classificado'] as const).map((grupo) => (
+                      <span key={grupo} className={`px-2 py-1 rounded text-xs font-medium border ${getDREGroupColor(grupo)}`}>
+                        {getDREGroupLabel(grupo)}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border">
+                          <th className="text-left py-2 px-3 text-muted-foreground font-medium">#</th>
+                          <th className="text-left py-2 px-3 text-muted-foreground font-medium">Descrição</th>
+                          <th className="text-center py-2 px-3 text-muted-foreground font-medium">Grupo</th>
+                          <th className="text-right py-2 px-3 text-muted-foreground font-medium">Valor</th>
+                          <th className="text-center py-2 px-3 text-muted-foreground font-medium">Tipo</th>
+                          <th className="text-left py-2 px-3 text-muted-foreground font-medium">Motivo</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dreClassifiedEntries.map((entry, index) => (
+                          <tr 
+                            key={index} 
+                            className={`border-b border-border/50 hover:bg-muted/30 ${entry.isExplicit ? 'font-semibold' : ''}`}
+                          >
+                            <td className="py-2 px-3 text-muted-foreground">{index + 1}</td>
+                            <td className="py-2 px-3 text-foreground max-w-xs">
+                              <span className="block truncate" title={entry.descricao}>
+                                {entry.descricao}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 text-center">
+                              <span className={`px-2 py-1 rounded text-xs font-medium border ${getDREGroupColor(entry.grupo)}`}>
+                                {getDREGroupLabel(entry.grupo)}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 text-right text-foreground">
+                              {entry.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                            </td>
+                            <td className="py-2 px-3 text-center">
+                              {entry.isExplicit 
+                                ? <span className="px-2 py-1 rounded text-xs font-medium bg-primary/20 text-primary border border-primary/30">Explícita</span>
+                                : <span className="px-2 py-1 rounded text-xs font-medium bg-muted text-muted-foreground border border-border">Componente</span>
+                              }
+                            </td>
+                            <td className="py-2 px-3 text-muted-foreground text-xs max-w-xs truncate" title={entry.motivo}>
+                              {entry.motivo}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Summary by Group */}
+                  <div className="mt-6 pt-4 border-t border-border">
+                    <h4 className="font-medium mb-3">Resumo por Grupo</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      {(['receita_bruta', 'receita_liquida', 'cmv', 'lucro_bruto', 'despesas_operacionais', 'lucro_operacional', 'resultado_financeiro', 'lucro_liquido'] as const).map((grupo) => {
+                        const entriesInGroup = dreClassifiedEntries.filter(e => e.grupo === grupo);
+                        const explicitEntry = entriesInGroup.find(e => e.isExplicit);
+                        const sumValue = entriesInGroup.reduce((sum, e) => sum + e.valor, 0);
+                        
+                        return (
+                          <div key={grupo} className={`p-3 rounded border ${getDREGroupColor(grupo)}`}>
+                            <div className="text-xs font-medium mb-1">{getDREGroupLabel(grupo)}</div>
+                            <div className="text-sm font-bold">
+                              {(explicitEntry?.valor ?? sumValue).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                            </div>
+                            <div className="text-xs opacity-70">
+                              {explicitEntry ? '(linha explícita)' : `(${entriesInGroup.length} linhas)`}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </section>
 
         {/* Balance Sheet Section */}
