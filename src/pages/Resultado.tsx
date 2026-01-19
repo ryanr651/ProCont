@@ -53,13 +53,22 @@ interface DiagnosticLine {
 
 interface CalculatedDRE {
   receitaBruta: number;
+  receitaBrutaOrigem: 'linha_explicita' | 'soma_contas';
   receitaLiquida: number;
+  receitaLiquidaOrigem: 'linha_explicita' | 'soma_contas';
   cmv: number;
+  cmvOrigem: 'linha_explicita' | 'soma_contas';
   lucroBruto: number;
+  lucroBrutoOrigem: 'linha_explicita' | 'soma_contas';
   despesasOperacionais: number;
+  despesasOperacionaisOrigem: 'linha_explicita' | 'soma_contas';
   lucroOperacional: number;
+  lucroOperacionalOrigem: 'linha_explicita' | 'soma_contas';
   resultadoFinanceiro: number;
+  resultadoFinanceiroOrigem: 'linha_explicita' | 'soma_contas';
   lucroLiquido: number;
+  lucroLiquidoOrigem: 'linha_explicita' | 'soma_contas';
+  // Margens calculadas
   margemBruta: number;
   margemOperacional: number;
   margemLiquida: number;
@@ -171,45 +180,199 @@ const Resultado = () => {
     }
   };
 
+  /**
+   * Calculate DRE metrics using the new aggregation rules
+   * 
+   * REGRAS DE AGREGAÇÃO:
+   * 1. Linha explícita de subtotal → usar esse valor (fonte da verdade)
+   * 2. Soma das linhas do grupo → fallback
+   * 3. NUNCA recalcular valores já informados
+   */
   const calculateDREMetrics = (entries: DREEntry[]): CalculatedDRE => {
-    const findValue = (keywords: string[]): number => {
-      for (const entry of entries) {
-        const desc = normalizeText(entry.descricao);
-        for (const kw of keywords) {
-          if (desc.includes(normalizeText(kw))) {
-            return Math.abs(entry.valor);
+    const metrics: CalculatedDRE = {
+      receitaBruta: 0,
+      receitaBrutaOrigem: 'soma_contas',
+      receitaLiquida: 0,
+      receitaLiquidaOrigem: 'soma_contas',
+      cmv: 0,
+      cmvOrigem: 'soma_contas',
+      lucroBruto: 0,
+      lucroBrutoOrigem: 'soma_contas',
+      despesasOperacionais: 0,
+      despesasOperacionaisOrigem: 'soma_contas',
+      lucroOperacional: 0,
+      lucroOperacionalOrigem: 'soma_contas',
+      resultadoFinanceiro: 0,
+      resultadoFinanceiroOrigem: 'soma_contas',
+      lucroLiquido: 0,
+      lucroLiquidoOrigem: 'soma_contas',
+      margemBruta: 0,
+      margemOperacional: 0,
+      margemLiquida: 0,
+    };
+
+    // Acumuladores para soma (fallback)
+    let somaReceitaBruta = 0;
+    let somaCMV = 0;
+    let somaDespesasOperacionais = 0;
+    let somaResultadoFinanceiro = 0;
+
+    // Flags para linhas explícitas
+    let foundReceitaBruta = false;
+    let foundReceitaLiquida = false;
+    let foundCMV = false;
+    let foundLucroBruto = false;
+    let foundDespesasOp = false;
+    let foundLucroOp = false;
+    let foundResultadoFin = false;
+    let foundLucroLiq = false;
+
+    for (const entry of entries) {
+      const desc = normalizeText(entry.descricao);
+      const valor = entry.valor;
+      const valorAbs = Math.abs(valor);
+
+      // ===== RECEITA BRUTA =====
+      if (desc.includes('RECEITA BRUTA') || desc.includes('RECEITA OPERACIONAL BRUTA')) {
+        if (desc === 'RECEITA BRUTA' || desc === 'RECEITA OPERACIONAL BRUTA' || desc.includes('TOTAL')) {
+          if (!foundReceitaBruta) {
+            metrics.receitaBruta = valorAbs;
+            metrics.receitaBrutaOrigem = 'linha_explicita';
+            foundReceitaBruta = true;
           }
+        } else {
+          somaReceitaBruta += valorAbs;
         }
       }
-      return 0;
-    };
+      // Vendas de mercadorias, prestação de serviços (componentes da receita bruta)
+      else if (desc.includes('VENDAS DE MERCADORIAS') || desc.includes('PRESTACAO DE SERVICOS') || desc.includes('FATURAMENTO')) {
+        somaReceitaBruta += valorAbs;
+      }
 
-    const receitaBruta = findValue(['receita operacional', 'receita bruta', 'vendas de mercadorias', 'prestação de serviços']);
-    const receitaLiquida = findValue(['receita líquida', 'receita liquida']) || receitaBruta;
-    const cmv = findValue(['custo mercadorias', 'custo dos produtos', 'cmv', 'cpv', 'custo das mercadorias']);
-    const lucroBruto = findValue(['lucro bruto', 'resultado bruto']) || (receitaLiquida - cmv);
-    const despesasOperacionais = findValue(['despesas operacionais', 'despesas trabalhistas', 'despesas gerais']);
-    const lucroOperacional = findValue(['lucro operacional', 'resultado operacional']) || (lucroBruto - despesasOperacionais);
-    const resultadoFinanceiro = findValue(['resultado financeiro', 'receitas financeiras']);
-    const lucroLiquido = findValue(['lucro do exercício', 'lucro líquido', 'resultado do exercício', 'lucro do período']);
+      // ===== RECEITA LÍQUIDA =====
+      if (desc.includes('RECEITA LIQUIDA') || desc.includes('RECEITA OPERACIONAL LIQUIDA')) {
+        if (!foundReceitaLiquida) {
+          metrics.receitaLiquida = valorAbs;
+          metrics.receitaLiquidaOrigem = 'linha_explicita';
+          foundReceitaLiquida = true;
+        }
+      }
 
-    const margemBruta = receitaLiquida > 0 ? (lucroBruto / receitaLiquida) * 100 : 0;
-    const margemOperacional = receitaLiquida > 0 ? (lucroOperacional / receitaLiquida) * 100 : 0;
-    const margemLiquida = receitaLiquida > 0 ? (Math.abs(lucroLiquido) / receitaLiquida) * 100 : 0;
+      // ===== CMV =====
+      if (desc.includes('CMV') || desc.includes('CPV') || 
+          desc.includes('CUSTO DA MERCADORIA') || desc.includes('CUSTO DAS MERCADORIAS') ||
+          desc.includes('CUSTO DOS PRODUTOS') || desc.includes('CUSTO DOS SERVICOS')) {
+        const isTotal = desc === 'CMV' || desc === 'CPV' || 
+                       desc === 'CUSTO DA MERCADORIA VENDIDA' || 
+                       desc === 'CUSTO DAS MERCADORIAS VENDIDAS' ||
+                       desc === 'CUSTO DOS PRODUTOS VENDIDOS' ||
+                       desc === 'CUSTO DOS SERVICOS PRESTADOS' ||
+                       desc.includes('TOTAL');
+        if (isTotal && !foundCMV) {
+          metrics.cmv = valor; // Manter sinal
+          metrics.cmvOrigem = 'linha_explicita';
+          foundCMV = true;
+        } else if (!isTotal) {
+          somaCMV += valor;
+        }
+      }
 
-    return {
-      receitaBruta,
-      receitaLiquida,
-      cmv,
-      lucroBruto,
-      despesasOperacionais,
-      lucroOperacional,
-      resultadoFinanceiro,
-      lucroLiquido: Math.abs(lucroLiquido),
-      margemBruta,
-      margemOperacional,
-      margemLiquida
-    };
+      // ===== LUCRO BRUTO =====
+      if (desc === 'LUCRO BRUTO' || desc === 'RESULTADO BRUTO') {
+        if (!foundLucroBruto) {
+          metrics.lucroBruto = valorAbs;
+          metrics.lucroBrutoOrigem = 'linha_explicita';
+          foundLucroBruto = true;
+        }
+      }
+
+      // ===== DESPESAS OPERACIONAIS =====
+      if (desc.includes('DESPESAS OPERACIONAIS') || desc.includes('DESPESAS ADMINISTRATIVAS') ||
+          desc.includes('DESPESAS COM VENDAS') || desc.includes('DESPESAS GERAIS') ||
+          desc.includes('DESPESAS TRABALHISTAS')) {
+        const isTotal = desc === 'DESPESAS OPERACIONAIS' || 
+                       desc === 'TOTAL DESPESAS OPERACIONAIS' ||
+                       desc === 'TOTAL DAS DESPESAS OPERACIONAIS' ||
+                       (desc.includes('TOTAL') && desc.includes('DESPESAS'));
+        if (isTotal && !foundDespesasOp) {
+          metrics.despesasOperacionais = valorAbs;
+          metrics.despesasOperacionaisOrigem = 'linha_explicita';
+          foundDespesasOp = true;
+        } else if (!isTotal) {
+          somaDespesasOperacionais += valorAbs;
+        }
+      }
+
+      // ===== LUCRO OPERACIONAL =====
+      if (desc === 'LUCRO OPERACIONAL' || desc === 'RESULTADO OPERACIONAL') {
+        if (!foundLucroOp) {
+          metrics.lucroOperacional = valorAbs;
+          metrics.lucroOperacionalOrigem = 'linha_explicita';
+          foundLucroOp = true;
+        }
+      }
+
+      // ===== RESULTADO FINANCEIRO =====
+      if (desc.includes('RESULTADO FINANCEIRO') || desc.includes('RECEITAS FINANCEIRAS') ||
+          desc.includes('DESPESAS FINANCEIRAS') || desc.includes('JUROS') || 
+          desc.includes('VARIACAO MONETARIA')) {
+        const isTotal = desc === 'RESULTADO FINANCEIRO' || 
+                       desc === 'RESULTADO FINANCEIRO LIQUIDO' ||
+                       (desc.includes('TOTAL') && desc.includes('FINANCEIRO'));
+        if (isTotal && !foundResultadoFin) {
+          metrics.resultadoFinanceiro = valor;
+          metrics.resultadoFinanceiroOrigem = 'linha_explicita';
+          foundResultadoFin = true;
+        } else if (!isTotal) {
+          somaResultadoFinanceiro += valor;
+        }
+      }
+
+      // ===== LUCRO LÍQUIDO =====
+      if (desc.includes('LUCRO LIQUIDO') || desc.includes('RESULTADO LIQUIDO') ||
+          desc.includes('LUCRO DO EXERCICIO') || desc.includes('RESULTADO DO EXERCICIO') ||
+          desc.includes('LUCRO DO PERIODO')) {
+        if (!foundLucroLiq) {
+          metrics.lucroLiquido = valorAbs;
+          metrics.lucroLiquidoOrigem = 'linha_explicita';
+          foundLucroLiq = true;
+        }
+      }
+    }
+
+    // ===== FALLBACKS =====
+    if (!foundReceitaBruta && somaReceitaBruta > 0) {
+      metrics.receitaBruta = somaReceitaBruta;
+      metrics.receitaBrutaOrigem = 'soma_contas';
+    }
+
+    if (!foundReceitaLiquida && metrics.receitaBruta > 0) {
+      metrics.receitaLiquida = metrics.receitaBruta;
+      metrics.receitaLiquidaOrigem = metrics.receitaBrutaOrigem;
+    }
+
+    if (!foundCMV && somaCMV !== 0) {
+      metrics.cmv = somaCMV;
+      metrics.cmvOrigem = 'soma_contas';
+    }
+
+    if (!foundDespesasOp && somaDespesasOperacionais > 0) {
+      metrics.despesasOperacionais = somaDespesasOperacionais;
+      metrics.despesasOperacionaisOrigem = 'soma_contas';
+    }
+
+    if (!foundResultadoFin && somaResultadoFinanceiro !== 0) {
+      metrics.resultadoFinanceiro = somaResultadoFinanceiro;
+      metrics.resultadoFinanceiroOrigem = 'soma_contas';
+    }
+
+    // Calcular margens
+    const receitaBase = metrics.receitaLiquida > 0 ? metrics.receitaLiquida : metrics.receitaBruta;
+    metrics.margemBruta = receitaBase > 0 ? (metrics.lucroBruto / receitaBase) * 100 : 0;
+    metrics.margemOperacional = receitaBase > 0 ? (metrics.lucroOperacional / receitaBase) * 100 : 0;
+    metrics.margemLiquida = receitaBase > 0 ? (metrics.lucroLiquido / receitaBase) * 100 : 0;
+
+    return metrics;
   };
 
   /**
