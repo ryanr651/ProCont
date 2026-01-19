@@ -71,21 +71,21 @@ export interface BalancoMetrics {
 
 export interface DREMetrics {
   receitaBruta: number;
-  receitaBrutaOrigem: 'linha_explicita' | 'soma_contas';
+  receitaBrutaOrigem: "linha_explicita" | "soma_contas";
   receitaLiquida: number;
-  receitaLiquidaOrigem: 'linha_explicita' | 'soma_contas';
+  receitaLiquidaOrigem: "linha_explicita" | "soma_contas";
   cmv: number;
-  cmvOrigem: 'linha_explicita' | 'soma_contas';
+  cmvOrigem: "linha_explicita" | "soma_contas";
   lucroBruto: number;
-  lucroBrutoOrigem: 'linha_explicita' | 'soma_contas';
+  lucroBrutoOrigem: "linha_explicita" | "soma_contas";
   despesasOperacionais: number;
-  despesasOperacionaisOrigem: 'linha_explicita' | 'soma_contas';
+  despesasOperacionaisOrigem: "linha_explicita" | "soma_contas";
   lucroOperacional: number;
-  lucroOperacionalOrigem: 'linha_explicita' | 'soma_contas';
+  lucroOperacionalOrigem: "linha_explicita" | "soma_contas";
   resultadoFinanceiro: number;
-  resultadoFinanceiroOrigem: 'linha_explicita' | 'soma_contas';
+  resultadoFinanceiroOrigem: "linha_explicita" | "soma_contas";
   lucroLiquido: number;
-  lucroLiquidoOrigem: 'linha_explicita' | 'soma_contas';
+  lucroLiquidoOrigem: "linha_explicita" | "soma_contas";
 }
 
 export interface BalancoParseResult {
@@ -397,122 +397,37 @@ function biffCellsToXLSRows(cells: BIFFCell[]): XLSRow[] {
  * 7. Normalizar números brasileiros corretamente
  */
 async function parseDREFromXLSFile(file: File): Promise<XLSRow[]> {
-  debugLog("=== Parser DRE XLS/XLSX ===", file.name);
+  debugLog("=== Parser DRE XLS/XLSX (Robust) ===", file.name);
 
   try {
-    const buffer = await file.arrayBuffer();
-    
-    // REGRA: Usar cellFormula: false para obter valores calculados
-    const workbook = XLSX.read(buffer, {
-      type: "array",
-      cellFormula: false,
-      cellText: false,
+    // Usa a lógica robusta de leitura que já funciona no Balanço
+    const rows = await parseXLSFile(file);
+
+    // Refina os numericValues para garantir a regra da DRE
+    // (apenas valores à direita do texto da conta)
+    const dreRows = rows.map((row) => {
+      const textCell = safeGetFirstText(row);
+      if (textCell.index === -1) return row;
+
+      const filteredNumeric = row.numericValues.filter((nv) => {
+        // Encontra o índice da coluna original desse valor para comparar
+        const colIdx = row.cells.indexOf(nv.raw);
+        return colIdx > textCell.index;
+      });
+
+      return {
+        ...row,
+        numericValues: filteredNumeric,
+      };
     });
 
-    if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
-      debugLog("Workbook vazio");
-      return [];
-    }
-
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-
-    if (!sheet) {
-      debugLog("Sheet não encontrada");
-      return [];
-    }
-
-    // REGRA: Usar header: 1, defval: null para manter estrutura de colunas
-    const rawData = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-      header: 1,
-      defval: null,
-    }) as unknown[][];
-
-    debugLog("Linhas brutas obtidas:", rawData?.length || 0);
-
-    if (!rawData || rawData.length === 0) {
-      return [];
-    }
-
-    const rows: XLSRow[] = [];
-
-    for (let rowIdx = 0; rowIdx < rawData.length; rowIdx++) {
-      const rawRow = rawData[rowIdx];
-      if (!Array.isArray(rawRow)) continue;
-
-      const cells: string[] = [];
-      let firstText = { text: "", index: -1 };
-      const numericValues: { value: number; raw: string }[] = [];
-
-      // Processar cada célula MANTENDO ÍNDICES FIXOS
-      for (let colIdx = 0; colIdx < rawRow.length; colIdx++) {
-        const rawCell = rawRow[colIdx];
-        
-        // Converter célula para string para armazenar
-        let cellStr = "";
-        let numericValue: number | null = null;
-
-        if (rawCell === null || rawCell === undefined) {
-          cellStr = "";
-        } else if (typeof rawCell === "number") {
-          // Valor numérico direto do Excel (já calculado)
-          cellStr = String(rawCell);
-          numericValue = rawCell;
-        } else if (typeof rawCell === "string") {
-          cellStr = rawCell.trim();
-          
-          // REGRA: Tentar parsear string como número brasileiro
-          if (cellStr !== "" && isNumericCell(cellStr)) {
-            numericValue = parseBrazilianNumberForDRE(cellStr);
-          }
-        } else {
-          cellStr = String(rawCell);
-        }
-
-        cells.push(cellStr);
-
-        // REGRA: O texto da conta é o primeiro campo string não vazio
-        if (firstText.index === -1 && cellStr !== "" && isTextCell(cellStr)) {
-          firstText = { text: cellStr.trim(), index: colIdx };
-        }
-
-        // REGRA: Coletar valores numéricos válidos APÓS o texto
-        if (numericValue !== null && Number.isFinite(numericValue) && firstText.index !== -1 && colIdx > firstText.index) {
-          numericValues.push({ value: numericValue, raw: cellStr });
-        }
-      }
-
-      // Se não encontrou texto mas tem numéricos, verificar se tem texto antes
-      if (firstText.index === -1 && numericValues.length === 0) {
-        // Linha vazia, ignorar
-        continue;
-      }
-
-      // Se encontrou texto, adicionar linha
-      if (firstText.index !== -1 || numericValues.length > 0) {
-        rows.push({
-          cells,
-          firstTextCell: firstText,
-          numericValues,
-        });
-      }
-    }
-
-    debugLog(`DRE XLS Parser: ${rows.length} linhas processadas`);
-    return rows;
+    debugLog(`DRE XLS Parser: ${dreRows.length} linhas processadas com sucesso`);
+    return dreRows;
   } catch (error) {
-    debugLog("ERRO ao processar DRE XLS:", error);
+    debugLog("ERRO crítico no processamento DRE XLS:", error);
     return [];
   }
 }
-
-/**
- * Parsear número brasileiro para DRE
- * Regras:
- * 1. Se vier como string: remover separador de milhar (.), substituir vírgula por ponto
- * 2. Tratar valores negativos: (1.234,56) → -1234.56
- * 3. Converter explicitamente para Number
- */
 function parseBrazilianNumberForDRE(value: string | number): number {
   if (typeof value === "number") return value;
   if (!value || value.toString().trim() === "") return NaN;
@@ -521,7 +436,7 @@ function parseBrazilianNumberForDRE(value: string | number): number {
 
   // Remover R$ e símbolos de moeda
   cleaned = cleaned.replace(/R\$\s*/gi, "");
-  
+
   // Remover sufixo D/C
   cleaned = cleaned.replace(/\s*[dcDC]\s*$/i, "");
 
@@ -1440,11 +1355,7 @@ function classificarLinhaDRE(descricao: string, currentGrupo: DREGrupo): DREClas
   }
 
   // Detectar subtotais genéricos (palavras que indicam fechamento de grupo)
-  if (
-    normalDesc.startsWith("TOTAL") ||
-    normalDesc.includes("TOTAL DE") ||
-    normalDesc.includes("SUBTOTAL")
-  ) {
+  if (normalDesc.startsWith("TOTAL") || normalDesc.includes("TOTAL DE") || normalDesc.includes("SUBTOTAL")) {
     return { grupo: currentGrupo, tipo: "subtotal", isGroupChange: false };
   }
 
@@ -1479,7 +1390,7 @@ function classificarLinhaDRE(descricao: string, currentGrupo: DREGrupo): DREClas
  * 3. Preservar estrutura hierárquica
  * 4. Aplicar arredondamento 2 casas decimais
  * 5. Classificar grupo automaticamente
- * 
+ *
  * REGRAS ESPECÍFICAS PARA XLS/XLSX:
  * - O texto da conta é o primeiro campo string não vazio
  * - O valor do período é o PRIMEIRO valor numérico válido APÓS o texto
@@ -1495,12 +1406,7 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
   const periodo = extractPeriodFromRows(rows?.map((r) => safeGetCells(r)) || [], filename);
 
   if (!rows || rows.length === 0) {
-    return {
-      parsed: true,
-      periodo,
-      entries,
-      errors: [],
-    };
+    return { entries, periodo, errors, parsed: false };
   }
 
   // REGRA 7: Encontrar header DRE
@@ -1581,7 +1487,7 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
     // REGRA: Primeiro número = valor do período atual
     // Os valores já vêm parseados corretamente do parser XLS
     const valorPeriodo = numericValues[0]?.value;
-    
+
     // Validar se é um número válido
     if (valorPeriodo === undefined || valorPeriodo === null || !Number.isFinite(valorPeriodo)) {
       debugLog(`Valor inválido na linha: ${descricao}`, numericValues);
@@ -1589,11 +1495,12 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
     }
 
     const valor = roundTo2Decimals(valorPeriodo);
-    
+
     // REGRA: Segundo número = valor do período anterior (se existir)
-    const valorAnterior = numericValues.length > 1 && Number.isFinite(numericValues[1]?.value) 
-      ? roundTo2Decimals(numericValues[1].value) 
-      : null;
+    const valorAnterior =
+      numericValues.length > 1 && Number.isFinite(numericValues[1]?.value)
+        ? roundTo2Decimals(numericValues[1].value)
+        : null;
 
     entries.push({
       descricao,
@@ -1745,11 +1652,10 @@ export async function parseDREFileAuto(file: File): Promise<DREParseResult> {
     const rows = await parseCSVFile(file);
     return parseDREFromCSV(rows, file.name);
   } else if (extension === "xls" || extension === "xlsx") {
-    // Usar parser DRE específico para XLS/XLSX
+    // USAR PARSER ESPECÍFICO PARA DRE XLS/XLSX
     const xlsRows = await parseDREFromXLSFile(file);
     return parseDREFromXLS(xlsRows, file.name);
   }
-
 
   throw new Error("Formato não suportado. Use CSV, XLS ou XLSX.");
 }
@@ -1780,7 +1686,7 @@ export function parseBalancoFile(rows: string[][], filename: string): BalancoPar
 
 /**
  * Calculate DRE metrics from entries
- * 
+ *
  * REGRAS DE AGREGAÇÃO (ORDEM DE PRIORIDADE):
  * 1. Linha explícita de subtotal/total → usar esse valor (fonte da verdade)
  * 2. Soma das linhas do grupo → fallback se não existir linha explícita
@@ -1789,21 +1695,21 @@ export function parseBalancoFile(rows: string[][], filename: string): BalancoPar
 export function calculateDREMetrics(entries: ParsedDREEntry[]): DREMetrics {
   const metrics: DREMetrics = {
     receitaBruta: 0,
-    receitaBrutaOrigem: 'soma_contas',
+    receitaBrutaOrigem: "soma_contas",
     receitaLiquida: 0,
-    receitaLiquidaOrigem: 'soma_contas',
+    receitaLiquidaOrigem: "soma_contas",
     cmv: 0,
-    cmvOrigem: 'soma_contas',
+    cmvOrigem: "soma_contas",
     lucroBruto: 0,
-    lucroBrutoOrigem: 'soma_contas',
+    lucroBrutoOrigem: "soma_contas",
     despesasOperacionais: 0,
-    despesasOperacionaisOrigem: 'soma_contas',
+    despesasOperacionaisOrigem: "soma_contas",
     lucroOperacional: 0,
-    lucroOperacionalOrigem: 'soma_contas',
+    lucroOperacionalOrigem: "soma_contas",
     resultadoFinanceiro: 0,
-    resultadoFinanceiroOrigem: 'soma_contas',
+    resultadoFinanceiroOrigem: "soma_contas",
     lucroLiquido: 0,
-    lucroLiquidoOrigem: 'soma_contas',
+    lucroLiquidoOrigem: "soma_contas",
   };
 
   // Acumuladores para soma de contas (fallback)
@@ -1829,16 +1735,16 @@ export function calculateDREMetrics(entries: ParsedDREEntry[]): DREMetrics {
     const valorAbs = Math.abs(valor);
 
     // ===== RECEITA BRUTA =====
-    if (entry.grupo === 'RECEITA_BRUTA') {
+    if (entry.grupo === "RECEITA_BRUTA") {
       // Linha explícita "RECEITA BRUTA" ou "TOTAL RECEITA BRUTA"
       if (
-        normalDesc === 'RECEITA BRUTA' ||
-        normalDesc === 'RECEITA OPERACIONAL BRUTA' ||
-        normalDesc.includes('TOTAL') && normalDesc.includes('RECEITA BRUTA')
+        normalDesc === "RECEITA BRUTA" ||
+        normalDesc === "RECEITA OPERACIONAL BRUTA" ||
+        (normalDesc.includes("TOTAL") && normalDesc.includes("RECEITA BRUTA"))
       ) {
         if (!foundReceitaBrutaExplicita) {
           metrics.receitaBruta = valorAbs;
-          metrics.receitaBrutaOrigem = 'linha_explicita';
+          metrics.receitaBrutaOrigem = "linha_explicita";
           foundReceitaBrutaExplicita = true;
         }
       } else {
@@ -1848,16 +1754,16 @@ export function calculateDREMetrics(entries: ParsedDREEntry[]): DREMetrics {
     }
 
     // ===== RECEITA LÍQUIDA =====
-    if (entry.grupo === 'RECEITA_LIQUIDA') {
+    if (entry.grupo === "RECEITA_LIQUIDA") {
       // Linha explícita "RECEITA LÍQUIDA"
       if (
-        normalDesc === 'RECEITA LIQUIDA' ||
-        normalDesc === 'RECEITA OPERACIONAL LIQUIDA' ||
-        normalDesc.includes('TOTAL') && normalDesc.includes('RECEITA LIQUIDA')
+        normalDesc === "RECEITA LIQUIDA" ||
+        normalDesc === "RECEITA OPERACIONAL LIQUIDA" ||
+        (normalDesc.includes("TOTAL") && normalDesc.includes("RECEITA LIQUIDA"))
       ) {
         if (!foundReceitaLiquidaExplicita) {
           metrics.receitaLiquida = valorAbs;
-          metrics.receitaLiquidaOrigem = 'linha_explicita';
+          metrics.receitaLiquidaOrigem = "linha_explicita";
           foundReceitaLiquidaExplicita = true;
         }
       } else {
@@ -1866,20 +1772,20 @@ export function calculateDREMetrics(entries: ParsedDREEntry[]): DREMetrics {
     }
 
     // ===== CMV =====
-    if (entry.grupo === 'CMV') {
+    if (entry.grupo === "CMV") {
       // Linha explícita de CMV/CPV total
       if (
-        normalDesc === 'CMV' ||
-        normalDesc === 'CPV' ||
-        normalDesc === 'CUSTO DA MERCADORIA VENDIDA' ||
-        normalDesc === 'CUSTO DOS PRODUTOS VENDIDOS' ||
-        normalDesc === 'CUSTO DAS MERCADORIAS VENDIDAS' ||
-        normalDesc === 'CUSTO DOS SERVICOS PRESTADOS' ||
-        (normalDesc.includes('TOTAL') && (normalDesc.includes('CMV') || normalDesc.includes('CUSTO')))
+        normalDesc === "CMV" ||
+        normalDesc === "CPV" ||
+        normalDesc === "CUSTO DA MERCADORIA VENDIDA" ||
+        normalDesc === "CUSTO DOS PRODUTOS VENDIDOS" ||
+        normalDesc === "CUSTO DAS MERCADORIAS VENDIDAS" ||
+        normalDesc === "CUSTO DOS SERVICOS PRESTADOS" ||
+        (normalDesc.includes("TOTAL") && (normalDesc.includes("CMV") || normalDesc.includes("CUSTO")))
       ) {
         if (!foundCMVExplicita) {
           metrics.cmv = valor; // Manter sinal (normalmente negativo)
-          metrics.cmvOrigem = 'linha_explicita';
+          metrics.cmvOrigem = "linha_explicita";
           foundCMVExplicita = true;
         }
       } else {
@@ -1888,31 +1794,28 @@ export function calculateDREMetrics(entries: ParsedDREEntry[]): DREMetrics {
     }
 
     // ===== LUCRO BRUTO =====
-    if (entry.grupo === 'LUCRO_BRUTO') {
-      if (
-        normalDesc === 'LUCRO BRUTO' ||
-        normalDesc === 'RESULTADO BRUTO'
-      ) {
+    if (entry.grupo === "LUCRO_BRUTO") {
+      if (normalDesc === "LUCRO BRUTO" || normalDesc === "RESULTADO BRUTO") {
         if (!foundLucroBrutoExplicita) {
           metrics.lucroBruto = valorAbs;
-          metrics.lucroBrutoOrigem = 'linha_explicita';
+          metrics.lucroBrutoOrigem = "linha_explicita";
           foundLucroBrutoExplicita = true;
         }
       }
     }
 
     // ===== DESPESAS OPERACIONAIS =====
-    if (entry.grupo === 'DESPESAS_OPERACIONAIS') {
+    if (entry.grupo === "DESPESAS_OPERACIONAIS") {
       // Linha explícita de total
       if (
-        normalDesc === 'DESPESAS OPERACIONAIS' ||
-        normalDesc === 'TOTAL DESPESAS OPERACIONAIS' ||
-        normalDesc === 'TOTAL DAS DESPESAS OPERACIONAIS' ||
-        (normalDesc.includes('TOTAL') && normalDesc.includes('DESPESAS'))
+        normalDesc === "DESPESAS OPERACIONAIS" ||
+        normalDesc === "TOTAL DESPESAS OPERACIONAIS" ||
+        normalDesc === "TOTAL DAS DESPESAS OPERACIONAIS" ||
+        (normalDesc.includes("TOTAL") && normalDesc.includes("DESPESAS"))
       ) {
         if (!foundDespesasOperacionaisExplicita) {
           metrics.despesasOperacionais = valorAbs;
-          metrics.despesasOperacionaisOrigem = 'linha_explicita';
+          metrics.despesasOperacionaisOrigem = "linha_explicita";
           foundDespesasOperacionaisExplicita = true;
         }
       } else {
@@ -1921,30 +1824,27 @@ export function calculateDREMetrics(entries: ParsedDREEntry[]): DREMetrics {
     }
 
     // ===== LUCRO OPERACIONAL =====
-    if (entry.grupo === 'LUCRO_OPERACIONAL') {
-      if (
-        normalDesc === 'LUCRO OPERACIONAL' ||
-        normalDesc === 'RESULTADO OPERACIONAL'
-      ) {
+    if (entry.grupo === "LUCRO_OPERACIONAL") {
+      if (normalDesc === "LUCRO OPERACIONAL" || normalDesc === "RESULTADO OPERACIONAL") {
         if (!foundLucroOperacionalExplicita) {
           metrics.lucroOperacional = valorAbs;
-          metrics.lucroOperacionalOrigem = 'linha_explicita';
+          metrics.lucroOperacionalOrigem = "linha_explicita";
           foundLucroOperacionalExplicita = true;
         }
       }
     }
 
     // ===== RESULTADO FINANCEIRO =====
-    if (entry.grupo === 'RESULTADO_FINANCEIRO') {
+    if (entry.grupo === "RESULTADO_FINANCEIRO") {
       // Linha explícita de resultado financeiro líquido
       if (
-        normalDesc === 'RESULTADO FINANCEIRO' ||
-        normalDesc === 'RESULTADO FINANCEIRO LIQUIDO' ||
-        (normalDesc.includes('TOTAL') && normalDesc.includes('FINANCEIRO'))
+        normalDesc === "RESULTADO FINANCEIRO" ||
+        normalDesc === "RESULTADO FINANCEIRO LIQUIDO" ||
+        (normalDesc.includes("TOTAL") && normalDesc.includes("FINANCEIRO"))
       ) {
         if (!foundResultadoFinanceiroExplicita) {
           metrics.resultadoFinanceiro = valor; // Manter sinal
-          metrics.resultadoFinanceiroOrigem = 'linha_explicita';
+          metrics.resultadoFinanceiroOrigem = "linha_explicita";
           foundResultadoFinanceiroExplicita = true;
         }
       } else {
@@ -1953,19 +1853,19 @@ export function calculateDREMetrics(entries: ParsedDREEntry[]): DREMetrics {
     }
 
     // ===== LUCRO LÍQUIDO =====
-    if (entry.grupo === 'LUCRO_LIQUIDO') {
+    if (entry.grupo === "LUCRO_LIQUIDO") {
       if (
-        normalDesc === 'LUCRO LIQUIDO' ||
-        normalDesc === 'LUCRO LIQUIDO DO EXERCICIO' ||
-        normalDesc === 'RESULTADO LIQUIDO' ||
-        normalDesc === 'RESULTADO LIQUIDO DO EXERCICIO' ||
-        normalDesc === 'RESULTADO DO EXERCICIO' ||
-        normalDesc === 'LUCRO DO EXERCICIO' ||
-        normalDesc === 'LUCRO DO PERIODO'
+        normalDesc === "LUCRO LIQUIDO" ||
+        normalDesc === "LUCRO LIQUIDO DO EXERCICIO" ||
+        normalDesc === "RESULTADO LIQUIDO" ||
+        normalDesc === "RESULTADO LIQUIDO DO EXERCICIO" ||
+        normalDesc === "RESULTADO DO EXERCICIO" ||
+        normalDesc === "LUCRO DO EXERCICIO" ||
+        normalDesc === "LUCRO DO PERIODO"
       ) {
         if (!foundLucroLiquidoExplicita) {
           metrics.lucroLiquido = valorAbs;
-          metrics.lucroLiquidoOrigem = 'linha_explicita';
+          metrics.lucroLiquidoOrigem = "linha_explicita";
           foundLucroLiquidoExplicita = true;
         }
       }
@@ -1976,13 +1876,13 @@ export function calculateDREMetrics(entries: ParsedDREEntry[]): DREMetrics {
 
   if (!foundReceitaBrutaExplicita && somaReceitaBruta > 0) {
     metrics.receitaBruta = somaReceitaBruta;
-    metrics.receitaBrutaOrigem = 'soma_contas';
+    metrics.receitaBrutaOrigem = "soma_contas";
   }
 
   if (!foundReceitaLiquidaExplicita) {
     if (somaReceitaLiquida > 0) {
       metrics.receitaLiquida = somaReceitaLiquida;
-      metrics.receitaLiquidaOrigem = 'soma_contas';
+      metrics.receitaLiquidaOrigem = "soma_contas";
     } else if (metrics.receitaBruta > 0) {
       // Se não tem receita líquida, usar receita bruta
       metrics.receitaLiquida = metrics.receitaBruta;
@@ -1992,7 +1892,7 @@ export function calculateDREMetrics(entries: ParsedDREEntry[]): DREMetrics {
 
   if (!foundCMVExplicita && somaCMV !== 0) {
     metrics.cmv = somaCMV;
-    metrics.cmvOrigem = 'soma_contas';
+    metrics.cmvOrigem = "soma_contas";
   }
 
   if (!foundLucroBrutoExplicita && metrics.receitaLiquida > 0) {
@@ -2002,12 +1902,12 @@ export function calculateDREMetrics(entries: ParsedDREEntry[]): DREMetrics {
 
   if (!foundDespesasOperacionaisExplicita && somaDespesasOperacionais > 0) {
     metrics.despesasOperacionais = somaDespesasOperacionais;
-    metrics.despesasOperacionaisOrigem = 'soma_contas';
+    metrics.despesasOperacionaisOrigem = "soma_contas";
   }
 
   if (!foundResultadoFinanceiroExplicita && somaResultadoFinanceiro !== 0) {
     metrics.resultadoFinanceiro = somaResultadoFinanceiro;
-    metrics.resultadoFinanceiroOrigem = 'soma_contas';
+    metrics.resultadoFinanceiroOrigem = "soma_contas";
   }
 
   // Lucro Operacional e Lucro Líquido NUNCA são recalculados
