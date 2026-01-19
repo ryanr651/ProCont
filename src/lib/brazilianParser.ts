@@ -1742,9 +1742,13 @@ export async function parseDREFileAuto(file: File): Promise<DREParseResult> {
     const rows = await parseCSVFile(file);
     return parseDREFromCSV(rows, file.name);
   } else if (extension === "xls" || extension === "xlsx") {
-    // XLS/XLSX da DRE já retorna ParsedDREEntry
-    // NÃO reprocessar como CSV
-    return parseDREFromXLSFile(file);
+    const result = await parseDREFromXLSFile(file);
+
+    return {
+      ...result,
+      errors: result.errors ?? [],
+      warnings: result.warnings ?? [],
+    };
   }
 
   throw new Error("Formato não suportado. Use CSV, XLS ou XLSX.");
