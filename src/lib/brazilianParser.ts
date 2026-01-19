@@ -70,10 +70,22 @@ export interface BalancoMetrics {
 }
 
 export interface DREMetrics {
-  receitaOperacional: number;
-  despesasOperacionais: number;
+  receitaBruta: number;
+  receitaBrutaOrigem: 'linha_explicita' | 'soma_contas';
+  receitaLiquida: number;
+  receitaLiquidaOrigem: 'linha_explicita' | 'soma_contas';
+  cmv: number;
+  cmvOrigem: 'linha_explicita' | 'soma_contas';
   lucroBruto: number;
+  lucroBrutoOrigem: 'linha_explicita' | 'soma_contas';
+  despesasOperacionais: number;
+  despesasOperacionaisOrigem: 'linha_explicita' | 'soma_contas';
+  lucroOperacional: number;
+  lucroOperacionalOrigem: 'linha_explicita' | 'soma_contas';
+  resultadoFinanceiro: number;
+  resultadoFinanceiroOrigem: 'linha_explicita' | 'soma_contas';
   lucroLiquido: number;
+  lucroLiquidoOrigem: 'linha_explicita' | 'soma_contas';
 }
 
 export interface BalancoParseResult {
@@ -1579,66 +1591,238 @@ export function parseBalancoFile(rows: string[][], filename: string): BalancoPar
 
 /**
  * Calculate DRE metrics from entries
- * REGRA: Usar valores do arquivo, não recalcular
- * Prioriza linhas explícitas de subtotal/total
+ * 
+ * REGRAS DE AGREGAÇÃO (ORDEM DE PRIORIDADE):
+ * 1. Linha explícita de subtotal/total → usar esse valor (fonte da verdade)
+ * 2. Soma das linhas do grupo → fallback se não existir linha explícita
+ * 3. NUNCA recalcular valores já informados
  */
 export function calculateDREMetrics(entries: ParsedDREEntry[]): DREMetrics {
   const metrics: DREMetrics = {
-    receitaOperacional: 0,
-    despesasOperacionais: 0,
+    receitaBruta: 0,
+    receitaBrutaOrigem: 'soma_contas',
+    receitaLiquida: 0,
+    receitaLiquidaOrigem: 'soma_contas',
+    cmv: 0,
+    cmvOrigem: 'soma_contas',
     lucroBruto: 0,
+    lucroBrutoOrigem: 'soma_contas',
+    despesasOperacionais: 0,
+    despesasOperacionaisOrigem: 'soma_contas',
+    lucroOperacional: 0,
+    lucroOperacionalOrigem: 'soma_contas',
+    resultadoFinanceiro: 0,
+    resultadoFinanceiroOrigem: 'soma_contas',
     lucroLiquido: 0,
+    lucroLiquidoOrigem: 'soma_contas',
   };
+
+  // Acumuladores para soma de contas (fallback)
+  let somaReceitaBruta = 0;
+  let somaReceitaLiquida = 0;
+  let somaCMV = 0;
+  let somaDespesasOperacionais = 0;
+  let somaResultadoFinanceiro = 0;
+
+  // Flags para linhas explícitas encontradas
+  let foundReceitaBrutaExplicita = false;
+  let foundReceitaLiquidaExplicita = false;
+  let foundCMVExplicita = false;
+  let foundLucroBrutoExplicita = false;
+  let foundDespesasOperacionaisExplicita = false;
+  let foundLucroOperacionalExplicita = false;
+  let foundResultadoFinanceiroExplicita = false;
+  let foundLucroLiquidoExplicita = false;
 
   for (const entry of entries) {
     const normalDesc = normalizeText(entry.descricao);
-    const valor = Math.abs(entry.valor);
+    const valor = entry.valor; // Manter sinal original
+    const valorAbs = Math.abs(valor);
 
-    // RECEITA LÍQUIDA (subtotal após deduções)
-    if (
-      normalDesc.includes("RECEITA LIQUIDA") ||
-      normalDesc.includes("RECEITA OPERACIONAL LIQUIDA")
-    ) {
-      metrics.receitaOperacional = valor;
+    // ===== RECEITA BRUTA =====
+    if (entry.grupo === 'RECEITA_BRUTA') {
+      // Linha explícita "RECEITA BRUTA" ou "TOTAL RECEITA BRUTA"
+      if (
+        normalDesc === 'RECEITA BRUTA' ||
+        normalDesc === 'RECEITA OPERACIONAL BRUTA' ||
+        normalDesc.includes('TOTAL') && normalDesc.includes('RECEITA BRUTA')
+      ) {
+        if (!foundReceitaBrutaExplicita) {
+          metrics.receitaBruta = valorAbs;
+          metrics.receitaBrutaOrigem = 'linha_explicita';
+          foundReceitaBrutaExplicita = true;
+        }
+      } else {
+        // Somar contas normais do grupo
+        somaReceitaBruta += valorAbs;
+      }
     }
-    // LUCRO BRUTO
-    else if (normalDesc.includes("LUCRO BRUTO") || normalDesc.includes("RESULTADO BRUTO")) {
-      metrics.lucroBruto = valor;
-    }
-    // LUCRO LÍQUIDO (total final)
-    else if (
-      normalDesc.includes("LUCRO LIQUIDO") ||
-      normalDesc.includes("RESULTADO LIQUIDO") ||
-      normalDesc.includes("RESULTADO DO EXERCICIO") ||
-      normalDesc.includes("LUCRO DO EXERCICIO")
-    ) {
-      metrics.lucroLiquido = valor;
-    }
-    // DESPESAS OPERACIONAIS
-    else if (
-      normalDesc.includes("TOTAL DESPESAS OPERACIONAIS") ||
-      normalDesc.includes("TOTAL DAS DESPESAS") ||
-      (normalDesc.includes("DESPESAS OPERACIONAIS") && normalDesc.includes("TOTAL"))
-    ) {
-      metrics.despesasOperacionais = valor;
-    }
-  }
 
-  // Fallback: Se não encontrou receita líquida, somar receitas brutas
-  if (metrics.receitaOperacional === 0) {
-    for (const entry of entries) {
-      if (entry.grupo === "RECEITA_BRUTA" && entry.valor > 0) {
-        const normalDesc = normalizeText(entry.descricao);
-        if (
-          normalDesc.includes("RECEITA BRUTA") ||
-          normalDesc.includes("RECEITA OPERACIONAL BRUTA")
-        ) {
-          metrics.receitaOperacional = Math.abs(entry.valor);
-          break;
+    // ===== RECEITA LÍQUIDA =====
+    if (entry.grupo === 'RECEITA_LIQUIDA') {
+      // Linha explícita "RECEITA LÍQUIDA"
+      if (
+        normalDesc === 'RECEITA LIQUIDA' ||
+        normalDesc === 'RECEITA OPERACIONAL LIQUIDA' ||
+        normalDesc.includes('TOTAL') && normalDesc.includes('RECEITA LIQUIDA')
+      ) {
+        if (!foundReceitaLiquidaExplicita) {
+          metrics.receitaLiquida = valorAbs;
+          metrics.receitaLiquidaOrigem = 'linha_explicita';
+          foundReceitaLiquidaExplicita = true;
+        }
+      } else {
+        somaReceitaLiquida += valorAbs;
+      }
+    }
+
+    // ===== CMV =====
+    if (entry.grupo === 'CMV') {
+      // Linha explícita de CMV/CPV total
+      if (
+        normalDesc === 'CMV' ||
+        normalDesc === 'CPV' ||
+        normalDesc === 'CUSTO DA MERCADORIA VENDIDA' ||
+        normalDesc === 'CUSTO DOS PRODUTOS VENDIDOS' ||
+        normalDesc === 'CUSTO DAS MERCADORIAS VENDIDAS' ||
+        normalDesc === 'CUSTO DOS SERVICOS PRESTADOS' ||
+        (normalDesc.includes('TOTAL') && (normalDesc.includes('CMV') || normalDesc.includes('CUSTO')))
+      ) {
+        if (!foundCMVExplicita) {
+          metrics.cmv = valor; // Manter sinal (normalmente negativo)
+          metrics.cmvOrigem = 'linha_explicita';
+          foundCMVExplicita = true;
+        }
+      } else {
+        somaCMV += valor;
+      }
+    }
+
+    // ===== LUCRO BRUTO =====
+    if (entry.grupo === 'LUCRO_BRUTO') {
+      if (
+        normalDesc === 'LUCRO BRUTO' ||
+        normalDesc === 'RESULTADO BRUTO'
+      ) {
+        if (!foundLucroBrutoExplicita) {
+          metrics.lucroBruto = valorAbs;
+          metrics.lucroBrutoOrigem = 'linha_explicita';
+          foundLucroBrutoExplicita = true;
+        }
+      }
+    }
+
+    // ===== DESPESAS OPERACIONAIS =====
+    if (entry.grupo === 'DESPESAS_OPERACIONAIS') {
+      // Linha explícita de total
+      if (
+        normalDesc === 'DESPESAS OPERACIONAIS' ||
+        normalDesc === 'TOTAL DESPESAS OPERACIONAIS' ||
+        normalDesc === 'TOTAL DAS DESPESAS OPERACIONAIS' ||
+        (normalDesc.includes('TOTAL') && normalDesc.includes('DESPESAS'))
+      ) {
+        if (!foundDespesasOperacionaisExplicita) {
+          metrics.despesasOperacionais = valorAbs;
+          metrics.despesasOperacionaisOrigem = 'linha_explicita';
+          foundDespesasOperacionaisExplicita = true;
+        }
+      } else {
+        somaDespesasOperacionais += valorAbs;
+      }
+    }
+
+    // ===== LUCRO OPERACIONAL =====
+    if (entry.grupo === 'LUCRO_OPERACIONAL') {
+      if (
+        normalDesc === 'LUCRO OPERACIONAL' ||
+        normalDesc === 'RESULTADO OPERACIONAL'
+      ) {
+        if (!foundLucroOperacionalExplicita) {
+          metrics.lucroOperacional = valorAbs;
+          metrics.lucroOperacionalOrigem = 'linha_explicita';
+          foundLucroOperacionalExplicita = true;
+        }
+      }
+    }
+
+    // ===== RESULTADO FINANCEIRO =====
+    if (entry.grupo === 'RESULTADO_FINANCEIRO') {
+      // Linha explícita de resultado financeiro líquido
+      if (
+        normalDesc === 'RESULTADO FINANCEIRO' ||
+        normalDesc === 'RESULTADO FINANCEIRO LIQUIDO' ||
+        (normalDesc.includes('TOTAL') && normalDesc.includes('FINANCEIRO'))
+      ) {
+        if (!foundResultadoFinanceiroExplicita) {
+          metrics.resultadoFinanceiro = valor; // Manter sinal
+          metrics.resultadoFinanceiroOrigem = 'linha_explicita';
+          foundResultadoFinanceiroExplicita = true;
+        }
+      } else {
+        somaResultadoFinanceiro += valor;
+      }
+    }
+
+    // ===== LUCRO LÍQUIDO =====
+    if (entry.grupo === 'LUCRO_LIQUIDO') {
+      if (
+        normalDesc === 'LUCRO LIQUIDO' ||
+        normalDesc === 'LUCRO LIQUIDO DO EXERCICIO' ||
+        normalDesc === 'RESULTADO LIQUIDO' ||
+        normalDesc === 'RESULTADO LIQUIDO DO EXERCICIO' ||
+        normalDesc === 'RESULTADO DO EXERCICIO' ||
+        normalDesc === 'LUCRO DO EXERCICIO' ||
+        normalDesc === 'LUCRO DO PERIODO'
+      ) {
+        if (!foundLucroLiquidoExplicita) {
+          metrics.lucroLiquido = valorAbs;
+          metrics.lucroLiquidoOrigem = 'linha_explicita';
+          foundLucroLiquidoExplicita = true;
         }
       }
     }
   }
+
+  // ===== FALLBACKS: Usar soma das contas se não encontrou linha explícita =====
+
+  if (!foundReceitaBrutaExplicita && somaReceitaBruta > 0) {
+    metrics.receitaBruta = somaReceitaBruta;
+    metrics.receitaBrutaOrigem = 'soma_contas';
+  }
+
+  if (!foundReceitaLiquidaExplicita) {
+    if (somaReceitaLiquida > 0) {
+      metrics.receitaLiquida = somaReceitaLiquida;
+      metrics.receitaLiquidaOrigem = 'soma_contas';
+    } else if (metrics.receitaBruta > 0) {
+      // Se não tem receita líquida, usar receita bruta
+      metrics.receitaLiquida = metrics.receitaBruta;
+      metrics.receitaLiquidaOrigem = metrics.receitaBrutaOrigem;
+    }
+  }
+
+  if (!foundCMVExplicita && somaCMV !== 0) {
+    metrics.cmv = somaCMV;
+    metrics.cmvOrigem = 'soma_contas';
+  }
+
+  if (!foundLucroBrutoExplicita && metrics.receitaLiquida > 0) {
+    // NÃO recalcular - só usar soma se houver
+    // Lucro bruto DEVE vir de linha explícita
+  }
+
+  if (!foundDespesasOperacionaisExplicita && somaDespesasOperacionais > 0) {
+    metrics.despesasOperacionais = somaDespesasOperacionais;
+    metrics.despesasOperacionaisOrigem = 'soma_contas';
+  }
+
+  if (!foundResultadoFinanceiroExplicita && somaResultadoFinanceiro !== 0) {
+    metrics.resultadoFinanceiro = somaResultadoFinanceiro;
+    metrics.resultadoFinanceiroOrigem = 'soma_contas';
+  }
+
+  // Lucro Operacional e Lucro Líquido NUNCA são recalculados
+  // Devem vir de linhas explícitas
 
   return metrics;
 }
