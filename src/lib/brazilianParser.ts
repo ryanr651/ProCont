@@ -396,37 +396,99 @@ function biffCellsToXLSRows(cells: BIFFCell[]): XLSRow[] {
  * 6. O valor anterior é o próximo valor numérico após o valor atual
  * 7. Normalizar números brasileiros corretamente
  */
-async function parseDREFromXLSFile(file: File): Promise<XLSRow[]> {
-  debugLog("=== Parser DRE XLS/XLSX (Robust) ===", file.name);
+/**
+ * Parser DRE: Lê o arquivo e classifica as contas baseada no layout Procont/Excel
+ */
+async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
+  debugLog("=== Iniciando Processamento DRE ===", file.name);
 
   try {
-    // Usa a lógica robusta de leitura que já funciona no Balanço
+    // 1. Usa o motor de leitura que já funciona no Balanço
     const rows = await parseXLSFile(file);
+    const entries: ParsedDREEntry[] = [];
 
-    // Refina os numericValues para garantir a regra da DRE
-    // (apenas valores à direita do texto da conta)
-    const dreRows = rows.map((row) => {
-      const textCell = safeGetFirstText(row);
-      if (textCell.index === -1) return row;
+    // 2. Processa linha a linha para classificar
+    rows.forEach((row) => {
+      const { text: conta } = safeGetFirstText(row);
+      if (!conta || conta.length < 3) return;
 
-      const filteredNumeric = row.numericValues.filter((nv) => {
-        // Encontra o índice da coluna original desse valor para comparar
-        const colIdx = row.cells.indexOf(nv.raw);
-        return colIdx > textCell.index;
-      });
+      const normalConta = normalizeText(conta);
+      const valores = getNumericValuesRightOfText(row);
 
-      return {
-        ...row,
-        numericValues: filteredNumeric,
-      };
+      if (valores.length > 0) {
+        // Pega o valor mais à direita como atual, e o anterior se existir
+        const valorAtual = valores[valores.length - 1].value;
+        const valorAnterior = valores.length > 1 ? valores[valores.length - 2].value : null;
+
+        // 3. REGRAS DE CLASSIFICAÇÃO (Baseadas na sua imagem)
+        let grupo = "OUTROS";
+
+        if (normalConta.includes("RECEITA OPERACIONAL") || normalConta.includes("VENDAS DE MERCADORIAS")) {
+          grupo = "RECEITA_BRUTA";
+        } else if (normalConta.includes("RECEITA LIQUIDA")) {
+          grupo = "RECEITA_LIQUIDA";
+        } else if (normalConta.includes("DEVOLUCOES") || normalConta.includes("IMPOSTOS SOBRE VENDAS")) {
+          grupo = "DEDUCOES";
+        } else if (
+          normalConta.includes("CUSTOS MERCADORIAS") ||
+          normalConta.includes("CUSTOS DOS PRODUTOS") ||
+          normalConta.includes("CMV") ||
+          normalConta.includes("CPV")
+        ) {
+          grupo = "CMV";
+        } else if (normalConta.includes("LUCRO BRUTO")) {
+          grupo = "LUCRO_BRUTO";
+        } else if (
+          normalConta.includes("DESPESAS TRABALHISTAS") ||
+          normalConta.includes("DESPESAS GERAIS") ||
+          normalConta.includes("DESPESAS OPERACIONAIS")
+        ) {
+          grupo = "DESPESAS";
+        } else if (
+          normalConta.includes("LUCRO LIQUIDO") ||
+          normalConta.includes("RESULTADO LIQUIDO") ||
+          normalConta.includes("RESULTADO DO EXERCICIO")
+        ) {
+          grupo = "LUCRO_LIQUIDO";
+        }
+
+        entries.push({
+          descricao: conta,
+          grupo: grupo,
+          valor: valorAtual,
+          valor_anterior: valorAnterior,
+          raw_row: row.cells,
+        });
+      }
     });
 
-    debugLog(`DRE XLS Parser: ${dreRows.length} linhas processadas com sucesso`);
-    return dreRows;
+    return {
+      entries,
+      periodo: "Extraído do Arquivo",
+      errors: [],
+      parsed: entries.length > 0,
+    };
   } catch (error) {
-    debugLog("ERRO crítico no processamento DRE XLS:", error);
-    return [];
+    debugLog("Erro crítico no parser DRE:", error);
+    return { entries: [], periodo: "", errors: ["Falha ao processar arquivo"], parsed: false };
   }
+}
+
+// Mantendo a função auxiliar de números necessária para a DRE
+function parseBrazilianNumberForDRE(value: string | number): number {
+  if (typeof value === "number") return value;
+  let cleaned = value
+    .toString()
+    .trim()
+    .replace(/R\$\s*/gi, "")
+    .replace(/\s*[dcDC]\s*$/i, "");
+  const isNegativeParens = cleaned.includes("(") && cleaned.includes(")");
+  cleaned = cleaned.replace(/[()]/g, "").replace(/\s/g, "");
+  if (!/^-?\d+(\.\d+)?$/.test(cleaned)) {
+    cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+  }
+  const num = parseFloat(cleaned);
+  return isNegativeParens ? -Math.abs(num) : num;
 }
 function parseBrazilianNumberForDRE(value: string | number): number {
   if (typeof value === "number") return value;
