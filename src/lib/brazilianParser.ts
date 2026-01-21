@@ -421,7 +421,7 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
       }
     }
 
-    // 2. PROCESSAR LINHAS A PARTIR DA ÂNCORA
+    // 2. PROCESSAR LINHAS A PARTIR DA ÂNCORA (DENTRO DE parseDREFromXLSFile)
     for (let i = startRowIndex; i < rows.length; i++) {
       const row = rows[i];
       const { text: conta } = safeGetFirstText(row);
