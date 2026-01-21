@@ -103,6 +103,7 @@ interface DREClassifiedEntry {
   grupo: 'receita_bruta' | 'receita_liquida' | 'cmv' | 'lucro_bruto' | 'despesas_operacionais' | 'lucro_operacional' | 'resultado_financeiro' | 'lucro_liquido' | 'nao_classificado';
   isExplicit: boolean;
   motivo: string;
+  insideCMVBlock?: boolean;
 }
 
 const Resultado = () => {
@@ -1257,6 +1258,7 @@ const Resultado = () => {
                           <th className="text-center py-2 px-3 text-muted-foreground font-medium">Grupo</th>
                           <th className="text-right py-2 px-3 text-muted-foreground font-medium">Valor</th>
                           <th className="text-center py-2 px-3 text-muted-foreground font-medium">Tipo</th>
+                          <th className="text-center py-2 px-3 text-muted-foreground font-medium">Bloco CMV</th>
                           <th className="text-left py-2 px-3 text-muted-foreground font-medium">Motivo</th>
                         </tr>
                       </thead>
@@ -1284,6 +1286,12 @@ const Resultado = () => {
                               {entry.isExplicit 
                                 ? <span className="px-2 py-1 rounded text-xs font-medium bg-primary/20 text-primary border border-primary/30">Explícita</span>
                                 : <span className="px-2 py-1 rounded text-xs font-medium bg-muted text-muted-foreground border border-border">Componente</span>
+                              }
+                            </td>
+                            <td className="py-2 px-3 text-center">
+                              {entry.insideCMVBlock 
+                                ? <span className="px-2 py-1 rounded text-xs font-medium bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30">✓ Sim</span>
+                                : <span className="px-2 py-1 rounded text-xs font-medium bg-muted text-muted-foreground border border-border">—</span>
                               }
                             </td>
                             <td className="py-2 px-3 text-muted-foreground text-xs max-w-xs truncate" title={entry.motivo}>
