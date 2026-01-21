@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { MetricCard } from "@/components/MetricCard";
 import { ProgressBar } from "@/components/ProgressBar";
 import { XLSValidationMode, ValidationRow } from "@/components/XLSValidationMode";
+import { ManualEditDialog, EditableBalancoEntry, EditableDREEntry } from "@/components/ManualEditDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import html2pdf from "html2pdf.js";
@@ -23,7 +24,8 @@ import {
   LogOut,
   Loader2,
   FileSearch,
-  FileDown
+  FileDown,
+  Edit3
 } from "lucide-react";
 
 interface DREEntry {
@@ -118,6 +120,13 @@ const Resultado = () => {
   const [isExporting, setIsExporting] = useState(false);
   const [dreClassifiedEntries, setDreClassifiedEntries] = useState<DREClassifiedEntry[]>([]);
   const [showDreDebug, setShowDreDebug] = useState(false);
+  
+  // Manual edit state
+  const [showManualEdit, setShowManualEdit] = useState(false);
+  const [isApplyingChanges, setIsApplyingChanges] = useState(false);
+  const [rawBalancoEntries, setRawBalancoEntries] = useState<BalancoEntry[]>([]);
+  const [rawDreEntries, setRawDreEntries] = useState<DREEntry[]>([]);
+  
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
 
@@ -163,6 +172,10 @@ const Resultado = () => {
       // Calculate Balanço metrics from key lines
       const balanco = calculateBalancoMetrics(balancoEntries as BalancoEntry[]);
       setBalancoData(balanco);
+      
+      // Store raw entries for manual editing
+      setRawBalancoEntries(balancoEntries as BalancoEntry[]);
+      setRawDreEntries(dreEntries as DREEntry[]);
 
       // Generate diagnostic lines for debugging
       const diagnostic = generateDiagnosticLines(balancoEntries as BalancoEntry[]);
@@ -730,6 +743,216 @@ const Resultado = () => {
   const handleLogout = async () => {
     await signOut();
     navigate("/");
+  };
+
+  // Prepare entries for manual edit dialog
+  const prepareEditableBalancoEntries = useCallback((): EditableBalancoEntry[] => {
+    return rawBalancoEntries.map((entry, index) => ({
+      id: `balanco-${index}`,
+      conta: entry.conta,
+      tipo: entry.tipo,
+      valor: entry.valor,
+      originalTipo: entry.tipo,
+      originalValor: entry.valor,
+      isModified: false,
+    }));
+  }, [rawBalancoEntries]);
+
+  const prepareEditableDREEntries = useCallback((): EditableDREEntry[] => {
+    return dreClassifiedEntries.map((entry, index) => ({
+      id: `dre-${index}`,
+      descricao: entry.descricao,
+      grupo: entry.grupo,
+      valor: entry.valor,
+      originalGrupo: entry.grupo,
+      originalValor: entry.valor,
+      isModified: false,
+    }));
+  }, [dreClassifiedEntries]);
+
+  // Handle manual edit apply
+  const handleApplyManualChanges = useCallback(
+    (editedBalanco: EditableBalancoEntry[], editedDRE: EditableDREEntry[]) => {
+      setIsApplyingChanges(true);
+
+      try {
+        // Update raw balanço entries with changes
+        const updatedBalanco: BalancoEntry[] = rawBalancoEntries.map((entry, index) => {
+          const edited = editedBalanco.find((e) => e.id === `balanco-${index}`);
+          if (edited && edited.isModified) {
+            return {
+              ...entry,
+              tipo: edited.tipo,
+              valor: edited.valor,
+            };
+          }
+          return entry;
+        });
+
+        // Recalculate balanço metrics
+        const newBalancoMetrics = calculateBalancoMetrics(updatedBalanco);
+        setBalancoData(newBalancoMetrics);
+        setRawBalancoEntries(updatedBalanco);
+
+        // Generate new diagnostic lines
+        const newDiagnostics = generateDiagnosticLines(updatedBalanco);
+        setDiagnosticLines(newDiagnostics);
+
+        // Update DRE entries with changes - create modified DREEntry array
+        const updatedDREEntries: DREEntry[] = rawDreEntries.map((entry, index) => {
+          const edited = editedDRE.find((e) => e.id === `dre-${index}`);
+          if (edited && edited.isModified) {
+            return {
+              ...entry,
+              valor: edited.valor,
+            };
+          }
+          return entry;
+        });
+
+        // Create classified entries with updated groups
+        const updatedClassified: DREClassifiedEntry[] = dreClassifiedEntries.map((entry, index) => {
+          const edited = editedDRE.find((e) => e.id === `dre-${index}`);
+          if (edited && edited.isModified) {
+            return {
+              ...entry,
+              grupo: edited.grupo as DREClassifiedEntry['grupo'],
+              valor: edited.valor,
+              motivo: 'Modificado manualmente pelo usuário',
+            };
+          }
+          return entry;
+        });
+
+        // Recalculate DRE metrics from modified classified entries
+        const newDREMetrics = recalculateDREMetricsFromClassified(updatedClassified);
+        setDreData(newDREMetrics);
+        setDreClassifiedEntries(updatedClassified);
+        setRawDreEntries(updatedDREEntries);
+
+        // Regenerate insights
+        setInsights(generateInsights(newDREMetrics, newBalancoMetrics));
+
+        // Close dialog
+        setShowManualEdit(false);
+      } catch (error) {
+        console.error("Error applying manual changes:", error);
+      } finally {
+        setIsApplyingChanges(false);
+      }
+    },
+    [rawBalancoEntries, rawDreEntries, dreClassifiedEntries]
+  );
+
+  // Recalculate DRE metrics from classified entries (used after manual edit)
+  const recalculateDREMetricsFromClassified = (entries: DREClassifiedEntry[]): CalculatedDRE => {
+    const metrics: CalculatedDRE = {
+      receitaBruta: 0,
+      receitaBrutaOrigem: 'soma_contas',
+      receitaLiquida: 0,
+      receitaLiquidaOrigem: 'soma_contas',
+      cmv: 0,
+      cmvOrigem: 'soma_contas',
+      lucroBruto: 0,
+      lucroBrutoOrigem: 'soma_contas',
+      despesasOperacionais: 0,
+      despesasOperacionaisOrigem: 'soma_contas',
+      lucroOperacional: 0,
+      lucroOperacionalOrigem: 'soma_contas',
+      resultadoFinanceiro: 0,
+      resultadoFinanceiroOrigem: 'soma_contas',
+      lucroLiquido: 0,
+      lucroLiquidoOrigem: 'soma_contas',
+      margemBruta: 0,
+      margemOperacional: 0,
+      margemLiquida: 0,
+    };
+
+    // Find explicit lines first, then sum components
+    for (const entry of entries) {
+      const valorAbs = Math.abs(entry.valor);
+      
+      switch (entry.grupo) {
+        case 'receita_bruta':
+          if (entry.isExplicit && metrics.receitaBruta === 0) {
+            metrics.receitaBruta = valorAbs;
+            metrics.receitaBrutaOrigem = 'linha_explicita';
+          } else if (!entry.isExplicit) {
+            if (metrics.receitaBrutaOrigem !== 'linha_explicita') {
+              metrics.receitaBruta += valorAbs;
+            }
+          }
+          break;
+        case 'receita_liquida':
+          if (metrics.receitaLiquida === 0) {
+            metrics.receitaLiquida = valorAbs;
+            metrics.receitaLiquidaOrigem = 'linha_explicita';
+          }
+          break;
+        case 'cmv':
+          if (entry.isExplicit && metrics.cmv === 0) {
+            metrics.cmv = entry.valor; // Keep sign
+            metrics.cmvOrigem = 'linha_explicita';
+          } else if (!entry.isExplicit) {
+            if (metrics.cmvOrigem !== 'linha_explicita') {
+              metrics.cmv += entry.valor;
+            }
+          }
+          break;
+        case 'lucro_bruto':
+          if (metrics.lucroBruto === 0) {
+            metrics.lucroBruto = valorAbs;
+            metrics.lucroBrutoOrigem = 'linha_explicita';
+          }
+          break;
+        case 'despesas_operacionais':
+          if (entry.isExplicit && metrics.despesasOperacionais === 0) {
+            metrics.despesasOperacionais = valorAbs;
+            metrics.despesasOperacionaisOrigem = 'linha_explicita';
+          } else if (!entry.isExplicit) {
+            if (metrics.despesasOperacionaisOrigem !== 'linha_explicita') {
+              metrics.despesasOperacionais += valorAbs;
+            }
+          }
+          break;
+        case 'lucro_operacional':
+          if (metrics.lucroOperacional === 0) {
+            metrics.lucroOperacional = valorAbs;
+            metrics.lucroOperacionalOrigem = 'linha_explicita';
+          }
+          break;
+        case 'resultado_financeiro':
+          if (entry.isExplicit && metrics.resultadoFinanceiro === 0) {
+            metrics.resultadoFinanceiro = entry.valor;
+            metrics.resultadoFinanceiroOrigem = 'linha_explicita';
+          } else if (!entry.isExplicit) {
+            if (metrics.resultadoFinanceiroOrigem !== 'linha_explicita') {
+              metrics.resultadoFinanceiro += entry.valor;
+            }
+          }
+          break;
+        case 'lucro_liquido':
+          if (metrics.lucroLiquido === 0) {
+            metrics.lucroLiquido = valorAbs;
+            metrics.lucroLiquidoOrigem = 'linha_explicita';
+          }
+          break;
+      }
+    }
+
+    // Fallbacks
+    if (metrics.receitaLiquida === 0 && metrics.receitaBruta > 0) {
+      metrics.receitaLiquida = metrics.receitaBruta;
+      metrics.receitaLiquidaOrigem = metrics.receitaBrutaOrigem;
+    }
+
+    // Calculate margins
+    const receitaBase = metrics.receitaLiquida > 0 ? metrics.receitaLiquida : metrics.receitaBruta;
+    metrics.margemBruta = receitaBase > 0 ? (metrics.lucroBruto / receitaBase) * 100 : 0;
+    metrics.margemOperacional = receitaBase > 0 ? (metrics.lucroOperacional / receitaBase) * 100 : 0;
+    metrics.margemLiquida = receitaBase > 0 ? (metrics.lucroLiquido / receitaBase) * 100 : 0;
+
+    return metrics;
   };
 
   const handleExportPDF = async () => {
@@ -1592,6 +1815,28 @@ const Resultado = () => {
           </div>
         </section>
 
+        {/* Manual Edit Section */}
+        <section className="mb-12">
+          <div className="glass-card p-8 text-center border-2 border-dashed border-primary/30">
+            <h3 className="font-display text-xl font-bold mb-3 flex items-center justify-center gap-2">
+              <Edit3 className="w-5 h-5 text-primary" />
+              Correções Manuais
+            </h3>
+            <p className="text-muted-foreground mb-6">
+              Precisa corrigir alguma classificação ou valor? Edite manualmente as contas e recalcule os resultados.
+            </p>
+            <Button 
+              variant="outline" 
+              size="xl" 
+              onClick={() => setShowManualEdit(true)}
+              className="border-primary/50 hover:bg-primary/10"
+            >
+              <Edit3 className="w-5 h-5 mr-2" />
+              Modificações Manuais
+            </Button>
+          </div>
+        </section>
+
         {/* CTA */}
         <div className="text-center">
           <p className="text-muted-foreground mb-4">
@@ -1605,6 +1850,16 @@ const Resultado = () => {
           </Link>
         </div>
       </main>
+
+      {/* Manual Edit Dialog */}
+      <ManualEditDialog
+        open={showManualEdit}
+        onOpenChange={setShowManualEdit}
+        balancoEntries={prepareEditableBalancoEntries()}
+        dreEntries={prepareEditableDREEntries()}
+        onApplyChanges={handleApplyManualChanges}
+        isApplying={isApplyingChanges}
+      />
     </div>
   );
 };
