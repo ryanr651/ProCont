@@ -48,7 +48,7 @@ export interface ParsedDREEntry {
   valor: number;
   valor_anterior: number | null;
   raw_row: string[];
-  isCMV: boolean;
+  isCMV?: boolean;
 }
 
 export interface ParsedBalancoEntry {
@@ -511,6 +511,17 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
       errors: [],
       parsed: entries.length > 0,
     };
+  } catch (error) {
+    debugLog("ERRO ao processar DRE XLS:", error);
+    return {
+      entries: [],
+      periodo: "",
+      errors: [String(error)],
+      parsed: false,
+    };
+  }
+}
+
 async function parseXLSFile(file: File): Promise<XLSRow[]> {
   const extension = getFileExtension(file.name);
   debugLog("=== Usando fluxo XLS/XLSX para:", file.name);
@@ -2057,3 +2068,4 @@ export function calculateDREMetrics(entries: ParsedDREEntry[]): DREMetrics {
 export function extractPeriod(filename: string, rows: string[][]): string {
   return extractPeriodFromRows(rows, filename);
 }
+
