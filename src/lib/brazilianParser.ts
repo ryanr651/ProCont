@@ -1545,6 +1545,11 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
 
   // Estado de grupo atual
   let currentGrupo: DREGrupo = "RECEITA_BRUTA";
+  
+  // ESTADO PARA CAPTURA POR INTERVALO DO CMV
+  // isInsideCMVBlock: controla quando estamos dentro do bloco de CMV (ESTOQUE INICIAL até ESTOQUE FINAL)
+  let isInsideCMVBlock = false;
+  let cmvBlockStarted = false; // Indica se já detectamos o cabeçalho "Custo das mercadorias vendidas"
 
   // Processar linhas DRE
   for (let i = startRow; i < rows.length; i++) {
@@ -1567,9 +1572,40 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
       continue;
     }
 
-    // Classificar linha usando nova lógica
-    const classification = classificarLinhaDRE(descricao, currentGrupo);
+    // REGRA CMV: Detectar cabeçalho "Custo das mercadorias vendidas" para ativar contexto
+    if (
+      normalDesc.includes("CUSTO DAS MERCADORIAS VENDIDAS") ||
+      normalDesc.includes("CUSTO DA MERCADORIA VENDIDA") ||
+      normalDesc.includes("CMV")
+    ) {
+      cmvBlockStarted = true;
+      debugLog(`CMV: Cabeçalho detectado na linha ${i}: ${descricao}`);
+    }
+
+    // GATILHO DE INÍCIO CMV: "ESTOQUE INICIAL" (após detectar cabeçalho CMV)
+    if (cmvBlockStarted && normalDesc.includes("ESTOQUE INICIAL")) {
+      isInsideCMVBlock = true;
+      debugLog(`CMV BLOCK START: ESTOQUE INICIAL detectado na linha ${i}`);
+    }
+
+    // Classificar linha usando nova lógica OU forçar CMV se estamos dentro do bloco
+    let classification: DREClassificationResult;
+    
+    if (isInsideCMVBlock) {
+      // Dentro do bloco CMV: forçar classificação como CMV
+      classification = { grupo: "CMV", tipo: "normal", isGroupChange: false };
+      debugLog(`CMV BLOCK: Linha ${i} forçada como CMV: ${descricao}`);
+    } else {
+      classification = classificarLinhaDRE(descricao, currentGrupo);
+    }
+    
     currentGrupo = classification.grupo;
+
+    // GATILHO DE FIM CMV: "ESTOQUE FINAL" - processar como CMV e depois desativar
+    if (isInsideCMVBlock && normalDesc.includes("ESTOQUE FINAL")) {
+      debugLog(`CMV BLOCK END: ESTOQUE FINAL detectado na linha ${i} - fechando bloco após processar`);
+      // A linha ESTOQUE FINAL será processada como CMV abaixo, depois desativamos o bloco
+    }
 
     // REGRA: Usar numericValues já extraídos (valores APÓS o texto da conta)
     // O parser DRE específico já garantiu que numericValues são os números à direita do texto
@@ -1608,6 +1644,13 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
     });
 
     debugLog(`DRE Entry: ${descricao} | Grupo: ${currentGrupo} | Valor: ${valor} | Anterior: ${valorAnterior}`);
+
+    // FECHAR BLOCO CMV APÓS PROCESSAR ESTOQUE FINAL
+    if (isInsideCMVBlock && normalDesc.includes("ESTOQUE FINAL")) {
+      isInsideCMVBlock = false;
+      cmvBlockStarted = false;
+      debugLog(`CMV BLOCK CLOSED: Bloco CMV fechado após processar ESTOQUE FINAL`);
+    }
   }
 
   debugLog("Total entries DRE:", entries.length);
@@ -1655,6 +1698,10 @@ function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
 
   // Estado de grupo atual
   let currentGrupo: DREGrupo = "RECEITA_BRUTA";
+  
+  // ESTADO PARA CAPTURA POR INTERVALO DO CMV (igual ao parser XLS)
+  let isInsideCMVBlock = false;
+  let cmvBlockStarted = false;
 
   for (let i = startRow; i < rows.length; i++) {
     const row = rows[i];
@@ -1666,8 +1713,33 @@ function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
     const normalDesc = normalizeText(descricao);
     if (normalDesc.includes("DESCRICAO") || normalDesc === "CONTA") continue;
 
-    // Classificar linha usando nova lógica
-    const classification = classificarLinhaDRE(descricao, currentGrupo);
+    // REGRA CMV: Detectar cabeçalho "Custo das mercadorias vendidas" para ativar contexto
+    if (
+      normalDesc.includes("CUSTO DAS MERCADORIAS VENDIDAS") ||
+      normalDesc.includes("CUSTO DA MERCADORIA VENDIDA") ||
+      normalDesc.includes("CMV")
+    ) {
+      cmvBlockStarted = true;
+      debugLog(`CMV CSV: Cabeçalho detectado na linha ${i}: ${descricao}`);
+    }
+
+    // GATILHO DE INÍCIO CMV: "ESTOQUE INICIAL" (após detectar cabeçalho CMV)
+    if (cmvBlockStarted && normalDesc.includes("ESTOQUE INICIAL")) {
+      isInsideCMVBlock = true;
+      debugLog(`CMV BLOCK START CSV: ESTOQUE INICIAL detectado na linha ${i}`);
+    }
+
+    // Classificar linha usando nova lógica OU forçar CMV se estamos dentro do bloco
+    let classification: DREClassificationResult;
+    
+    if (isInsideCMVBlock) {
+      // Dentro do bloco CMV: forçar classificação como CMV
+      classification = { grupo: "CMV", tipo: "normal", isGroupChange: false };
+      debugLog(`CMV BLOCK CSV: Linha ${i} forçada como CMV: ${descricao}`);
+    } else {
+      classification = classificarLinhaDRE(descricao, currentGrupo);
+    }
+    
     currentGrupo = classification.grupo;
 
     const numericValues = findNumericValuesInRow(row);
@@ -1685,6 +1757,13 @@ function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
       valor_anterior: valorAnterior,
       raw_row: row.map(String),
     });
+
+    // FECHAR BLOCO CMV APÓS PROCESSAR ESTOQUE FINAL
+    if (isInsideCMVBlock && normalDesc.includes("ESTOQUE FINAL")) {
+      isInsideCMVBlock = false;
+      cmvBlockStarted = false;
+      debugLog(`CMV BLOCK CLOSED CSV: Bloco CMV fechado após processar ESTOQUE FINAL`);
+    }
   }
 
   return { entries, periodo, errors, parsed: true };
