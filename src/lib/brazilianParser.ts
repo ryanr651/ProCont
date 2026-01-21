@@ -427,67 +427,33 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
       const { text: conta } = safeGetFirstText(row);
       if (!conta || conta.length < 3) continue;
 
-const normalConta = normalizeText(conta);
+      const normalConta = normalizeText(conta);
 
-// 1. GATILHOS DE BLOCO (Detectar mesmo em linhas sem valor)
-if (
-  normalConta.includes("ESTOQUE INICIAL") || 
-  normalConta.includes("CUSTO DAS VENDAS") ||
-  normalConta.includes("CUSTO MERCADORIAS VENDIDAS") ||
-  normalConta === "CMV"
-) {
-  isInsideCMVBlock = true;
-  debugLog("Entrou no bloco CMV: " + conta);
-}
+      // 1. GATILHOS DE BLOCO (Detectar mesmo em linhas sem valor)
+      if (
+        normalConta.includes("ESTOQUE INICIAL") || 
+        normalConta.includes("CUSTO DAS VENDAS") ||
+        normalConta.includes("CUSTO MERCADORIAS VENDIDAS") ||
+        normalConta === "CMV"
+      ) {
+        isInsideCMVBlock = true;
+        debugLog("Entrou no bloco CMV: " + conta);
+      }
 
-// 2. PROCESSAR APENAS SE TIVER VALOR
-const valores = getNumericValuesRightOfText(row);
-if (valores.length > 0) {
-  const valorAtual = valores[valores.length - 1].value;
-  const valorAnterior = valores.length > 1 ? valores[valores.length - 2].value : null;
+      // 2. PROCESSAR APENAS SE TIVER VALOR
+      const valores = getNumericValuesRightOfText(row);
+      if (valores.length > 0) {
+        const valorAtual = valores[valores.length - 1].value;
+        const valorAnterior = valores.length > 1 ? valores[valores.length - 2].value : null;
 
-  let grupo = "OUTROS";
+        let grupo = "OUTROS";
 
-  // Se o gatilho estiver ligado, atribui CMV
-  if (isInsideCMVBlock) {
-    grupo = "CMV";
-  }
+        // Se o gatilho estiver ligado, atribui CMV
+        if (isInsideCMVBlock) {
+          grupo = "CMV";
+        }
 
-  // === OUTRAS CLASSIFICAÇÕES (Caso não seja CMV) ===
-  if (grupo === "OUTROS") {
-    if (normalConta.includes("RECEITA OPERACIONAL") || normalConta.includes("RECEITA BRUTA") || normalConta.includes("VENDAS DE MERCADORIAS")) {
-      grupo = "RECEITA_BRUTA";
-    } else if (normalConta.includes("RECEITA LIQUIDA")) {
-      grupo = "RECEITA_LIQUIDA";
-    } else if (normalConta.includes("DEVOLUCOES") || normalConta.includes("IMPOSTOS SOBRE VENDAS") || normalConta.includes("SIMPLES NACIONAL")) {
-       // Adicionei SIMPLES NACIONAL aqui pois vi no seu debug que estava sem classificação
-      grupo = "DEDUCOES";
-    } else if (normalConta.includes("LUCRO BRUTO")) {
-      grupo = "LUCRO_BRUTO";
-    }
-    // ... restante das classificações
-  }
-
-  entries.push({
-    descricao: conta,
-    grupo: grupo,
-    valor: valorAtual,
-    valor_anterior: valorAnterior,
-    raw_row: row.cells,
-  });
-}
-
-// 3. GATILHOS DE SAÍDA DO BLOCO
-if (
-  normalConta.includes("ESTOQUE FINAL") || 
-  normalConta.includes("LUCRO BRUTO") || 
-  normalConta.includes("RESULTADO BRUTO")
-) {
-  isInsideCMVBlock = false;
-  debugLog("Saiu do bloco CMV: " + conta);
-}
-
-        // === OUTRAS CLASSIFICAÇÕES (Caso não esteja no bloco CMV) ===
+        // === OUTRAS CLASSIFICAÇÕES (Caso não seja CMV) ===
         if (grupo === "OUTROS") {
           if (normalConta.includes("NAO OPERACIONAL") || normalConta.includes("NAO OPERACIONAIS")) {
             grupo = "RESULTADO_FINANCEIRO";
@@ -513,7 +479,7 @@ if (
             grupo = "RECEITA_BRUTA";
           } else if (normalConta.includes("RECEITA LIQUIDA")) {
             grupo = "RECEITA_LIQUIDA";
-          } else if (normalConta.includes("DEVOLUCOES") || normalConta.includes("IMPOSTOS SOBRE VENDAS")) {
+          } else if (normalConta.includes("DEVOLUCOES") || normalConta.includes("IMPOSTOS SOBRE VENDAS") || normalConta.includes("SIMPLES NACIONAL")) {
             grupo = "DEDUCOES";
           } else if (
             normalConta.includes("DESPESAS") ||
@@ -531,6 +497,16 @@ if (
           valor_anterior: valorAnterior,
           raw_row: row.cells,
         });
+      }
+
+      // 3. GATILHOS DE SAÍDA DO BLOCO
+      if (
+        normalConta.includes("ESTOQUE FINAL") || 
+        normalConta.includes("LUCRO BRUTO") || 
+        normalConta.includes("RESULTADO BRUTO")
+      ) {
+        isInsideCMVBlock = false;
+        debugLog("Saiu do bloco CMV: " + conta);
       }
     }
 
