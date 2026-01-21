@@ -48,6 +48,7 @@ export interface ParsedDREEntry {
   valor: number;
   valor_anterior: number | null;
   raw_row: string[];
+  isCMV: boolean;
 }
 
 export interface ParsedBalancoEntry {
@@ -435,9 +436,11 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
 
         let grupo = "OUTROS";
 
-        // === LÓGICA DE BLOCO CMV (RANGE) ===
-        // Se encontrar ESTOQUE INICIAL, liga o gatilho
-        if (normalConta.includes("ESTOQUE INICIAL")) {
+        // === LÓGICA DE BLOCO CMV (CORRIGIDA) ===
+        const isStart = /ESTOQUE.*INICIAL/i.test(normalConta);
+        const isEnd = /ESTOQUE.*FINAL/i.test(normalConta);
+
+        if (isStart) {
           isInsideCMVBlock = true;
           debugLog("Entrou no bloco CMV: " + conta);
         }
@@ -445,14 +448,16 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
         if (isInsideCMVBlock) {
           grupo = "CMV";
         }
-        // === FIM DO BLOCO CMV ===
-        // Se encontrar ESTOQUE FINAL, processa e desliga o gatilho para a próxima linha
-        if (normalConta.includes("ESTOQUE FINAL")) {
+
+        // Guardamos o estado para marcar a linha atual antes de desligar o bloco
+        const currentCmvFlag = isInsideCMVBlock;
+
+        if (isEnd) {
           isInsideCMVBlock = false;
           debugLog("Saiu do bloco CMV: " + conta);
         }
 
-        // === OUTRAS CLASSIFICAÇÕES (Caso não esteja no bloco CMV) ===
+        // === OUTRAS CLASSIFICAÇÕES (Caso não seja CMV) ===
         if (grupo === "OUTROS") {
           if (normalConta.includes("NAO OPERACIONAL") || normalConta.includes("NAO OPERACIONAIS")) {
             grupo = "RESULTADO_FINANCEIRO";
@@ -495,6 +500,7 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
           valor: valorAtual,
           valor_anterior: valorAnterior,
           raw_row: row.cells,
+          isCMV: currentCmvFlag // Esta é a linha que faltava para o seu Debug mostrar o valor
         });
       }
     }
@@ -505,11 +511,6 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
       errors: [],
       parsed: entries.length > 0,
     };
-  } catch (error) {
-    debugLog("Erro crítico no parser DRE:", error);
-    return { entries: [], periodo: "", errors: ["Falha ao processar arquivo"], parsed: false };
-  }
-}
 async function parseXLSFile(file: File): Promise<XLSRow[]> {
   const extension = getFileExtension(file.name);
   debugLog("=== Usando fluxo XLS/XLSX para:", file.name);
