@@ -283,7 +283,8 @@ function normalizeText(text: string): string {
   return text
     .toUpperCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[\u0300-\u036f]/g, "") // Remove acentos
+    .replace(/\s+/g, " ") // Transforma qualquer espaço (tab, nbsp, etc) em espaço simples
     .trim();
 }
 
