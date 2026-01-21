@@ -423,33 +423,86 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
         // 3. REGRAS DE CLASSIFICAÇÃO (Baseadas na sua imagem)
         let grupo = "OUTROS";
 
-        if (normalConta.includes("RECEITA OPERACIONAL") || normalConta.includes("VENDAS DE MERCADORIAS")) {
-          grupo = "RECEITA_BRUTA";
-        } else if (normalConta.includes("RECEITA LIQUIDA")) {
-          grupo = "RECEITA_LIQUIDA";
-        } else if (normalConta.includes("DEVOLUCOES") || normalConta.includes("IMPOSTOS SOBRE VENDAS")) {
-          grupo = "DEDUCOES";
-        } else if (
-          normalConta.includes("CUSTOS MERCADORIAS") ||
-          normalConta.includes("CUSTOS DOS PRODUTOS") ||
-          normalConta.includes("CMV") ||
-          normalConta.includes("CPV")
+        // REGRA ABSOLUTA: "NÃO OPERACIONAL" → RESULTADO_FINANCEIRO
+        // Aplica para receitas e despesas não operacionais
+        if (
+          normalConta.includes("NAO OPERACIONAL") ||
+          normalConta.includes("NAO OPERACIONAIS")
         ) {
-          grupo = "CMV";
-        } else if (normalConta.includes("LUCRO BRUTO")) {
-          grupo = "LUCRO_BRUTO";
-        } else if (
-          normalConta.includes("DESPESAS TRABALHISTAS") ||
-          normalConta.includes("DESPESAS GERAIS") ||
-          normalConta.includes("DESPESAS OPERACIONAIS")
+          grupo = "RESULTADO_FINANCEIRO";
+        }
+        // RESULTADO FINANCEIRO explícito
+        else if (
+          normalConta.includes("RESULTADO FINANCEIRO") ||
+          normalConta.includes("RECEITAS FINANCEIRAS") ||
+          normalConta.includes("DESPESAS FINANCEIRAS") ||
+          normalConta.includes("RECEITA FINANCEIRA") ||
+          normalConta.includes("DESPESA FINANCEIRA") ||
+          normalConta.includes("JUROS SOBRE") ||
+          normalConta.includes("VARIACAO MONETARIA")
         ) {
-          grupo = "DESPESAS";
-        } else if (
+          grupo = "RESULTADO_FINANCEIRO";
+        }
+        // LUCRO LÍQUIDO
+        else if (
           normalConta.includes("LUCRO LIQUIDO") ||
           normalConta.includes("RESULTADO LIQUIDO") ||
           normalConta.includes("RESULTADO DO EXERCICIO")
         ) {
           grupo = "LUCRO_LIQUIDO";
+        }
+        // LUCRO OPERACIONAL
+        else if (
+          normalConta.includes("LUCRO OPERACIONAL") ||
+          normalConta.includes("RESULTADO OPERACIONAL")
+        ) {
+          grupo = "LUCRO_OPERACIONAL";
+        }
+        // LUCRO BRUTO
+        else if (normalConta.includes("LUCRO BRUTO") || normalConta.includes("RESULTADO BRUTO")) {
+          grupo = "LUCRO_BRUTO";
+        }
+        // RECEITA BRUTA
+        else if (
+          normalConta.includes("RECEITA OPERACIONAL") ||
+          normalConta.includes("VENDAS DE MERCADORIAS") ||
+          normalConta.includes("RECEITA BRUTA") ||
+          normalConta.includes("RECEITA DE VENDAS") ||
+          normalConta.includes("FATURAMENTO BRUTO") ||
+          normalConta.includes("VENDAS DE PRODUTOS") ||
+          normalConta.includes("PRESTACAO DE SERVICOS")
+        ) {
+          grupo = "RECEITA_BRUTA";
+        }
+        // RECEITA LÍQUIDA
+        else if (normalConta.includes("RECEITA LIQUIDA")) {
+          grupo = "RECEITA_LIQUIDA";
+        }
+        // DEDUÇÕES
+        else if (normalConta.includes("DEVOLUCOES") || normalConta.includes("IMPOSTOS SOBRE VENDAS")) {
+          grupo = "DEDUCOES";
+        }
+        // CMV/CPV
+        else if (
+          normalConta.includes("CUSTOS MERCADORIAS") ||
+          normalConta.includes("CUSTOS DOS PRODUTOS") ||
+          normalConta.includes("CUSTO DA MERCADORIA VENDIDA") ||
+          normalConta.includes("CUSTO DAS MERCADORIAS VENDIDAS") ||
+          normalConta.includes("CMV") ||
+          normalConta.includes("CPV")
+        ) {
+          grupo = "CMV";
+        }
+        // DESPESAS OPERACIONAIS
+        else if (
+          normalConta.includes("DESPESAS TRABALHISTAS") ||
+          normalConta.includes("DESPESAS GERAIS") ||
+          normalConta.includes("DESPESAS OPERACIONAIS") ||
+          normalConta.includes("DESPESAS ADMINISTRATIVAS") ||
+          normalConta.includes("DESPESAS COM VENDAS") ||
+          normalConta.includes("DESPESAS COMERCIAIS")
+        ) {
+          grupo = "DESPESAS_OPERACIONAIS";
         }
 
         entries.push({
@@ -490,38 +543,7 @@ function parseBrazilianNumberForDRE(value: string | number): number {
   const num = parseFloat(cleaned);
   return isNegativeParens ? -Math.abs(num) : num;
 }
-function parseBrazilianNumberForDRE(value: string | number): number {
-  if (typeof value === "number") return value;
-  if (!value || value.toString().trim() === "") return NaN;
-
-  let cleaned = value.toString().trim();
-
-  // Remover R$ e símbolos de moeda
-  cleaned = cleaned.replace(/R\$\s*/gi, "");
-
-  // Remover sufixo D/C
-  cleaned = cleaned.replace(/\s*[dcDC]\s*$/i, "");
-
-  // REGRA: Tratar valores negativos com parênteses
-  const isNegativeParens = cleaned.includes("(") && cleaned.includes(")");
-  cleaned = cleaned.replace(/[()]/g, "");
-
-  // Remover espaços
-  cleaned = cleaned.replace(/\s/g, "");
-
-  // Verificar se já é formato numérico puro (do Excel): 12345.67
-  const isPureNumeric = /^-?\d+(\.\d+)?$/.test(cleaned);
-
-  if (!isPureNumeric) {
-    // REGRA: Formato brasileiro - remover pontos de milhar, trocar vírgula por ponto
-    cleaned = cleaned.replace(/\./g, "").replace(",", ".");
-  }
-
-  const num = parseFloat(cleaned);
-  if (isNaN(num)) return NaN;
-
-  return isNegativeParens ? -Math.abs(num) : num;
-}
+// Função duplicada removida - usar parseBrazilianNumberForDRE definida acima (linha 478)
 
 async function parseXLSFile(file: File): Promise<XLSRow[]> {
   const extension = getFileExtension(file.name);
@@ -1341,6 +1363,19 @@ interface DREClassificationResult {
 function classificarLinhaDRE(descricao: string, currentGrupo: DREGrupo): DREClassificationResult {
   const normalDesc = normalizeText(descricao);
 
+  // REGRA ABSOLUTA: "NÃO OPERACIONAL" → RESULTADO_FINANCEIRO
+  // Aplica para qualquer linha que contenha "não operacional", independente de ser receita ou despesa
+  if (
+    normalDesc.includes("NAO OPERACIONAL") ||
+    normalDesc.includes("NAO OPERACIONAIS")
+  ) {
+    // Verifica se é uma linha de total/subtotal
+    if (normalDesc.startsWith("TOTAL") || normalDesc.includes("SUBTOTAL")) {
+      return { grupo: "RESULTADO_FINANCEIRO", tipo: "subtotal", isGroupChange: true };
+    }
+    return { grupo: "RESULTADO_FINANCEIRO", tipo: "normal", isGroupChange: true };
+  }
+
   // LUCRO LÍQUIDO (total final)
   if (
     normalDesc.includes("LUCRO LIQUIDO") ||
@@ -1403,7 +1438,7 @@ function classificarLinhaDRE(descricao: string, currentGrupo: DREGrupo): DREClas
     return { grupo: "DESPESAS_OPERACIONAIS", tipo: "normal", isGroupChange: true };
   }
 
-  // RESULTADO FINANCEIRO
+  // RESULTADO FINANCEIRO (após verificar não operacional)
   if (
     normalDesc.includes("RESULTADO FINANCEIRO") ||
     normalDesc.includes("RECEITAS FINANCEIRAS") ||
@@ -1714,9 +1749,8 @@ export async function parseDREFileAuto(file: File): Promise<DREParseResult> {
     const rows = await parseCSVFile(file);
     return parseDREFromCSV(rows, file.name);
   } else if (extension === "xls" || extension === "xlsx") {
-    // USAR PARSER ESPECÍFICO PARA DRE XLS/XLSX
-    const xlsRows = await parseDREFromXLSFile(file);
-    return parseDREFromXLS(xlsRows, file.name);
+    // parseDREFromXLSFile já retorna DREParseResult completo
+    return await parseDREFromXLSFile(file);
   }
 
   throw new Error("Formato não suportado. Use CSV, XLS ou XLSX.");
