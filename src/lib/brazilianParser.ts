@@ -1506,27 +1506,25 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
     return { entries, periodo, errors, parsed: false };
   }
 
-  // REGRA 7: Encontrar header DRE
+  // ÂNCORA DE INÍCIO: Ignorar cabeçalho até encontrar "DEMONSTRACAO" (case-insensitive, ignora acentos)
   let startRow = 0;
   let found = false;
 
-  for (let i = 0; i < rows.length && i < 30; i++) {
+  for (let i = 0; i < rows.length; i++) {
     const cells = safeGetCells(rows[i]);
     const rowText = normalizeText(cells.join(" "));
 
-    // Procurar "DEMONSTRAÇÃO DO RESULTADO DO EXERCÍCIO EM"
-    if (
-      rowText.includes("DEMONSTRACAO DO RESULTADO DO EXERCICIO") ||
-      rowText.includes("DEMONSTRAÇÃO DO RESULTADO DO EXERCÍCIO")
-    ) {
-      startRow = i + 1;
+    // Procurar "DEMONSTRACAO" em qualquer variação (case-insensitive, sem acentos)
+    // normalizeText já remove acentos e converte para uppercase
+    if (rowText.includes("DEMONSTRACAO")) {
+      startRow = i + 1; // Começar APÓS a linha de cabeçalho
       found = true;
-      debugLog("Header DRE encontrado na linha:", i);
+      debugLog(`Âncora DRE 'DEMONSTRACAO' encontrada na linha: ${i} - Iniciando processamento na linha: ${startRow}`);
       break;
     }
   }
 
-  // Fallback: procurar "RECEITA"
+  // Fallback: procurar "RECEITA" se não encontrou "DEMONSTRACAO"
   if (!found) {
     for (let i = 0; i < rows.length && i < 30; i++) {
       const { text } = safeGetFirstText(rows[i]);
@@ -1539,8 +1537,10 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
     }
   }
 
+  // Último fallback: começar da linha 5
   if (!found) {
     startRow = Math.min(5, rows.length - 1);
+    debugLog("Nenhuma âncora encontrada, usando fallback linha:", startRow);
   }
 
   // Estado de grupo atual
