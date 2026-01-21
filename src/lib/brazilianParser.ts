@@ -408,7 +408,6 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
 
     // VARIÁVEIS DE ESTADO
     let isInsideCMVBlock = false;
-    let cmvBlockStarted = false; // só permite âncoras após detectar o cabeçalho do CMV
     let startRowIndex = 0;
 
     // 1. ENCONTRAR ÂNCORA DE INÍCIO (Ignorar cabeçalho até "DEMONSTRACAO")
@@ -430,35 +429,27 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
       const normalConta = normalizeText(conta);
       const valores = getNumericValuesRightOfText(row);
 
-      // Contexto de segurança: só ativar captura por intervalo após detectar o cabeçalho do CMV
-      if (
-        normalConta.includes("CUSTO DAS MERCADORIAS VENDIDAS") ||
-        normalConta.includes("CUSTO DA MERCADORIA VENDIDA") ||
-        normalConta === "CMV" ||
-        normalConta.startsWith("CMV ")
-      ) {
-        cmvBlockStarted = true;
-      }
-
-      // Gatilho de início: ESTOQUE INICIAL (apenas após o cabeçalho de CMV)
-      if (cmvBlockStarted && normalConta.includes("ESTOQUE INICIAL")) {
-        isInsideCMVBlock = true;
-        debugLog("Entrou no bloco CMV: " + conta);
-      }
-
-      // Gatilho de fim: ESTOQUE FINAL (processar como CMV e fechar logo após)
-      const shouldCloseCMVAfterThisLine = isInsideCMVBlock && normalConta.includes("ESTOQUE FINAL");
-
       if (valores.length > 0) {
-        // REGRA DRE: o valor do período atual é o PRIMEIRO número à direita do texto
-        const valorAtual = valores[0].value;
-        const valorAnterior = valores.length > 1 ? valores[1].value : null;
+        const valorAtual = valores[valores.length - 1].value;
+        const valorAnterior = valores.length > 1 ? valores[valores.length - 2].value : null;
 
         let grupo = "OUTROS";
 
         // === LÓGICA DE BLOCO CMV (RANGE) ===
+        // Se encontrar ESTOQUE INICIAL, liga o gatilho
+        if (normalConta.includes("ESTOQUE INICIAL")) {
+          isInsideCMVBlock = true;
+          debugLog("Entrou no bloco CMV: " + conta);
+        }
+
         if (isInsideCMVBlock) {
           grupo = "CMV";
+        }
+        // === FIM DO BLOCO CMV ===
+        // Se encontrar ESTOQUE FINAL, processa e desliga o gatilho para a próxima linha
+        if (normalConta.includes("ESTOQUE FINAL")) {
+          isInsideCMVBlock = false;
+          debugLog("Saiu do bloco CMV: " + conta);
         }
 
         // === OUTRAS CLASSIFICAÇÕES (Caso não esteja no bloco CMV) ===
@@ -505,20 +496,6 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
           valor_anterior: valorAnterior,
           raw_row: row.cells,
         });
-
-        // Fechar bloco CMV IMEDIATAMENTE após processar ESTOQUE FINAL
-        if (shouldCloseCMVAfterThisLine) {
-          isInsideCMVBlock = false;
-          cmvBlockStarted = false;
-          debugLog("Saiu do bloco CMV: " + conta);
-        }
-      }
-
-      // Segurança: se a linha de ESTOQUE FINAL não tinha valores, ainda assim feche o bloco
-      if (shouldCloseCMVAfterThisLine && valores.length === 0) {
-        isInsideCMVBlock = false;
-        cmvBlockStarted = false;
-        debugLog("Saiu do bloco CMV (sem valor na linha): " + conta);
       }
     }
 
