@@ -400,8 +400,10 @@ function biffCellsToXLSRows(cells: BIFFCell[]): XLSRow[] {
 /**
  * Parser DRE: Lê o arquivo e classifica as contas baseada no layout Procont/Excel
  */
+// ============= PARSER DRE CORRIGIDO (CMV FUNCIONAL) =============
+
 async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
-  debugLog("=== Iniciando Processamento DRE (CMV por Intervalo) ===", file.name);
+  debugLog("=== Iniciando Processamento DRE (CMV Blindado) ===", file.name);
 
   try {
     const rows = await parseXLSFile(file);
@@ -411,23 +413,44 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
     let isInsideCMVBlock = false;
     let startRowIndex = 0;
 
-    // 1. ENCONTRAR ÂNCORA DE INÍCIO (Ignorar cabeçalho até "DEMONSTRACAO")
+    // 1. ENCONTRAR ÂNCORA DE INÍCIO (Ignora cabeçalho até encontrar DEMONSTRACAO ou RECEITA)
     for (let i = 0; i < rows.length; i++) {
       const { text } = safeGetFirstText(rows[i]);
-      if (normalizeText(text).includes("DEMONSTRACAO")) {
+      const norm = normalizeText(text);
+      if (norm.includes("DEMONSTRACAO") || norm.includes("RECEITA OPERACIONAL")) {
         startRowIndex = i;
         debugLog("Âncora encontrada na linha:", i);
         break;
       }
     }
 
-    // 2. PROCESSAR LINHAS A PARTIR DA ÂNCORA (DENTRO DE parseDREFromXLSFile)
+    // Se não achou âncora, começa da linha 5 por segurança
+    if (startRowIndex === 0) startRowIndex = Math.min(5, rows.length - 1);
+
+    // 2. PROCESSAR LINHAS A PARTIR DA ÂNCORA
     for (let i = startRowIndex; i < rows.length; i++) {
       const row = rows[i];
       const { text: conta } = safeGetFirstText(row);
-      if (!conta || conta.length < 3) continue;
+
+      // Ignora linhas vazias ou muito curtas
+      if (!conta || conta.length < 2) continue;
 
       const normalConta = normalizeText(conta);
+
+      // REGEX PODEROSA: Ignora espaços múltiplos, traços, etc.
+      // Ex: "ESTOQUE - INICIAL", "ESTOQUE    INICIAL" serão detectados.
+      const isEstoqueInicial = /ESTOQUE.*INICIAL/i.test(normalConta);
+      const isEstoqueFinal = /ESTOQUE.*FINAL/i.test(normalConta);
+
+      // --- LÓGICA DE GATILHO (TRIGGER) ---
+      // Verificamos se entra no bloco ANTES de ver se tem valor,
+      // pois as vezes o texto está numa coluna e o valor noutra.
+      if (isEstoqueInicial) {
+        isInsideCMVBlock = true;
+        debugLog("🟢 Entrou no bloco CMV (Gatilho): " + conta);
+      }
+
+      // Tenta extrair valores da linha
       const valores = getNumericValuesRightOfText(row);
 
       if (valores.length > 0) {
@@ -436,72 +459,63 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
 
         let grupo = "OUTROS";
 
-        // === LÓGICA DE BLOCO CMV (CORRIGIDA) ===
-        const isStart = /ESTOQUE.*INICIAL/i.test(normalConta);
-        const isEnd = /ESTOQUE.*FINAL/i.test(normalConta);
-
-        if (isStart) {
-          isInsideCMVBlock = true;
-          debugLog("Entrou no bloco CMV: " + conta);
-        }
-
+        // 1. Se estamos dentro do bloco CMV, a prioridade é total
         if (isInsideCMVBlock) {
           grupo = "CMV";
         }
 
-        // Guardamos o estado para marcar a linha atual antes de desligar o bloco
-        const currentCmvFlag = isInsideCMVBlock;
-
-        if (isEnd) {
-          isInsideCMVBlock = false;
-          debugLog("Saiu do bloco CMV: " + conta);
-        }
-
-        // === OUTRAS CLASSIFICAÇÕES (Caso não seja CMV) ===
+        // 2. Se não for CMV, aplica as regras normais
         if (grupo === "OUTROS") {
-          if (normalConta.includes("NAO OPERACIONAL") || normalConta.includes("NAO OPERACIONAIS")) {
-            grupo = "RESULTADO_FINANCEIRO";
+          if (normalConta.includes("RECEITA LIQUIDA")) {
+            grupo = "RECEITA_LIQUIDA";
           } else if (
-            normalConta.includes("RESULTADO FINANCEIRO") ||
-            normalConta.includes("RECEITAS FINANCEIRAS") ||
-            normalConta.includes("DESPESAS FINANCEIRAS") ||
+            normalConta.includes("RECEITA OPERACIONAL") ||
+            normalConta.includes("RECEITA BRUTA") ||
+            normalConta.includes("VENDAS")
+          ) {
+            grupo = "RECEITA_BRUTA";
+          } else if (
+            normalConta.includes("IMPOSTOS") ||
+            normalConta.includes("DEVOLUCOES") ||
+            normalConta.includes("SIMPLES NACIONAL")
+          ) {
+            grupo = "DEDUCOES";
+          } else if (normalConta.includes("LUCRO BRUTO")) {
+            grupo = "LUCRO_BRUTO";
+          } else if (
+            normalConta.includes("DESPESAS") ||
+            normalConta.includes("SALARIOS") ||
+            normalConta.includes("ALUGUEL")
+          ) {
+            grupo = "DESPESAS_OPERACIONAIS";
+          } else if (
+            normalConta.includes("FINANCEIR") ||
             normalConta.includes("JUROS") ||
-            normalConta.includes("VARIACAO MONETARIA")
+            normalConta.includes("NAO OPERACIONAL")
           ) {
             grupo = "RESULTADO_FINANCEIRO";
           } else if (normalConta.includes("LUCRO LIQUIDO") || normalConta.includes("RESULTADO DO EXERCICIO")) {
             grupo = "LUCRO_LIQUIDO";
-          } else if (normalConta.includes("LUCRO OPERACIONAL") || normalConta.includes("RESULTADO OPERACIONAL")) {
-            grupo = "LUCRO_OPERACIONAL";
-          } else if (normalConta.includes("LUCRO BRUTO") || normalConta.includes("RESULTADO BRUTO")) {
-            grupo = "LUCRO_BRUTO";
-          } else if (
-            normalConta.includes("RECEITA OPERACIONAL") ||
-            normalConta.includes("RECEITA BRUTA") ||
-            normalConta.includes("VENDAS DE MERCADORIAS")
-          ) {
-            grupo = "RECEITA_BRUTA";
-          } else if (normalConta.includes("RECEITA LIQUIDA")) {
-            grupo = "RECEITA_LIQUIDA";
-          } else if (normalConta.includes("DEVOLUCOES") || normalConta.includes("IMPOSTOS SOBRE VENDAS")) {
-            grupo = "DEDUCOES";
-          } else if (
-            normalConta.includes("DESPESAS") ||
-            normalConta.includes("GASTOS") ||
-            normalConta.includes("PROVISOES")
-          ) {
-            grupo = "DESPESAS_OPERACIONAIS";
           }
         }
 
+        // Adiciona a linha processada
         entries.push({
           descricao: conta,
           grupo: grupo,
           valor: valorAtual,
           valor_anterior: valorAnterior,
           raw_row: row.cells,
-          isCMV: currentCmvFlag, // Esta é a linha que faltava para o seu Debug mostrar o valor
+          isCMV: isInsideCMVBlock, // Passa a flag para o debug/frontend
         });
+      }
+
+      // --- DESLIGAR GATILHO ---
+      // Se for Estoque Final, desligamos o bloco APÓS processar a linha atual
+      // (assim a linha do Estoque Final ainda fica como CMV)
+      if (isEstoqueFinal) {
+        isInsideCMVBlock = false;
+        debugLog("🔴 Saiu do bloco CMV (Gatilho): " + conta);
       }
     }
 
@@ -512,16 +526,10 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
       parsed: entries.length > 0,
     };
   } catch (error) {
-    debugLog("ERRO ao processar DRE XLS:", error);
-    return {
-      entries: [],
-      periodo: "",
-      errors: [String(error)],
-      parsed: false,
-    };
+    debugLog("Erro crítico no parser DRE:", error);
+    return { entries: [], periodo: "", errors: ["Falha ao processar arquivo"], parsed: false };
   }
 }
-
 async function parseXLSFile(file: File): Promise<XLSRow[]> {
   const extension = getFileExtension(file.name);
   debugLog("=== Usando fluxo XLS/XLSX para:", file.name);
