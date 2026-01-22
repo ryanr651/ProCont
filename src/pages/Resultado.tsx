@@ -397,6 +397,7 @@ const Resultado = () => {
       }
 
       // ===== CMV =====
+      // Check for explicit CMV total line first
       if (desc.includes('CMV') || desc.includes('CPV') || 
           desc.includes('CUSTO DA MERCADORIA') || desc.includes('CUSTO DAS MERCADORIAS') ||
           desc.includes('CUSTO DOS PRODUTOS') || desc.includes('CUSTO DOS SERVICOS')) {
@@ -413,6 +414,10 @@ const Resultado = () => {
         } else if (!isTotal) {
           somaCMV += valor;
         }
+      }
+      // Also sum accounts captured by CMV block (ESTOQUE INICIAL → ESTOQUE FINAL)
+      else if (wasInsideCMVBlock) {
+        somaCMV += valor;
       }
 
       // ===== LUCRO BRUTO =====
