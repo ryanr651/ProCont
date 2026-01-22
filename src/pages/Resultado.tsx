@@ -285,6 +285,7 @@ const Resultado = () => {
 
   /**
    * Calculate DRE metrics with classification for debug
+   * Includes range-based CMV block detection (ESTOQUE INICIAL → ESTOQUE FINAL)
    */
   const calculateDREMetricsWithClassification = (entries: DREEntry[]): { metrics: CalculatedDRE; classifiedEntries: DREClassifiedEntry[] } => {
     const metrics: CalculatedDRE = {
@@ -327,21 +328,47 @@ const Resultado = () => {
     let foundResultadoFin = false;
     let foundLucroLiq = false;
 
+    // CMV Block detection (range-based: ESTOQUE INICIAL → ESTOQUE FINAL)
+    let isInsideCMVBlock = false;
+
     for (const entry of entries) {
       const desc = normalizeText(entry.descricao);
       const valor = entry.valor;
       const valorAbs = Math.abs(valor);
 
-      // Classify entry
-      const classification = classifyDREEntry(desc, valor);
+      // Detect CMV block start: ESTOQUE INICIAL
+      const isEstoqueInicial = desc.includes('ESTOQUE INICIAL');
+      if (isEstoqueInicial) {
+        isInsideCMVBlock = true;
+      }
+
+      // Classify entry - if inside CMV block, force CMV classification
+      let classification = classifyDREEntry(desc, valor);
+      const wasInsideCMVBlock = isInsideCMVBlock;
+      
+      if (isInsideCMVBlock && classification.grupo === 'nao_classificado') {
+        classification = { 
+          grupo: 'cmv', 
+          isExplicit: false, 
+          motivo: 'Capturado pelo Bloco CMV (entre ESTOQUE INICIAL e ESTOQUE FINAL)' 
+        };
+      }
+
       classifiedEntries.push({
         descricao: entry.descricao,
         valor: entry.valor,
         valorAnterior: entry.valor_anterior,
         grupo: classification.grupo,
         isExplicit: classification.isExplicit,
-        motivo: classification.motivo
+        motivo: classification.motivo,
+        insideCMVBlock: wasInsideCMVBlock
       });
+
+      // Detect CMV block end: ESTOQUE FINAL (close AFTER processing)
+      const isEstoqueFinal = desc.includes('ESTOQUE FINAL');
+      if (isEstoqueFinal) {
+        isInsideCMVBlock = false;
+      }
 
       // ===== RECEITA BRUTA =====
       if (desc.includes('RECEITA BRUTA') || desc.includes('RECEITA OPERACIONAL BRUTA')) {
