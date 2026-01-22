@@ -260,7 +260,8 @@ const Resultado = () => {
     }
 
     // ===== LUCRO OPERACIONAL =====
-    if (desc === 'LUCRO OPERACIONAL' || desc === 'RESULTADO OPERACIONAL') {
+    // Inclui: LUCRO OPERACIONAL, RESULTADO OPERACIONAL, e qualquer conta com "OPERACIONAL LIQUIDO"
+    if (desc === 'LUCRO OPERACIONAL' || desc === 'RESULTADO OPERACIONAL' || desc.includes('OPERACIONAL LIQUIDO')) {
       return { grupo: 'lucro_operacional', isExplicit: true, motivo: 'Linha explícita de Lucro Operacional' };
     }
 
