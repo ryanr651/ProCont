@@ -452,8 +452,10 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
       const valores = getNumericValuesRightOfText(row);
 
       if (valores.length > 0) {
-        const valorAtual = valores[valores.length - 1].value;
-        const valorAnterior = valores.length > 1 ? valores[valores.length - 2].value : null;
+        // REGRA: Pegar o PRIMEIRO valor numérico (valor do período atual)
+        // O segundo valor (se existir) é o valor anterior
+        const valorAtual = valores[0].value;
+        const valorAnterior = valores.length > 1 ? valores[1].value : null;
 
         let grupo = "OUTROS";
 
