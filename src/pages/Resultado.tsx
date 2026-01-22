@@ -486,7 +486,8 @@ const Resultado = () => {
       }
 
       // ===== LUCRO OPERACIONAL =====
-      if (desc === 'LUCRO OPERACIONAL' || desc === 'RESULTADO OPERACIONAL') {
+      // Inclui: LUCRO OPERACIONAL, RESULTADO OPERACIONAL, e qualquer conta com "OPERACIONAL LIQUIDO"
+      if (desc === 'LUCRO OPERACIONAL' || desc === 'RESULTADO OPERACIONAL' || desc.includes('OPERACIONAL LIQUIDO')) {
         if (!foundLucroOp) {
           metrics.lucroOperacional = valorAbs;
           metrics.lucroOperacionalOrigem = 'linha_explicita';
