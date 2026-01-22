@@ -102,7 +102,7 @@ interface DREClassifiedEntry {
   descricao: string;
   valor: number;
   valorAnterior: number | null;
-  grupo: 'receita_bruta' | 'receita_liquida' | 'cmv' | 'lucro_bruto' | 'despesas_operacionais' | 'lucro_operacional' | 'resultado_financeiro' | 'lucro_liquido' | 'nao_classificado';
+  grupo: 'receita_bruta' | 'receita_liquida' | 'cmv' | 'lucro_bruto' | 'despesas_operacionais' | 'lucro_operacional' | 'resultado_financeiro' | 'lucro_liquido';
   isExplicit: boolean;
   motivo: string;
   insideCMVBlock?: boolean;
@@ -210,7 +210,8 @@ const Resultado = () => {
   /**
    * Classify a DRE entry into its group
    */
-  const classifyDREEntry = (desc: string, valor: number): { grupo: DREClassifiedEntry['grupo']; isExplicit: boolean; motivo: string } => {
+  const classifyDREEntry = (descNormalized: string, descOriginal: string, valor: number): { grupo: DREClassifiedEntry['grupo']; isExplicit: boolean; motivo: string } => {
+    const desc = descNormalized;
     // ===== RECEITA BRUTA =====
     if (desc.includes('RECEITA BRUTA') || desc.includes('RECEITA OPERACIONAL BRUTA')) {
       const isExplicit = desc === 'RECEITA BRUTA' || desc === 'RECEITA OPERACIONAL BRUTA' || desc.includes('TOTAL');
@@ -263,7 +264,19 @@ const Resultado = () => {
       return { grupo: 'lucro_operacional', isExplicit: true, motivo: 'Linha explícita de Lucro Operacional' };
     }
 
-    // ===== RESULTADO FINANCEIRO =====
+    // ===== RESULTADO FINANCEIRO (e NÃO OPERACIONAIS) =====
+    // Detectar itens NÃO OPERACIONAIS (com ou sem acento, maiúsculo/minúsculo)
+    const isNaoOperacional = desc.includes('NAO OPERACIONAL') || 
+                             desc.includes('NÃO OPERACIONAL') ||
+                             desc.includes('NAO OPERACIONAIS') ||
+                             desc.includes('NÃO OPERACIONAIS') ||
+                             descOriginal.toUpperCase().includes('NÃO OPERACIONAL') ||
+                             descOriginal.toUpperCase().includes('NAO OPERACIONAL');
+    
+    if (isNaoOperacional) {
+      return { grupo: 'resultado_financeiro', isExplicit: false, motivo: 'Item Não Operacional (classificado como Resultado Financeiro)' };
+    }
+    
     if (desc.includes('RESULTADO FINANCEIRO') || desc.includes('RECEITAS FINANCEIRAS') ||
         desc.includes('DESPESAS FINANCEIRAS') || desc.includes('JUROS') || 
         desc.includes('VARIACAO MONETARIA')) {
@@ -280,7 +293,24 @@ const Resultado = () => {
       return { grupo: 'lucro_liquido', isExplicit: true, motivo: 'Linha explícita de Lucro Líquido' };
     }
 
-    return { grupo: 'nao_classificado', isExplicit: false, motivo: 'Não classificado' };
+    // ===== IMPOSTOS SOBRE LUCRO (não deve ir para despesas operacionais) =====
+    if (desc.includes('IMPOSTO') || desc.includes('IR ') || desc.includes('CSLL') ||
+        desc.includes('IRPJ') || desc.includes('CONTRIBUICAO SOCIAL') ||
+        desc.includes('PROVISAO PARA IMPOSTO')) {
+      return { grupo: 'resultado_financeiro', isExplicit: false, motivo: 'Imposto sobre lucro (não operacional)' };
+    }
+
+    // ===== DEDUÇÕES DA RECEITA (não vai para despesas operacionais) =====
+    if (desc.includes('DEDUCAO') || desc.includes('DEDUCOES') || 
+        desc.includes('ABATIMENTO') || desc.includes('DEVOLUCAO') ||
+        desc.includes('(-) ') || desc.startsWith('(-')) {
+      // Estas são deduções da receita, não despesas operacionais
+      return { grupo: 'receita_bruta', isExplicit: false, motivo: 'Dedução da Receita Bruta' };
+    }
+
+    // ===== FALLBACK: Contas não classificadas vão para DESPESAS OPERACIONAIS =====
+    // Qualquer conta de despesa/receita que não seja NÃO OPERACIONAL vai para despesas operacionais
+    return { grupo: 'despesas_operacionais', isExplicit: false, motivo: 'Classificado como Despesa Operacional (fallback)' };
   };
 
   /**
@@ -343,10 +373,11 @@ const Resultado = () => {
       }
 
       // Classify entry - if inside CMV block, force CMV classification
-      let classification = classifyDREEntry(desc, valor);
+      let classification = classifyDREEntry(desc, entry.descricao, valor);
       const wasInsideCMVBlock = isInsideCMVBlock;
       
-      if (isInsideCMVBlock && classification.grupo === 'nao_classificado') {
+      // Dentro do bloco CMV, forçar classificação CMV
+      if (isInsideCMVBlock && classification.grupo === 'despesas_operacionais') {
         classification = { 
           grupo: 'cmv', 
           isExplicit: false, 
@@ -363,6 +394,13 @@ const Resultado = () => {
         motivo: classification.motivo,
         insideCMVBlock: wasInsideCMVBlock
       });
+
+      // Acumular baseado no grupo classificado (para fallback)
+      if (classification.grupo === 'despesas_operacionais' && !classification.isExplicit) {
+        somaDespesasOperacionais += valorAbs;
+      } else if (classification.grupo === 'resultado_financeiro' && !classification.isExplicit) {
+        somaResultadoFinanceiro += valor;
+      }
 
       // Detect CMV block end: ESTOQUE FINAL (close AFTER processing)
       const isEstoqueFinal = desc.includes('ESTOQUE FINAL');
@@ -531,7 +569,6 @@ const Resultado = () => {
       lucro_operacional: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
       resultado_financeiro: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
       lucro_liquido: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-      nao_classificado: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
     };
     return colors[grupo];
   };
@@ -549,7 +586,6 @@ const Resultado = () => {
       lucro_operacional: 'Lucro Operacional',
       resultado_financeiro: 'Resultado Financeiro',
       lucro_liquido: 'Lucro Líquido',
-      nao_classificado: 'Não Classificado',
     };
     return labels[grupo];
   };
@@ -1497,7 +1533,7 @@ const Resultado = () => {
                   
                   {/* Group Legend */}
                   <div className="flex flex-wrap gap-2 mb-4">
-                    {(['receita_bruta', 'receita_liquida', 'cmv', 'lucro_bruto', 'despesas_operacionais', 'lucro_operacional', 'resultado_financeiro', 'lucro_liquido', 'nao_classificado'] as const).map((grupo) => (
+                    {(['receita_bruta', 'receita_liquida', 'cmv', 'lucro_bruto', 'despesas_operacionais', 'lucro_operacional', 'resultado_financeiro', 'lucro_liquido'] as const).map((grupo) => (
                       <span key={grupo} className={`px-2 py-1 rounded text-xs font-medium border ${getDREGroupColor(grupo)}`}>
                         {getDREGroupLabel(grupo)}
                       </span>
