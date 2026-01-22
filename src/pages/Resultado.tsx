@@ -377,8 +377,14 @@ const Resultado = () => {
       let classification = classifyDREEntry(desc, entry.descricao, valor);
       const wasInsideCMVBlock = isInsideCMVBlock;
       
-      // Dentro do bloco CMV, forçar classificação CMV
-      if (isInsideCMVBlock && classification.grupo === 'despesas_operacionais') {
+      // Dentro do bloco CMV, forçar classificação CMV para TODAS as contas
+      // EXCETO subtotais explícitos (Lucro Bruto, Lucro Líquido, etc.)
+      const isSubtotalExplicito = classification.grupo === 'lucro_bruto' || 
+                                   classification.grupo === 'lucro_operacional' || 
+                                   classification.grupo === 'lucro_liquido' ||
+                                   classification.grupo === 'receita_liquida';
+      
+      if (isInsideCMVBlock && !isSubtotalExplicito) {
         classification = { 
           grupo: 'cmv', 
           isExplicit: false, 
