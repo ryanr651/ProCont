@@ -440,12 +440,15 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
       // REGEX PODEROSA: Ignora espaços múltiplos, traços, etc.
       // Ex: "ESTOQUE - INICIAL", "ESTOQUE    INICIAL" serão detectados.
       const isEstoqueInicial = /ESTOQUE.*INICIAL|INV.*INICIAL|EST.*INI/i.test(normalConta);
-      const isEstoqueFinal = /ESTOQUE.*FINAL|INV.*FINAL|EST.*FIM/i.test(normalConta);
       const isCompraMercadoria = /COMPRAS?.*MERCADORIA|ENTRADAS?.*MERCADORIA/i.test(normalConta);
+      const isCustoVenda = /CUSTO.*VEND|CMV|CPV/i.test(normalConta);
 
-      if (isEstoqueInicial || isCompraMercadoria) {
+      // --- LÓGICA DE GATILHO (TRIGGER) ---
+      // Verificamos se entra no bloco ANTES de ver se tem valor,
+      // pois as vezes o texto está numa coluna e o valor noutra.
+      if (isEstoqueInicial) {
         isInsideCMVBlock = true;
-        debugLog("🟢 Bloco CMV Ativado: " + conta);
+        debugLog("🟢 Entrou no bloco CMV (Gatilho): " + conta);
       }
 
       // Tenta extrair valores da linha
@@ -1864,15 +1867,17 @@ export function calculateDREMetrics(entries: ParsedDREEntry[]): DREMetrics {
     // ===== CMV =====
     if (entry.grupo === "CMV") {
       // Linha explícita de CMV/CPV total
-      // Dentro do loop de entries em calculateDREMetrics
       if (
         normalDesc === "CMV" ||
         normalDesc === "CPV" ||
-        /TOTAL.*CUSTO/i.test(normalDesc) ||
-        /CUSTO.*VENDIDAS?/i.test(normalDesc)
+        normalDesc === "CUSTO DA MERCADORIA VENDIDA" ||
+        normalDesc === "CUSTO DOS PRODUTOS VENDIDOS" ||
+        normalDesc === "CUSTO DAS MERCADORIAS VENDIDAS" ||
+        normalDesc === "CUSTO DOS SERVICOS PRESTADOS" ||
+        (normalDesc.includes("TOTAL") && (normalDesc.includes("CMV") || normalDesc.includes("CUSTO")))
       ) {
         if (!foundCMVExplicita) {
-          metrics.cmv = Math.abs(valor); // Garante valor positivo para métrica de custo
+          metrics.cmv = valor; // Manter sinal (normalmente negativo)
           metrics.cmvOrigem = "linha_explicita";
           foundCMVExplicita = true;
         }
