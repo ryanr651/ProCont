@@ -291,7 +291,9 @@ const Resultado = () => {
     // ===== RESULTADO FINANCEIRO =====
     if (desc.includes('RESULTADO FINANCEIRO') || desc.includes('RECEITAS FINANCEIRAS') ||
         desc.includes('DESPESAS FINANCEIRAS') || desc.includes('JUROS') || 
-        desc.includes('VARIACAO MONETARIA')) {
+        desc.includes('VARIACAO MONETARIA') ||
+        desc.includes('BANCARIO') || desc.includes('BANCARIA') ||
+        descOriginal.toUpperCase().includes('BANCÁRIO') || descOriginal.toUpperCase().includes('BANCÁRIA')) {
       const isExplicit = desc === 'RESULTADO FINANCEIRO' || 
                          desc === 'RESULTADO FINANCEIRO LIQUIDO' ||
                          (desc.includes('TOTAL') && desc.includes('FINANCEIRO'));
