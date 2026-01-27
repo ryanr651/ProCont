@@ -362,6 +362,9 @@ const Resultado = () => {
 
     // CMV Block detection (range-based: ESTOQUE INICIAL → ESTOQUE FINAL)
     let isInsideCMVBlock = false;
+    
+    // NÃO OPERACIONAL Block detection (Despesas/Receitas não Operacionais)
+    let isInsideNaoOperacionalBlock = false;
 
     for (const entry of entries) {
       const desc = normalizeText(entry.descricao);
@@ -374,9 +377,33 @@ const Resultado = () => {
         isInsideCMVBlock = true;
       }
 
+      // Detect NÃO OPERACIONAL block start
+      const isNaoOperacionalHeader = desc.includes('NAO OPERACIONAIS') || 
+                                      desc.includes('NÃO OPERACIONAIS') ||
+                                      desc.includes('NAO OPERACIONAL') || 
+                                      desc.includes('NÃO OPERACIONAL') ||
+                                      desc.includes('DESPESAS NAO OPERACIONAIS') ||
+                                      desc.includes('RECEITAS NAO OPERACIONAIS');
+      
+      if (isNaoOperacionalHeader) {
+        isInsideNaoOperacionalBlock = true;
+      }
+      
+      // Detect exit from NÃO OPERACIONAL block (when hitting main sections)
+      const isMainSection = desc.includes('RESULTADO ANTES') || 
+                            desc.includes('LUCRO LIQUIDO') ||
+                            desc.includes('RESULTADO LIQUIDO') ||
+                            desc.includes('LUCRO DO EXERCICIO') ||
+                            desc.includes('RESULTADO DO EXERCICIO');
+      
+      if (isMainSection) {
+        isInsideNaoOperacionalBlock = false;
+      }
+
       // Classify entry - if inside CMV block, force CMV classification
       let classification = classifyDREEntry(desc, entry.descricao, valor);
       const wasInsideCMVBlock = isInsideCMVBlock;
+      const wasInsideNaoOperacionalBlock = isInsideNaoOperacionalBlock;
       
       // Dentro do bloco CMV, forçar classificação CMV para TODAS as contas
       // EXCETO subtotais explícitos (Lucro Bruto, Lucro Líquido, etc.)
@@ -390,6 +417,16 @@ const Resultado = () => {
           grupo: 'cmv', 
           isExplicit: false, 
           motivo: 'Capturado pelo Bloco CMV (entre ESTOQUE INICIAL e ESTOQUE FINAL)' 
+        };
+      }
+      
+      // Dentro do bloco NÃO OPERACIONAL, forçar classificação nao_operacional
+      // EXCETO se já é um subtotal explícito ou header
+      if (wasInsideNaoOperacionalBlock && !isSubtotalExplicito && !isNaoOperacionalHeader && !isMainSection) {
+        classification = { 
+          grupo: 'nao_operacional', 
+          isExplicit: false, 
+          motivo: 'Capturado pelo Bloco Não Operacional' 
         };
       }
 
