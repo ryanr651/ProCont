@@ -102,7 +102,7 @@ interface DREClassifiedEntry {
   descricao: string;
   valor: number;
   valorAnterior: number | null;
-  grupo: 'receita_bruta' | 'receita_liquida' | 'cmv' | 'lucro_bruto' | 'despesas_operacionais' | 'lucro_operacional' | 'resultado_financeiro' | 'lucro_liquido';
+  grupo: 'receita_bruta' | 'receita_liquida' | 'cmv' | 'lucro_bruto' | 'despesas_operacionais' | 'lucro_operacional' | 'resultado_financeiro' | 'nao_operacional' | 'lucro_liquido';
   isExplicit: boolean;
   motivo: string;
   insideCMVBlock?: boolean;
@@ -265,7 +265,7 @@ const Resultado = () => {
       return { grupo: 'lucro_operacional', isExplicit: true, motivo: 'Linha explícita de Lucro Operacional' };
     }
 
-    // ===== RESULTADO FINANCEIRO (e NÃO OPERACIONAIS) =====
+    // ===== NÃO OPERACIONAL (categoria separada) =====
     // Detectar itens NÃO OPERACIONAIS (com ou sem acento, maiúsculo/minúsculo)
     const isNaoOperacional = desc.includes('NAO OPERACIONAL') || 
                              desc.includes('NÃO OPERACIONAL') ||
@@ -275,9 +275,10 @@ const Resultado = () => {
                              descOriginal.toUpperCase().includes('NAO OPERACIONAL');
     
     if (isNaoOperacional) {
-      return { grupo: 'resultado_financeiro', isExplicit: false, motivo: 'Item Não Operacional (classificado como Resultado Financeiro)' };
+      return { grupo: 'nao_operacional', isExplicit: false, motivo: 'Item Não Operacional' };
     }
-    
+
+    // ===== RESULTADO FINANCEIRO =====
     if (desc.includes('RESULTADO FINANCEIRO') || desc.includes('RECEITAS FINANCEIRAS') ||
         desc.includes('DESPESAS FINANCEIRAS') || desc.includes('JUROS') || 
         desc.includes('VARIACAO MONETARIA')) {
@@ -576,6 +577,7 @@ const Resultado = () => {
       despesas_operacionais: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
       lucro_operacional: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
       resultado_financeiro: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+      nao_operacional: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
       lucro_liquido: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
     };
     return colors[grupo];
@@ -593,6 +595,7 @@ const Resultado = () => {
       despesas_operacionais: 'Despesas Operacionais',
       lucro_operacional: 'Lucro Operacional',
       resultado_financeiro: 'Resultado Financeiro',
+      nao_operacional: 'Não Operacional',
       lucro_liquido: 'Lucro Líquido',
     };
     return labels[grupo];
