@@ -278,6 +278,11 @@ const Resultado = () => {
       return { grupo: 'nao_operacional', isExplicit: false, motivo: 'Item Não Operacional' };
     }
 
+    // ===== ALIENAÇÃO → NÃO OPERACIONAL =====
+    if (desc.includes('ALIENACAO') || descOriginal.toUpperCase().includes('ALIENAÇÃO')) {
+      return { grupo: 'nao_operacional', isExplicit: false, motivo: 'Conta de Alienação (Não Operacional)' };
+    }
+
     // ===== RESULTADO FINANCEIRO =====
     if (desc.includes('RESULTADO FINANCEIRO') || desc.includes('RECEITAS FINANCEIRAS') ||
         desc.includes('DESPESAS FINANCEIRAS') || desc.includes('JUROS') || 
