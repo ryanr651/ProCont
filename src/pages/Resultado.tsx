@@ -6,6 +6,7 @@ import { MetricCard } from "@/components/MetricCard";
 import { ProgressBar } from "@/components/ProgressBar";
 import { XLSValidationMode, ValidationRow } from "@/components/XLSValidationMode";
 import { ManualEditDialog, EditableBalancoEntry, EditableDREEntry } from "@/components/ManualEditDialog";
+import { AIAnalysisDialog } from "@/components/AIAnalysisDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import html2pdf from "html2pdf.js";
@@ -25,7 +26,8 @@ import {
   Loader2,
   FileSearch,
   FileDown,
-  Edit3
+  Edit3,
+  Sparkles
 } from "lucide-react";
 
 interface DREEntry {
@@ -126,6 +128,9 @@ const Resultado = () => {
   const [isApplyingChanges, setIsApplyingChanges] = useState(false);
   const [rawBalancoEntries, setRawBalancoEntries] = useState<BalancoEntry[]>([]);
   const [rawDreEntries, setRawDreEntries] = useState<DREEntry[]>([]);
+  
+  // AI Analysis state
+  const [showAIAnalysis, setShowAIAnalysis] = useState(false);
   
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
@@ -1894,6 +1899,30 @@ const Resultado = () => {
           </section>
         )}
 
+        {/* AI Analysis Section */}
+        <section className="mb-12">
+          <div className="glass-card p-8 text-center bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
+            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+              <Sparkles className="w-8 h-8 text-primary" />
+            </div>
+            <h3 className="font-display text-xl font-bold mb-3">
+              🤖 Análise Inteligente com IA
+            </h3>
+            <p className="text-muted-foreground mb-6 max-w-xl mx-auto">
+              Use nossa IA para gerar uma análise completa dos seus dados financeiros, 
+              com insights estratégicos, pontos de atenção e recomendações personalizadas.
+            </p>
+            <Button 
+              variant="hero" 
+              size="xl" 
+              onClick={() => setShowAIAnalysis(true)}
+            >
+              <Sparkles className="w-5 h-5 mr-2" />
+              Gerar Análise com IA
+            </Button>
+          </div>
+        </section>
+
         {/* Insights Section */}
         <section className="mb-12">
           <h2 className="font-display text-2xl font-bold mb-6">
@@ -1985,6 +2014,14 @@ const Resultado = () => {
         dreEntries={prepareEditableDREEntries()}
         onApplyChanges={handleApplyManualChanges}
         isApplying={isApplyingChanges}
+      />
+
+      {/* AI Analysis Dialog */}
+      <AIAnalysisDialog
+        open={showAIAnalysis}
+        onOpenChange={setShowAIAnalysis}
+        dreData={dreData}
+        balancoData={balancoData}
       />
     </div>
   );
