@@ -499,7 +499,9 @@ const Resultado = () => {
       // Acumular baseado no grupo classificado (para fallback)
       if (classification.grupo === 'despesas_operacionais' && !classification.isExplicit) {
         somaDespesasOperacionais += valorAbs;
-      } else if (classification.grupo === 'resultado_financeiro' && !classification.isExplicit) {
+      }
+      // Somar TODAS as contas classificadas como resultado_financeiro (incluindo capturadas pelo bloco)
+      if (classification.grupo === 'resultado_financeiro' && !classification.isExplicit) {
         somaResultadoFinanceiro += valor;
       }
 
@@ -595,10 +597,9 @@ const Resultado = () => {
         }
       }
 
-      // ===== RESULTADO FINANCEIRO =====
+      // ===== RESULTADO FINANCEIRO (apenas captura de linha explícita total) =====
       if (desc.includes('RESULTADO FINANCEIRO') || desc.includes('RECEITAS FINANCEIRAS') ||
-          desc.includes('DESPESAS FINANCEIRAS') || desc.includes('JUROS') || 
-          desc.includes('VARIACAO MONETARIA')) {
+          desc.includes('DESPESAS FINANCEIRAS')) {
         const isTotal = desc === 'RESULTADO FINANCEIRO' || 
                        desc === 'RESULTADO FINANCEIRO LIQUIDO' ||
                        (desc.includes('TOTAL') && desc.includes('FINANCEIRO'));
@@ -606,9 +607,8 @@ const Resultado = () => {
           metrics.resultadoFinanceiro = valor;
           metrics.resultadoFinanceiroOrigem = 'linha_explicita';
           foundResultadoFin = true;
-        } else if (!isTotal) {
-          somaResultadoFinanceiro += valor;
         }
+        // Não soma aqui - a soma é feita acima para TODAS as contas com grupo resultado_financeiro
       }
 
       // ===== LUCRO LÍQUIDO =====
