@@ -295,7 +295,12 @@ const Resultado = () => {
       return { grupo: 'lucro_liquido', isExplicit: true, motivo: 'Linha explícita de Lucro Líquido' };
     }
 
-    // ===== IMPOSTOS SOBRE LUCRO (não deve ir para despesas operacionais) =====
+    // ===== CONTAS QUE COMEÇAM COM "IMPOSTOS" → DESPESAS OPERACIONAIS =====
+    if (desc.startsWith('IMPOSTOS')) {
+      return { grupo: 'despesas_operacionais', isExplicit: false, motivo: 'Conta de Impostos (Despesa Operacional)' };
+    }
+
+    // ===== IMPOSTOS SOBRE LUCRO (IRPJ, CSLL, etc.) =====
     if (desc.includes('IMPOSTO') || desc.includes('IR ') || desc.includes('CSLL') ||
         desc.includes('IRPJ') || desc.includes('CONTRIBUICAO SOCIAL') ||
         desc.includes('PROVISAO PARA IMPOSTO')) {
