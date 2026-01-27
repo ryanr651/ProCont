@@ -380,6 +380,9 @@ const Resultado = () => {
     
     // NÃO OPERACIONAL Block detection (Despesas/Receitas não Operacionais)
     let isInsideNaoOperacionalBlock = false;
+    
+    // RESULTADO FINANCEIRO Block detection (Despesas/Receitas Financeiras)
+    let isInsideResultadoFinanceiroBlock = false;
 
     for (const entry of entries) {
       const desc = normalizeText(entry.descricao);
@@ -392,6 +395,17 @@ const Resultado = () => {
         isInsideCMVBlock = true;
       }
 
+      // Detect RESULTADO FINANCEIRO block start
+      const isResultadoFinanceiroHeader = desc === 'DESPESAS FINANCEIRAS' || 
+                                           desc === 'RECEITAS FINANCEIRAS' ||
+                                           desc === 'RESULTADO FINANCEIRO' ||
+                                           desc.includes('DESPESAS FINANCEIRAS') && !desc.includes('TOTAL') ||
+                                           desc.includes('RECEITAS FINANCEIRAS') && !desc.includes('TOTAL');
+      
+      if (isResultadoFinanceiroHeader) {
+        isInsideResultadoFinanceiroBlock = true;
+      }
+
       // Detect NÃO OPERACIONAL block start
       const isNaoOperacionalHeader = desc.includes('NAO OPERACIONAIS') || 
                                       desc.includes('NÃO OPERACIONAIS') ||
@@ -402,23 +416,38 @@ const Resultado = () => {
       
       if (isNaoOperacionalHeader) {
         isInsideNaoOperacionalBlock = true;
+        isInsideResultadoFinanceiroBlock = false; // Exit financial block when entering non-operating
       }
       
-      // Detect exit from NÃO OPERACIONAL block (when hitting main sections)
+      // Detect exit from blocks (when hitting main sections or new subgroups)
       const isMainSection = desc.includes('RESULTADO ANTES') || 
                             desc.includes('LUCRO LIQUIDO') ||
                             desc.includes('RESULTADO LIQUIDO') ||
                             desc.includes('LUCRO DO EXERCICIO') ||
                             desc.includes('RESULTADO DO EXERCICIO');
       
+      // Detect new subgroups that exit the financial block
+      const isNewSubgroup = desc.includes('OUTRAS RECEITAS') ||
+                            desc.includes('OUTRAS DESPESAS') ||
+                            desc.includes('DESPESAS OPERACIONAIS') ||
+                            desc.includes('LUCRO OPERACIONAL') ||
+                            desc.includes('RESULTADO OPERACIONAL') ||
+                            isNaoOperacionalHeader;
+      
       if (isMainSection) {
         isInsideNaoOperacionalBlock = false;
+        isInsideResultadoFinanceiroBlock = false;
+      }
+      
+      if (isNewSubgroup && !isResultadoFinanceiroHeader) {
+        isInsideResultadoFinanceiroBlock = false;
       }
 
       // Classify entry - if inside CMV block, force CMV classification
       let classification = classifyDREEntry(desc, entry.descricao, valor);
       const wasInsideCMVBlock = isInsideCMVBlock;
       const wasInsideNaoOperacionalBlock = isInsideNaoOperacionalBlock;
+      const wasInsideResultadoFinanceiroBlock = isInsideResultadoFinanceiroBlock;
       
       // Dentro do bloco CMV, forçar classificação CMV para TODAS as contas
       // EXCETO subtotais explícitos (Lucro Bruto, Lucro Líquido, etc.)
@@ -432,6 +461,16 @@ const Resultado = () => {
           grupo: 'cmv', 
           isExplicit: false, 
           motivo: 'Capturado pelo Bloco CMV (entre ESTOQUE INICIAL e ESTOQUE FINAL)' 
+        };
+      }
+      
+      // Dentro do bloco RESULTADO FINANCEIRO, forçar classificação resultado_financeiro
+      // EXCETO se já é um subtotal explícito ou header de outro grupo
+      if (wasInsideResultadoFinanceiroBlock && !isSubtotalExplicito && !isResultadoFinanceiroHeader && !isNewSubgroup && !isMainSection) {
+        classification = { 
+          grupo: 'resultado_financeiro', 
+          isExplicit: false, 
+          motivo: 'Capturado pelo Bloco Resultado Financeiro (após DESPESAS/RECEITAS FINANCEIRAS)' 
         };
       }
       
