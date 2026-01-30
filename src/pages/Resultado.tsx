@@ -7,6 +7,7 @@ import { ProgressBar } from "@/components/ProgressBar";
 import { XLSValidationMode, ValidationRow } from "@/components/XLSValidationMode";
 import { ManualEditDialog, EditableBalancoEntry, EditableDREEntry } from "@/components/ManualEditDialog";
 import { AIAnalysisDialog } from "@/components/AIAnalysisDialog";
+import { AIPresentationDialog } from "@/components/AIPresentationDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import html2pdf from "html2pdf.js";
@@ -27,7 +28,8 @@ import {
   FileSearch,
   FileDown,
   Edit3,
-  Sparkles
+  Sparkles,
+  Presentation
 } from "lucide-react";
 
 interface DREEntry {
@@ -131,6 +133,9 @@ const Resultado = () => {
   
   // AI Analysis state
   const [showAIAnalysis, setShowAIAnalysis] = useState(false);
+  
+  // AI Presentation state
+  const [showAIPresentation, setShowAIPresentation] = useState(false);
   
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
@@ -1940,27 +1945,52 @@ const Resultado = () => {
           </section>
         )}
 
-        {/* AI Analysis Section */}
+        {/* AI Section - Analysis and Presentation */}
         <section className="mb-12">
-          <div className="glass-card p-8 text-center bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
-            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-              <Sparkles className="w-8 h-8 text-primary" />
+          <div className="grid md:grid-cols-2 gap-6">
+            {/* AI Analysis Card */}
+            <div className="glass-card p-8 text-center bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
+              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                <Sparkles className="w-8 h-8 text-primary" />
+              </div>
+              <h3 className="font-display text-xl font-bold mb-3">
+                🤖 Análise Inteligente
+              </h3>
+              <p className="text-muted-foreground mb-6 text-sm">
+                Gere uma análise detalhada com insights estratégicos, 
+                pontos de atenção e recomendações personalizadas.
+              </p>
+              <Button 
+                variant="hero" 
+                size="lg" 
+                onClick={() => setShowAIAnalysis(true)}
+              >
+                <Sparkles className="w-5 h-5 mr-2" />
+                Gerar Análise
+              </Button>
             </div>
-            <h3 className="font-display text-xl font-bold mb-3">
-              🤖 Análise Inteligente com IA
-            </h3>
-            <p className="text-muted-foreground mb-6 max-w-xl mx-auto">
-              Use nossa IA para gerar uma análise completa dos seus dados financeiros, 
-              com insights estratégicos, pontos de atenção e recomendações personalizadas.
-            </p>
-            <Button 
-              variant="hero" 
-              size="xl" 
-              onClick={() => setShowAIAnalysis(true)}
-            >
-              <Sparkles className="w-5 h-5 mr-2" />
-              Gerar Análise com IA
-            </Button>
+
+            {/* AI Presentation Card */}
+            <div className="glass-card p-8 text-center bg-gradient-to-br from-secondary/5 to-secondary/10 border-secondary/20">
+              <div className="w-16 h-16 rounded-full bg-secondary/10 flex items-center justify-center mx-auto mb-4">
+                <Presentation className="w-8 h-8 text-secondary" />
+              </div>
+              <h3 className="font-display text-xl font-bold mb-3">
+                📊 Apresentação Executiva
+              </h3>
+              <p className="text-muted-foreground mb-6 text-sm">
+                Crie slides profissionais com a situação financeira da empresa,
+                indicadores chave e recomendações estratégicas.
+              </p>
+              <Button 
+                variant="neon" 
+                size="lg" 
+                onClick={() => setShowAIPresentation(true)}
+              >
+                <Presentation className="w-5 h-5 mr-2" />
+                Gerar Apresentação
+              </Button>
+            </div>
           </div>
         </section>
 
@@ -2063,6 +2093,15 @@ const Resultado = () => {
         onOpenChange={setShowAIAnalysis}
         dreData={dreData}
         balancoData={balancoData}
+      />
+
+      {/* AI Presentation Dialog */}
+      <AIPresentationDialog
+        open={showAIPresentation}
+        onOpenChange={setShowAIPresentation}
+        dreData={dreData}
+        balancoData={balancoData}
+        empresaNome="Empresa"
       />
     </div>
   );
