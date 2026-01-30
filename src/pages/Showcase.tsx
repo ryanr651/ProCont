@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { MetricCard } from "@/components/MetricCard";
 import { ProgressBar } from "@/components/ProgressBar";
 import {
@@ -34,6 +35,7 @@ const Showcase = () => {
       <nav className="relative z-10 container mx-auto px-6 py-6 flex items-center justify-between">
         <Logo />
         <div className="flex items-center gap-4">
+          <ThemeToggle />
           <Link to="/">
             <Button variant="ghost" size="sm">
               <ArrowLeft className="w-4 h-4 mr-2" />

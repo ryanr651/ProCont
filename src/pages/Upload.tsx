@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { FileUpload } from "@/components/FileUpload";
 import { ArrowLeft, Loader2, ArrowRight, Download, LogOut, FileSearch } from "lucide-react";
 import { uploadAndProcessFiles, generateDownloadableJSON } from "@/lib/supabaseUpload";
@@ -72,9 +73,12 @@ const Upload = () => {
           </Button>
           <Logo />
         </div>
-        <Button onClick={signOut} variant="ghost">
-          <LogOut className="w-4 h-4 mr-2" /> Sair
-        </Button>
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <Button onClick={signOut} variant="ghost">
+            <LogOut className="w-4 h-4 mr-2" /> Sair
+          </Button>
+        </div>
       </nav>
 
       <main className="container mx-auto px-6 py-12 max-w-2xl">

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { MetricCard } from "@/components/MetricCard";
 import { ProgressBar } from "@/components/ProgressBar";
 import { XLSValidationMode, ValidationRow } from "@/components/XLSValidationMode";
@@ -1491,6 +1492,7 @@ const Resultado = () => {
       <nav className="relative z-10 container mx-auto px-6 py-6 flex items-center justify-between">
         <Logo />
         <div className="flex items-center gap-4">
+          <ThemeToggle />
           <Link to="/upload">
             <Button variant="ghost" size="sm">
               <RefreshCw className="w-4 h-4 mr-2" />
