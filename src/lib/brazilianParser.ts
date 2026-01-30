@@ -532,165 +532,190 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
 }
 async function parseXLSFile(file: File): Promise<XLSRow[]> {
   const extension = getFileExtension(file.name);
-  debugLog("=== Usando fluxo XLS/XLSX para:", file.name);
+  debugLog("=== Usando fluxo XLS/XLSX UNIFICADO (matriz JSON) para:", file.name);
 
   try {
     const buffer = await file.arrayBuffer();
-    const uint8Array = new Uint8Array(buffer);
-
-    let binaryString = "";
-    for (let i = 0; i < uint8Array.length; i++) {
-      binaryString += String.fromCharCode(uint8Array[i]);
-    }
-
-    // Configurações agressivas para leitura
-    const readConfigs: XLSX.ParsingOptions[] = [
-      { type: "binary", cellFormula: false, cellNF: true, cellText: true, raw: true, sheetStubs: true },
-      { type: "binary", WTF: true, sheetStubs: true, cellStyles: true, bookVBA: true, bookFiles: true },
-      { type: "binary", sheetStubs: true, dense: true },
-      { type: "binary", raw: true, sheetStubs: true },
-      { type: "binary", codepage: 1252 },
-      { type: "binary" },
-      { type: "array", sheetStubs: true, cellStyles: true },
-      { type: "array" },
-    ];
-
+    
+    // NOVA ABORDAGEM: Converter QUALQUER arquivo (XLS ou XLSX) para matriz JSON limpa primeiro
+    // Isso evita problemas de formatação de XLS legados (Domínio, PROCONT, etc.)
+    
     let workbook: XLSX.WorkBook | null = null;
     let sheet: XLSX.WorkSheet | null = null;
-
-    for (const opts of readConfigs) {
+    
+    // Tentar múltiplas estratégias de leitura
+    const readStrategies: Array<{ type: 'binary' | 'array' | 'buffer'; opts: Partial<XLSX.ParsingOptions> }> = [
+      { type: 'binary', opts: { cellFormula: false, cellText: false, raw: true, sheetStubs: true } },
+      { type: 'binary', opts: { codepage: 1252, raw: true, sheetStubs: true } },
+      { type: 'binary', opts: { WTF: true, sheetStubs: true } },
+      { type: 'array', opts: { raw: true, sheetStubs: true } },
+      { type: 'binary', opts: {} },
+      { type: 'array', opts: {} },
+    ];
+    
+    for (const strategy of readStrategies) {
       try {
-        let inputData: ArrayBuffer | Uint8Array | string = buffer;
-
-        if (opts.type === "buffer") {
-          inputData = uint8Array;
-        } else if (opts.type === "binary") {
+        let inputData: ArrayBuffer | Uint8Array | string;
+        
+        if (strategy.type === 'binary') {
+          // Converter para binary string
+          const uint8Array = new Uint8Array(buffer);
+          let binaryString = "";
+          for (let i = 0; i < uint8Array.length; i++) {
+            binaryString += String.fromCharCode(uint8Array[i]);
+          }
           inputData = binaryString;
+        } else {
+          inputData = buffer;
         }
-
-        workbook = XLSX.read(inputData, opts);
-
-        if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
-          continue;
-        }
-
-        const sheetName = workbook.SheetNames[0];
-
-        if (workbook.Sheets[sheetName]) {
+        
+        workbook = XLSX.read(inputData, { type: strategy.type, ...strategy.opts });
+        
+        if (workbook?.SheetNames?.length > 0) {
+          const sheetName = workbook.SheetNames[0];
           sheet = workbook.Sheets[sheetName];
-          debugLog("Sheet encontrada:", sheetName);
-          break;
-        }
-
-        // Try any available sheet
-        const sheetKeys = Object.keys(workbook.Sheets);
-        for (const key of sheetKeys) {
-          if (workbook.Sheets[key]) {
-            sheet = workbook.Sheets[key];
-            debugLog("Sheet encontrada por key:", key);
+          if (sheet) {
+            debugLog(`Leitura bem-sucedida com estratégia: ${strategy.type}`, strategy.opts);
             break;
           }
         }
-
-        if (sheet) break;
       } catch (e) {
-        debugLog("Tentativa falhou");
+        debugLog(`Estratégia ${strategy.type} falhou:`, e);
       }
     }
-
-    // Se encontramos sheet, tentar extrair célula por célula primeiro
-    if (sheet) {
-      debugLog("Tentando extração célula por célula...");
-      const cellRows = extractCellByCell(sheet);
-      const totalNumeric = cellRows.reduce((acc, r) => acc + (r.numericValues?.length || 0), 0);
-
-      if (cellRows.length > 0 && totalNumeric > 0) {
-        debugLog(`Extração célula por célula SUCCESS: ${cellRows.length} rows, ${totalNumeric} números`);
-        return cellRows;
+    
+    if (!sheet) {
+      debugLog("Nenhuma sheet encontrada após todas as tentativas");
+      
+      // FALLBACK: Tentar BIFF8 manual parser para XLS muito antigos
+      if (extension === "xls" && workbook) {
+        const strings = (workbook as any)?.Strings || [];
+        const stringValues: string[] = strings.map((str: any) => 
+          typeof str === "object" && str?.t ? str.t : String(str || "")
+        );
+        
+        const biffCells = parseBIFF8CellsFromXls(buffer, stringValues);
+        if (biffCells.length > 0) {
+          const biffRows = biffCellsToXLSRows(biffCells);
+          if (biffRows.length > 0) {
+            debugLog("BIFF8 manual parser SUCCESS: " + biffRows.length + " rows");
+            return biffRows;
+          }
+        }
       }
-
-      debugLog("Extração célula por célula falhou, tentando sheet_to_json...");
+      
+      return [];
     }
-
-    if (!sheet && workbook) {
-      // Try BIFF8 manual parsing
+    
+    // ===== ETAPA PRINCIPAL: Converter para matriz JSON limpa =====
+    // Esta é a mudança central: usar sheet_to_json com header: 1 e defval: ''
+    // Isso normaliza QUALQUER formato (XLS legado, XLSX, etc.) para uma matriz uniforme
+    
+    const jsonMatrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+      header: 1,
+      defval: '',  // Células vazias viram string vazia (não null/undefined)
+      raw: true,   // Preservar tipos numéricos quando possível
+      blankrows: false,
+    }) as unknown[][];
+    
+    debugLog(`Matriz JSON extraída: ${jsonMatrix.length} linhas`);
+    
+    if (!jsonMatrix || jsonMatrix.length === 0) {
+      debugLog("Matriz JSON vazia, tentando extração célula por célula...");
+      return extractCellByCell(sheet);
+    }
+    
+    // ===== Converter matriz JSON para XLSRow[] =====
+    const rows = convertMatrixToXLSRows(jsonMatrix);
+    const totalNumeric = rows.reduce((acc, r) => acc + (r.numericValues?.length || 0), 0);
+    
+    debugLog(`Conversão para XLSRow: ${rows.length} linhas, ${totalNumeric} valores numéricos`);
+    
+    // Se XLS retornou 0 números, tentar BIFF8 como fallback
+    if (extension === "xls" && totalNumeric === 0 && workbook) {
+      debugLog("XLS retornou 0 números via matriz JSON; tentando BIFF8 fallback...");
+      
       const strings = (workbook as any)?.Strings || [];
-      debugLog("Sheet não acessível, tentando BIFF8 manual parser...");
-      debugLog("Strings disponíveis:", strings.length);
-
-      // Extract string values
-      const stringValues: string[] = [];
-      for (const str of strings) {
-        const text = typeof str === "object" && (str as any).t ? (str as any).t : String(str || "");
-        stringValues.push(text);
-      }
-
-      // Parse BIFF8 (records) to extract numbers + text positions
+      const stringValues: string[] = strings.map((str: any) => 
+        typeof str === "object" && str?.t ? str.t : String(str || "")
+      );
+      
       const biffCells = parseBIFF8CellsFromXls(buffer, stringValues);
       if (biffCells.length > 0) {
         const biffRows = biffCellsToXLSRows(biffCells);
         if (biffRows.length > 0) {
-          debugLog("BIFF8 manual parser SUCCESS: " + biffRows.length + " rows");
+          debugLog("BIFF8 fallback SUCCESS: " + biffRows.length + " rows");
           return biffRows;
         }
       }
-
-      // Fallback to strings-only
-      if (stringValues.length > 0) {
-        const rows = reconstructRowsFromStrings(stringValues);
-        if (rows.length > 0) {
-          return rows;
-        }
-      }
-      return [];
     }
-
-    if (!sheet) {
-      return [];
-    }
-
-    // Extract data from sheet
-    const jsonData = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-      header: 1,
-      defval: null,
-      raw: true,
-      blankrows: false,
-    }) as unknown[][];
-
-    debugLog("Linhas obtidas:", jsonData?.length || 0);
-
-    if (jsonData && jsonData.length > 0) {
-      const rowsFromSheet = processXLSRawRows(jsonData);
-      const totalNumeric = rowsFromSheet.reduce((acc, r) => acc + (r.numericValues?.length || 0), 0);
-
-      // Caso típico do seu bug: XLS antigo retorna texto mas 0 números
-      if (extension === "xls" && totalNumeric === 0 && workbook) {
-        debugLog("XLS retornou 0 células numéricas via sheet_to_json; tentando BIFF8...");
-
-        const strings = (workbook as any)?.Strings || [];
-        const stringValues: string[] = [];
-        for (const str of strings) {
-          const text = typeof str === "object" && (str as any).t ? (str as any).t : String(str || "");
-          stringValues.push(text);
-        }
-
-        const biffCells = parseBIFF8CellsFromXls(buffer, stringValues);
-        const biffRows = biffCellsToXLSRows(biffCells);
-        if (biffRows.length > 0) {
-          debugLog("BIFF8 fallback SUCCESS após sheet_to_json vazio: " + biffRows.length + " rows");
-          return biffRows;
-        }
-      }
-
-      return rowsFromSheet;
-    }
-
-    // Cell-by-cell fallback final
-    return extractCellByCell(sheet);
+    
+    return rows;
+    
   } catch (error) {
-    debugLog("ERRO ao processar XLS:", error);
+    debugLog("ERRO CRÍTICO ao processar XLS/XLSX:", error);
     return [];
   }
+}
+
+/**
+ * Converte matriz JSON (de sheet_to_json) para XLSRow[]
+ * Esta função processa a matriz limpa e extrai texto + valores numéricos
+ */
+function convertMatrixToXLSRows(matrix: unknown[][]): XLSRow[] {
+  const rows: XLSRow[] = [];
+  
+  for (const rowData of matrix) {
+    if (!Array.isArray(rowData)) continue;
+    
+    // Verificar se a linha tem conteúdo
+    const hasContent = rowData.some(cell => 
+      (typeof cell === "string" && cell.trim().length > 0) || 
+      (typeof cell === "number" && Number.isFinite(cell))
+    );
+    if (!hasContent) continue;
+    
+    const cells: string[] = [];
+    let firstText: { text: string; index: number } = { text: "", index: -1 };
+    const numericValues: { value: number; raw: string }[] = [];
+    
+    for (let colIdx = 0; colIdx < rowData.length; colIdx++) {
+      const rawCell = rowData[colIdx];
+      
+      // Número direto do Excel
+      if (typeof rawCell === "number" && Number.isFinite(rawCell)) {
+        const cellValue = String(rawCell);
+        cells.push(cellValue);
+        numericValues.push({ value: rawCell, raw: cellValue });
+        continue;
+      }
+      
+      // String (pode ser texto ou número formatado BR)
+      const cellValue = typeof rawCell === "string" ? rawCell.trim() : String(rawCell ?? "");
+      cells.push(cellValue);
+      
+      // Detectar primeiro texto válido
+      if (firstText.index === -1 && isTextCell(cellValue)) {
+        firstText = { text: cellValue.trim(), index: colIdx };
+      }
+      
+      // Tentar parsear como número (formato brasileiro)
+      if (cellValue && isNumericCell(cellValue)) {
+        const parsed = parseSimpleBrazilianNumber(cellValue);
+        if (Number.isFinite(parsed)) {
+          numericValues.push({ value: parsed, raw: cellValue });
+        }
+      }
+    }
+    
+    rows.push({
+      cells,
+      firstTextCell: firstText,
+      numericValues,
+    });
+  }
+  
+  return rows;
 }
 
 /**
