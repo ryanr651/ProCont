@@ -2,3 +2,9 @@ project_id = "ljhbhwdmgplkkhorxtah"
 
 [functions.analyze-financials]
 verify_jwt = false
+
+[functions.financial-chat]
+verify_jwt = false
+
+[functions.generate-presentation]
+verify_jwt = false

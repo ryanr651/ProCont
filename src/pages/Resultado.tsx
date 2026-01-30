@@ -8,6 +8,7 @@ import { XLSValidationMode, ValidationRow } from "@/components/XLSValidationMode
 import { ManualEditDialog, EditableBalancoEntry, EditableDREEntry } from "@/components/ManualEditDialog";
 import { AIAnalysisDialog } from "@/components/AIAnalysisDialog";
 import { AIPresentationDialog } from "@/components/AIPresentationDialog";
+import { FinancialChatBox } from "@/components/FinancialChatBox";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import html2pdf from "html2pdf.js";
@@ -2010,6 +2011,21 @@ const Resultado = () => {
             ))}
           </div>
         </section>
+
+        {/* Financial Chat Section */}
+        {dreData && balancoData && (
+          <section className="mb-12">
+            <h2 className="font-display text-2xl font-bold mb-6">
+              🤖 Simulador de Cenários
+            </h2>
+            <FinancialChatBox
+              financialContext={{
+                dre: dreData,
+                balanco: balancoData,
+              }}
+            />
+          </section>
+        )}
 
         {/* Export PDF Button */}
         <section className="mb-12">
