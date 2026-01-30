@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -104,6 +105,7 @@ const Empresas = () => {
       <nav className="relative z-10 container mx-auto px-6 py-6 flex items-center justify-between">
         <Logo />
         <div className="flex items-center gap-4">
+          <ThemeToggle />
           <Link to="/">
             <Button variant="ghost" size="sm">
               <Home className="w-4 h-4 mr-2" />

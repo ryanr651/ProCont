@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Logo } from "@/components/Logo";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -130,10 +131,13 @@ const CadastroEmpresa = () => {
       {/* Navigation */}
       <nav className="relative z-10 container mx-auto px-6 py-6 flex items-center justify-between">
         <Logo />
-        <Button variant="ghost" size="sm" onClick={() => navigate("/empresas")}>
-          <X className="w-4 h-4 mr-2" />
-          Voltar
-        </Button>
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <Button variant="ghost" size="sm" onClick={() => navigate("/empresas")}>
+            <X className="w-4 h-4 mr-2" />
+            Voltar
+          </Button>
+        </div>
       </nav>
 
       {/* Main Content */}
