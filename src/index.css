@@ -71,65 +71,65 @@
 
   /* LIGHT MODE */
   .light {
-    /* Clean Professional Light Theme - Softer whites */
+    /* Clean Professional Light Theme - More Vibrant */
     --background: 210 20% 98%;
-    --foreground: 220 40% 20%;
+    --foreground: 220 50% 10%;
 
     --card: 0 0% 100%;
-    --card-foreground: 220 40% 20%;
+    --card-foreground: 220 50% 8%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 220 40% 20%;
+    --popover-foreground: 220 50% 8%;
 
     /* Blue Primary */
-    --primary: 217 91% 50%;
+    --primary: 217 91% 45%;
     --primary-foreground: 0 0% 100%;
 
     /* Light Blue Secondary */
-    --secondary: 199 89% 60%;
-    --secondary-foreground: 220 40% 15%;
+    --secondary: 199 89% 48%;
+    --secondary-foreground: 220 50% 8%;
 
     --muted: 210 25% 94%;
-    --muted-foreground: 215 16% 47%;
+    --muted-foreground: 220 25% 35%;
 
     /* Blue Accent */
-    --accent: 217 80% 55%;
+    --accent: 217 80% 50%;
     --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 84% 60%;
+    --destructive: 0 84% 55%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 214 32% 88%;
-    --input: 214 32% 91%;
-    --ring: 217 91% 50%;
+    --border: 214 40% 82%;
+    --input: 214 35% 88%;
+    --ring: 217 91% 45%;
 
     /* Custom ProCont tokens - Light */
-    --neon-purple: 217 91% 50%;
-    --neon-blue: 199 89% 60%;
-    --neon-cyan: 199 89% 65%;
+    --neon-purple: 217 91% 45%;
+    --neon-blue: 199 89% 48%;
+    --neon-cyan: 199 89% 55%;
     --deep-purple: 217 30% 95%;
     --glass: 210 20% 96%;
     
     /* Gradients - Light */
-    --gradient-primary: linear-gradient(135deg, hsl(217, 91%, 50%) 0%, hsl(199, 89%, 60%) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(217, 91%, 45%) 0%, hsl(199, 89%, 48%) 100%);
     --gradient-hero: linear-gradient(180deg, hsl(210, 20%, 98%) 0%, hsl(210, 25%, 96%) 50%, hsl(210, 20%, 98%) 100%);
     --gradient-card: linear-gradient(145deg, hsl(0, 0%, 100%) 0%, hsl(210, 20%, 98%) 100%);
-    --gradient-glow: radial-gradient(ellipse at center, hsl(217, 91%, 50%, 0.08) 0%, transparent 70%);
+    --gradient-glow: radial-gradient(ellipse at center, hsl(217, 91%, 45%, 0.1) 0%, transparent 70%);
     
-    /* Shadows - Light */
-    --shadow-neon: 0 4px 20px hsl(217, 91%, 50%, 0.15), 0 2px 8px hsl(199, 89%, 60%, 0.1);
-    --shadow-card: 0 4px 16px hsl(220, 20%, 0%, 0.06), 0 0 0 1px hsl(214, 32%, 88%);
-    --shadow-glow-purple: 0 0 15px hsl(217, 91%, 50%, 0.2);
-    --shadow-glow-blue: 0 0 15px hsl(199, 89%, 60%, 0.2);
+    /* Shadows - Light (mais definidas) */
+    --shadow-neon: 0 4px 24px hsl(217, 91%, 45%, 0.2), 0 2px 12px hsl(199, 89%, 48%, 0.15);
+    --shadow-card: 0 4px 20px hsl(220, 30%, 0%, 0.1), 0 0 0 1px hsl(214, 40%, 82%);
+    --shadow-glow-purple: 0 0 18px hsl(217, 91%, 45%, 0.25);
+    --shadow-glow-blue: 0 0 18px hsl(199, 89%, 48%, 0.25);
 
     --sidebar-background: 210 20% 98%;
-    --sidebar-foreground: 220 40% 20%;
-    --sidebar-primary: 217 91% 50%;
+    --sidebar-foreground: 220 50% 10%;
+    --sidebar-primary: 217 91% 45%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 210 25% 94%;
-    --sidebar-accent-foreground: 220 40% 20%;
-    --sidebar-border: 214 32% 88%;
-    --sidebar-ring: 217 91% 50%;
+    --sidebar-accent-foreground: 220 50% 10%;
+    --sidebar-border: 214 40% 82%;
+    --sidebar-ring: 217 91% 45%;
   }
 }
 
