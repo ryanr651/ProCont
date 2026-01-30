@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -18,9 +18,14 @@ import {
   Target,
   Building,
   DollarSign,
-  PieChart
+  PieChart as PieChartIcon,
+  FileDown,
+  FileText
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import html2pdf from "html2pdf.js";
+import PptxGenJS from "pptxgenjs";
 
 interface CalculatedDRE {
   receitaBruta: number;
@@ -47,11 +52,12 @@ interface CalculatedBalanco {
 }
 
 interface Slide {
-  type: 'cover' | 'overview' | 'profitability' | 'liquidity' | 'structure' | 'strengths' | 'risks' | 'recommendations' | 'conclusion';
+  type: 'cover' | 'overview' | 'profitability' | 'liquidity' | 'structure' | 'strengths' | 'risks' | 'recommendations' | 'conclusion' | 'charts';
   title: string;
   content: string[];
   icon?: React.ReactNode;
   highlight?: 'positive' | 'negative' | 'neutral';
+  chartType?: 'dre' | 'balanco' | 'margens';
 }
 
 interface AIPresentationDialogProps {
@@ -61,6 +67,8 @@ interface AIPresentationDialogProps {
   balancoData: CalculatedBalanco | null;
   empresaNome?: string;
 }
+
+const CHART_COLORS = ['#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899'];
 
 export function AIPresentationDialog({
   open,
@@ -72,9 +80,55 @@ export function AIPresentationDialog({
   const [slides, setSlides] = useState<Slide[]>([]);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [rawContent, setRawContent] = useState("");
+  const slideRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+
+  const formatCurrency = (value: number) => 
+    value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+  const formatCompact = (value: number) => {
+    if (Math.abs(value) >= 1000000) {
+      return `R$ ${(value / 1000000).toFixed(1)}M`;
+    } else if (Math.abs(value) >= 1000) {
+      return `R$ ${(value / 1000).toFixed(0)}K`;
+    }
+    return formatCurrency(value);
+  };
+
+  // Chart data generators
+  const getDREChartData = () => {
+    if (!dreData) return [];
+    return [
+      { name: 'Receita Líquida', value: Math.abs(dreData.receitaLiquida), fill: CHART_COLORS[0] },
+      { name: 'CMV', value: Math.abs(dreData.cmv), fill: CHART_COLORS[4] },
+      { name: 'Lucro Bruto', value: Math.abs(dreData.lucroBruto), fill: CHART_COLORS[2] },
+      { name: 'Desp. Operacionais', value: Math.abs(dreData.despesasOperacionais), fill: CHART_COLORS[3] },
+      { name: 'Lucro Líquido', value: Math.abs(dreData.lucroLiquido), fill: dreData.lucroLiquido >= 0 ? CHART_COLORS[2] : CHART_COLORS[4] },
+    ];
+  };
+
+  const getBalancoChartData = () => {
+    if (!balancoData) return [];
+    return [
+      { name: 'Ativo Circulante', value: balancoData.ativoCirculante, fill: CHART_COLORS[0] },
+      { name: 'Ativo Não Circulante', value: balancoData.ativoNaoCirculante, fill: CHART_COLORS[1] },
+      { name: 'Passivo Circulante', value: balancoData.passivoCirculante, fill: CHART_COLORS[3] },
+      { name: 'Passivo Não Circ.', value: balancoData.passivoNaoCirculante, fill: CHART_COLORS[4] },
+      { name: 'Patrimônio Líquido', value: balancoData.patrimonioLiquido, fill: CHART_COLORS[2] },
+    ];
+  };
+
+  const getMargensChartData = () => {
+    if (!dreData) return [];
+    return [
+      { name: 'Margem Bruta', value: dreData.margemBruta, fill: CHART_COLORS[0] },
+      { name: 'Margem Operacional', value: dreData.margemOperacional, fill: CHART_COLORS[1] },
+      { name: 'Margem Líquida', value: dreData.margemLiquida, fill: CHART_COLORS[2] },
+    ];
+  };
 
   const generatePresentation = async () => {
     if (!dreData || !balancoData) {
@@ -192,10 +246,7 @@ export function AIPresentationDialog({
   const parseAIResponse = (content: string, empresa: string, dre: CalculatedDRE, balanco: CalculatedBalanco): Slide[] => {
     const slides: Slide[] = [];
     
-    // Cover slide with company data
-    const formatCurrency = (value: number) => 
-      value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-    
+    // Cover slide
     slides.push({
       type: 'cover',
       title: `Análise Financeira - ${empresa}`,
@@ -207,25 +258,49 @@ export function AIPresentationDialog({
       highlight: 'neutral'
     });
 
+    // Charts slides - DRE
+    slides.push({
+      type: 'charts',
+      title: 'Composição do Resultado (DRE)',
+      content: [],
+      chartType: 'dre',
+      highlight: 'neutral'
+    });
+
+    // Charts slides - Balanço
+    slides.push({
+      type: 'charts',
+      title: 'Estrutura Patrimonial',
+      content: [],
+      chartType: 'balanco',
+      highlight: 'neutral'
+    });
+
+    // Charts slides - Margens
+    slides.push({
+      type: 'charts',
+      title: 'Indicadores de Margem',
+      content: [],
+      chartType: 'margens',
+      highlight: dre.margemLiquida > 5 ? 'positive' : dre.margemLiquida < 0 ? 'negative' : 'neutral'
+    });
+
     // Try to parse structured JSON from AI response
     try {
-      // Look for JSON block in response
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const aiData = JSON.parse(jsonMatch[0]);
         
-        // Overview slide
         if (aiData.resumo) {
           slides.push({
             type: 'overview',
             title: 'Visão Geral',
             content: Array.isArray(aiData.resumo) ? aiData.resumo : [aiData.resumo],
-            icon: <PieChart className="w-8 h-8" />,
+            icon: <PieChartIcon className="w-8 h-8" />,
             highlight: 'neutral'
           });
         }
 
-        // Profitability slide
         if (aiData.rentabilidade) {
           slides.push({
             type: 'profitability',
@@ -236,7 +311,6 @@ export function AIPresentationDialog({
           });
         }
 
-        // Liquidity slide
         if (aiData.liquidez) {
           slides.push({
             type: 'liquidity',
@@ -249,7 +323,6 @@ export function AIPresentationDialog({
           });
         }
 
-        // Structure slide
         if (aiData.estrutura) {
           slides.push({
             type: 'structure',
@@ -260,7 +333,6 @@ export function AIPresentationDialog({
           });
         }
 
-        // Strengths slide
         if (aiData.pontosFortes && aiData.pontosFortes.length > 0) {
           slides.push({
             type: 'strengths',
@@ -271,7 +343,6 @@ export function AIPresentationDialog({
           });
         }
 
-        // Risks slide
         if (aiData.pontosAtencao && aiData.pontosAtencao.length > 0) {
           slides.push({
             type: 'risks',
@@ -282,7 +353,6 @@ export function AIPresentationDialog({
           });
         }
 
-        // Recommendations slide
         if (aiData.recomendacoes && aiData.recomendacoes.length > 0) {
           slides.push({
             type: 'recommendations',
@@ -293,7 +363,6 @@ export function AIPresentationDialog({
           });
         }
 
-        // Conclusion slide
         if (aiData.conclusao) {
           slides.push({
             type: 'conclusion',
@@ -308,8 +377,8 @@ export function AIPresentationDialog({
       console.error("Error parsing AI response:", e);
     }
 
-    // If no slides were parsed, create default ones with numbers
-    if (slides.length <= 1) {
+    // Default slides if no AI content
+    if (slides.length <= 4) {
       slides.push({
         type: 'overview',
         title: 'Resumo Financeiro',
@@ -342,6 +411,233 @@ export function AIPresentationDialog({
     }
 
     return slides;
+  };
+
+  const handleExportPDF = async () => {
+    if (!slideRef.current || slides.length === 0) return;
+    
+    setIsExporting(true);
+    try {
+      // Create a container for all slides
+      const container = document.createElement('div');
+      container.style.cssText = 'background: white; padding: 40px; width: 1000px;';
+      
+      // Add header
+      const header = document.createElement('div');
+      header.innerHTML = `
+        <div style="text-align: center; margin-bottom: 40px; border-bottom: 3px solid #8b5cf6; padding-bottom: 20px;">
+          <h1 style="color: #1a1a2e; font-size: 28px; margin: 0;">📊 Apresentação Executiva</h1>
+          <p style="color: #666; margin-top: 10px;">${empresaNome} - ${new Date().toLocaleDateString('pt-BR')}</p>
+        </div>
+      `;
+      container.appendChild(header);
+
+      // Add each slide as a section
+      slides.forEach((slide, index) => {
+        const slideDiv = document.createElement('div');
+        slideDiv.style.cssText = 'margin-bottom: 40px; page-break-inside: avoid;';
+        
+        const highlightColor = slide.highlight === 'positive' ? '#10b981' : 
+                               slide.highlight === 'negative' ? '#ef4444' : '#8b5cf6';
+        
+        slideDiv.innerHTML = `
+          <div style="border-left: 4px solid ${highlightColor}; padding-left: 20px; margin-bottom: 20px;">
+            <h2 style="color: #1a1a2e; font-size: 20px; margin: 0 0 15px 0;">${slide.title}</h2>
+            ${slide.type === 'charts' ? `
+              <p style="color: #666; font-style: italic;">📈 Gráfico disponível na versão PowerPoint</p>
+            ` : `
+              <ul style="margin: 0; padding-left: 20px; color: #333;">
+                ${slide.content.map(item => `<li style="margin-bottom: 8px; line-height: 1.6;">${item}</li>`).join('')}
+              </ul>
+            `}
+          </div>
+        `;
+        container.appendChild(slideDiv);
+      });
+
+      // Add footer
+      const footer = document.createElement('div');
+      footer.innerHTML = `
+        <div style="text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; color: #999; font-size: 12px;">
+          Gerado por ProCont com Inteligência Artificial
+        </div>
+      `;
+      container.appendChild(footer);
+
+      document.body.appendChild(container);
+
+      const opt = {
+        margin: 10,
+        filename: `apresentacao-${empresaNome.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
+      };
+
+      await html2pdf().set(opt).from(container).save();
+      document.body.removeChild(container);
+
+      toast({
+        title: "PDF exportado!",
+        description: "Apresentação salva com sucesso.",
+      });
+    } catch (error) {
+      console.error("PDF export error:", error);
+      toast({
+        title: "Erro ao exportar",
+        description: "Não foi possível gerar o PDF.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportPPTX = async () => {
+    if (slides.length === 0 || !dreData || !balancoData) return;
+    
+    setIsExporting(true);
+    try {
+      const pptx = new PptxGenJS();
+      pptx.author = 'ProCont';
+      pptx.title = `Análise Financeira - ${empresaNome}`;
+      pptx.subject = 'Apresentação Executiva';
+
+      // Define master slide
+      pptx.defineSlideMaster({
+        title: 'MASTER_SLIDE',
+        background: { color: 'FFFFFF' },
+        objects: [
+          { rect: { x: 0, y: '90%', w: '100%', h: '10%', fill: { color: '8b5cf6' } } },
+          { text: { text: 'ProCont - Análise Financeira com IA', options: { x: 0.5, y: '92%', w: '90%', h: 0.5, fontSize: 10, color: 'FFFFFF' } } }
+        ]
+      });
+
+      slides.forEach((slide, index) => {
+        const pptSlide = pptx.addSlide({ masterName: 'MASTER_SLIDE' });
+
+        // Slide title
+        pptSlide.addText(slide.title, {
+          x: 0.5,
+          y: 0.3,
+          w: 9,
+          h: 0.8,
+          fontSize: 28,
+          bold: true,
+          color: '1a1a2e'
+        });
+
+        if (slide.type === 'charts' && slide.chartType) {
+          // Add charts
+          if (slide.chartType === 'dre') {
+            const chartData = [
+              {
+                name: 'DRE',
+                labels: ['Receita Líq.', 'CMV', 'Lucro Bruto', 'Desp. Op.', 'Lucro Líq.'],
+                values: [
+                  Math.abs(dreData.receitaLiquida),
+                  Math.abs(dreData.cmv),
+                  Math.abs(dreData.lucroBruto),
+                  Math.abs(dreData.despesasOperacionais),
+                  Math.abs(dreData.lucroLiquido)
+                ]
+              }
+            ];
+            pptSlide.addChart(pptx.ChartType.bar, chartData, {
+              x: 0.5,
+              y: 1.5,
+              w: 9,
+              h: 4,
+              showValue: true,
+              valAxisTitle: 'Valores (R$)',
+              chartColors: ['8b5cf6', 'ef4444', '10b981', 'f59e0b', '06b6d4']
+            });
+          } else if (slide.chartType === 'balanco') {
+            const chartData = [
+              {
+                name: 'Estrutura',
+                labels: ['Ativo Circ.', 'Ativo Não Circ.', 'Passivo Circ.', 'Passivo Não Circ.', 'Patrimônio Líq.'],
+                values: [
+                  balancoData.ativoCirculante,
+                  balancoData.ativoNaoCirculante,
+                  balancoData.passivoCirculante,
+                  balancoData.passivoNaoCirculante,
+                  balancoData.patrimonioLiquido
+                ]
+              }
+            ];
+            pptSlide.addChart(pptx.ChartType.pie, chartData, {
+              x: 1.5,
+              y: 1.5,
+              w: 7,
+              h: 4,
+              showPercent: true,
+              showLegend: true,
+              legendPos: 'r',
+              chartColors: ['8b5cf6', '06b6d4', 'f59e0b', 'ef4444', '10b981']
+            });
+          } else if (slide.chartType === 'margens') {
+            const chartData = [
+              {
+                name: 'Margens',
+                labels: ['Margem Bruta', 'Margem Operacional', 'Margem Líquida'],
+                values: [dreData.margemBruta, dreData.margemOperacional, dreData.margemLiquida]
+              }
+            ];
+            pptSlide.addChart(pptx.ChartType.bar, chartData, {
+              x: 1,
+              y: 1.5,
+              w: 8,
+              h: 4,
+              showValue: true,
+              valAxisTitle: 'Percentual (%)',
+              chartColors: ['8b5cf6', '06b6d4', '10b981']
+            });
+          }
+        } else if (slide.type === 'cover') {
+          // Cover slide special treatment
+          pptSlide.addText(slide.content.join('\n'), {
+            x: 0.5,
+            y: 2.5,
+            w: 9,
+            h: 2,
+            fontSize: 18,
+            color: '666666',
+            align: 'center'
+          });
+        } else {
+          // Regular content slides with bullet points
+          const bulletPoints = slide.content.map(item => ({
+            text: item,
+            options: { bullet: true, color: '333333', fontSize: 16 }
+          }));
+
+          pptSlide.addText(bulletPoints, {
+            x: 0.5,
+            y: 1.5,
+            w: 9,
+            h: 4,
+            valign: 'top'
+          });
+        }
+      });
+
+      await pptx.writeFile({ fileName: `apresentacao-${empresaNome.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.pptx` });
+
+      toast({
+        title: "PowerPoint exportado!",
+        description: "Apresentação salva com sucesso.",
+      });
+    } catch (error) {
+      console.error("PPTX export error:", error);
+      toast({
+        title: "Erro ao exportar",
+        description: "Não foi possível gerar o PowerPoint.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const handleCopy = async () => {
@@ -400,6 +696,79 @@ export function AIPresentationDialog({
     }
   };
 
+  const renderChart = (chartType: string) => {
+    if (chartType === 'dre') {
+      const data = getDREChartData();
+      return (
+        <ResponsiveContainer width="100%" height={220}>
+          <BarChart data={data} layout="vertical" margin={{ left: 100, right: 30 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+            <XAxis type="number" tickFormatter={(v) => formatCompact(v)} stroke="hsl(var(--muted-foreground))" fontSize={11} />
+            <YAxis type="category" dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={11} width={95} />
+            <Tooltip 
+              formatter={(value: number) => formatCurrency(value)} 
+              contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}
+            />
+            <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+              {data.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.fill} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      );
+    } else if (chartType === 'balanco') {
+      const data = getBalancoChartData();
+      return (
+        <ResponsiveContainer width="100%" height={220}>
+          <PieChart>
+            <Pie
+              data={data}
+              cx="50%"
+              cy="50%"
+              outerRadius={80}
+              innerRadius={40}
+              dataKey="value"
+              label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+              labelLine={false}
+              fontSize={10}
+            >
+              {data.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.fill} />
+              ))}
+            </Pie>
+            <Tooltip 
+              formatter={(value: number) => formatCurrency(value)} 
+              contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}
+            />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
+          </PieChart>
+        </ResponsiveContainer>
+      );
+    } else if (chartType === 'margens') {
+      const data = getMargensChartData();
+      return (
+        <ResponsiveContainer width="100%" height={220}>
+          <BarChart data={data} margin={{ left: 20, right: 30 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+            <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={11} />
+            <YAxis tickFormatter={(v) => `${v}%`} stroke="hsl(var(--muted-foreground))" fontSize={11} />
+            <Tooltip 
+              formatter={(value: number) => `${value.toFixed(2)}%`} 
+              contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}
+            />
+            <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+              {data.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.fill} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      );
+    }
+    return null;
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl max-h-[90vh] flex flex-col">
@@ -418,8 +787,8 @@ export function AIPresentationDialog({
               </div>
               <h3 className="text-lg font-semibold mb-2">Gerar Apresentação Executiva</h3>
               <p className="text-muted-foreground mb-6 max-w-md">
-                Nossa IA irá criar uma apresentação profissional com slides sobre a situação 
-                financeira da empresa, incluindo análises, indicadores e recomendações estratégicas.
+                Nossa IA irá criar uma apresentação profissional com slides, gráficos visuais 
+                e análises sobre a situação financeira da empresa.
               </p>
               <Button onClick={generatePresentation} variant="hero" size="lg">
                 <Presentation className="w-5 h-5 mr-2" />
@@ -430,33 +799,32 @@ export function AIPresentationDialog({
             <div className="flex flex-col items-center justify-center py-12">
               <Loader2 className="w-12 h-12 animate-spin text-primary mb-4" />
               <span className="text-muted-foreground">Gerando apresentação executiva...</span>
-              {rawContent && (
-                <div className="mt-4 max-w-md text-xs text-muted-foreground/50 text-center">
-                  Processando dados...
-                </div>
-              )}
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-4" ref={slideRef}>
               {/* Slide Display */}
               <Card className={`bg-gradient-to-br ${getHighlightClass(slides[currentSlide]?.highlight)} border-2 min-h-[350px] flex flex-col`}>
-                <CardContent className="flex-1 p-8 flex flex-col">
+                <CardContent className="flex-1 p-6 flex flex-col">
                   {/* Slide Header */}
-                  <div className="flex items-center gap-4 mb-6">
-                    <div className={`p-3 rounded-full bg-background/50 ${getIconColor(slides[currentSlide]?.highlight)}`}>
-                      {slides[currentSlide]?.icon}
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className={`p-2 rounded-full bg-background/50 ${getIconColor(slides[currentSlide]?.highlight)}`}>
+                      {slides[currentSlide]?.type === 'charts' ? <PieChartIcon className="w-6 h-6" /> : slides[currentSlide]?.icon}
                     </div>
-                    <h2 className="text-2xl font-bold">{slides[currentSlide]?.title}</h2>
+                    <h2 className="text-xl font-bold">{slides[currentSlide]?.title}</h2>
                   </div>
                   
                   {/* Slide Content */}
                   <div className="flex-1">
                     {slides[currentSlide]?.type === 'cover' ? (
                       <div className="flex flex-col items-center justify-center h-full text-center">
-                        <div className="mb-6">{slides[currentSlide]?.icon}</div>
+                        <Building className="w-16 h-16 text-primary mb-4" />
                         {slides[currentSlide]?.content.map((item, idx) => (
                           <p key={idx} className="text-lg text-muted-foreground mb-2">{item}</p>
                         ))}
+                      </div>
+                    ) : slides[currentSlide]?.type === 'charts' && slides[currentSlide]?.chartType ? (
+                      <div className="h-full flex items-center justify-center">
+                        {renderChart(slides[currentSlide].chartType!)}
                       </div>
                     ) : (
                       <ScrollArea className="h-[200px] pr-4">
@@ -468,7 +836,7 @@ export function AIPresentationDialog({
                                 slides[currentSlide]?.highlight === 'negative' ? 'bg-red-500' :
                                 'bg-primary'
                               }`} />
-                              <span className="text-foreground/90 leading-relaxed">{item}</span>
+                              <span className="text-foreground/90 leading-relaxed text-sm">{item}</span>
                             </li>
                           ))}
                         </ul>
@@ -487,20 +855,21 @@ export function AIPresentationDialog({
               <div className="flex items-center justify-between">
                 <Button 
                   variant="outline" 
+                  size="sm"
                   onClick={prevSlide} 
                   disabled={currentSlide === 0}
                 >
-                  <ChevronLeft className="w-4 h-4 mr-2" />
+                  <ChevronLeft className="w-4 h-4 mr-1" />
                   Anterior
                 </Button>
                 
                 {/* Slide indicators */}
-                <div className="flex gap-2">
+                <div className="flex gap-1.5 flex-wrap justify-center max-w-[300px]">
                   {slides.map((_, idx) => (
                     <button
                       key={idx}
                       onClick={() => setCurrentSlide(idx)}
-                      className={`w-2.5 h-2.5 rounded-full transition-all ${
+                      className={`w-2 h-2 rounded-full transition-all ${
                         idx === currentSlide 
                           ? 'bg-primary scale-125' 
                           : 'bg-muted hover:bg-muted-foreground/50'
@@ -511,11 +880,12 @@ export function AIPresentationDialog({
 
                 <Button 
                   variant="outline" 
+                  size="sm"
                   onClick={nextSlide} 
                   disabled={currentSlide === slides.length - 1}
                 >
                   Próximo
-                  <ChevronRight className="w-4 h-4 ml-2" />
+                  <ChevronRight className="w-4 h-4 ml-1" />
                 </Button>
               </div>
             </div>
@@ -523,24 +893,37 @@ export function AIPresentationDialog({
         </div>
 
         {slides.length > 0 && !isLoading && (
-          <div className="flex justify-between items-center pt-4 border-t border-border">
-            <Button variant="outline" onClick={generatePresentation}>
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Nova Apresentação
-            </Button>
-            <Button onClick={handleCopy}>
-              {copied ? (
-                <>
-                  <Check className="w-4 h-4 mr-2" />
-                  Copiado!
-                </>
-              ) : (
-                <>
-                  <Copy className="w-4 h-4 mr-2" />
-                  Copiar Texto
-                </>
-              )}
-            </Button>
+          <div className="flex flex-wrap justify-between items-center gap-2 pt-4 border-t border-border">
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={generatePresentation}>
+                <RefreshCw className="w-4 h-4 mr-1" />
+                Nova
+              </Button>
+              <Button size="sm" onClick={handleCopy}>
+                {copied ? <Check className="w-4 h-4 mr-1" /> : <Copy className="w-4 h-4 mr-1" />}
+                {copied ? "Copiado!" : "Copiar"}
+              </Button>
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleExportPDF}
+                disabled={isExporting}
+              >
+                {isExporting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <FileText className="w-4 h-4 mr-1" />}
+                PDF
+              </Button>
+              <Button 
+                variant="neon" 
+                size="sm" 
+                onClick={handleExportPPTX}
+                disabled={isExporting}
+              >
+                {isExporting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <FileDown className="w-4 h-4 mr-1" />}
+                PowerPoint
+              </Button>
+            </div>
           </div>
         )}
       </DialogContent>
