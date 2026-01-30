@@ -281,6 +281,42 @@ export function generateInsights(dre: DREData, balanco: BalancoData): string[] {
   return insights;
 }
 
+/**
+ * Pré-processa workbook XLS legado criando um novo workbook virtual.
+ * Isso simula a conversão que o Google Drive faz, limpando metadados 
+ * corrompidos de sistemas legados como o Domínio.
+ */
+function sanitizeLegacyWorkbook(workbook: XLSX.WorkBook): XLSX.WorkBook {
+  console.log("[FILEPARSER] Iniciando sanitização de workbook XLS legado...");
+  
+  // Cria um novo workbook virtual limpo
+  const newWorkbook = XLSX.utils.book_new();
+  
+  // Copia cada planilha para o novo workbook
+  for (const sheetName of workbook.SheetNames) {
+    const originalSheet = workbook.Sheets[sheetName];
+    
+    // Extrai os dados como array de arrays (remove metadados corrompidos)
+    const rawData = XLSX.utils.sheet_to_json(originalSheet, { 
+      header: 1,
+      raw: true,        // Mantém valores originais
+      defval: "",       // Valor padrão para células vazias
+      blankrows: false  // Remove linhas totalmente vazias
+    }) as unknown[][];
+    
+    // Cria uma nova planilha a partir dos dados limpos
+    const newSheet = XLSX.utils.aoa_to_sheet(rawData);
+    
+    // Adiciona ao novo workbook
+    XLSX.utils.book_append_sheet(newWorkbook, newSheet, sheetName);
+    
+    console.log(`[FILEPARSER] Planilha "${sheetName}" sanitizada: ${rawData.length} linhas`);
+  }
+  
+  console.log("[FILEPARSER] Workbook sanitizado com sucesso");
+  return newWorkbook;
+}
+
 export async function parseFile(file: File): Promise<string[][]> {
   const extension = file.name.split(".").pop()?.toLowerCase();
 
@@ -297,7 +333,17 @@ export async function parseFile(file: File): Promise<string[][]> {
     });
   } else if (extension === "xls" || extension === "xlsx") {
     const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: "array" });
+    
+    // Lê o workbook original
+    let workbook = XLSX.read(buffer, { type: "array" });
+    
+    // Para arquivos .xls (formato legado BIFF8), aplica sanitização
+    // Isso simula a conversão que o Google Drive faz, limpando metadados corrompidos
+    if (extension === "xls") {
+      console.log("[FILEPARSER] Arquivo XLS detectado - aplicando pré-processamento de limpeza");
+      workbook = sanitizeLegacyWorkbook(workbook);
+    }
+    
     const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
     const data = XLSX.utils.sheet_to_json(firstSheet, { header: 1 }) as string[][];
     return data;
