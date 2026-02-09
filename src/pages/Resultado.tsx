@@ -38,6 +38,7 @@ interface DREEntry {
   descricao: string;
   valor: number;
   valor_anterior: number | null;
+  grupo?: string;
 }
 
 interface BalancoEntry {
@@ -371,12 +372,6 @@ const Resultado = () => {
 
     const classifiedEntries: DREClassifiedEntry[] = [];
 
-    // Acumuladores para soma (fallback)
-    let somaReceitaBruta = 0;
-    let somaCMV = 0;
-    let somaDespesasOperacionais = 0;
-    let somaResultadoFinanceiro = 0;
-
     // Flags para linhas explícitas
     let foundReceitaBruta = false;
     let foundReceitaLiquida = false;
@@ -387,168 +382,76 @@ const Resultado = () => {
     let foundResultadoFin = false;
     let foundLucroLiq = false;
 
-    // CMV Block detection (after Receita Líquida → before Lucro Bruto)
-    let isInsideCMVBlock = false;
-    let foundReceitaLiquidaForCMV = false;
-    
-    // RECEITA BRUTA Block detection (after Receita Operacional → next section)
-    let isInsideReceitaBrutaBlock = false;
-    
-    // NÃO OPERACIONAL Block detection (Despesas/Receitas não Operacionais)
-    let isInsideNaoOperacionalBlock = false;
-    
-    // RESULTADO FINANCEIRO Block detection (Despesas/Receitas Financeiras)
-    let isInsideResultadoFinanceiroBlock = false;
+    // Acumuladores para soma (fallback)
+    let somaReceitaBruta = 0;
+    let somaCMV = 0;
+    let somaDespesasOperacionais = 0;
+    let somaResultadoFinanceiro = 0;
+
+    // Map parser grupo to classification grupo
+    const mapGrupo = (parserGrupo: string): DREClassifiedEntry['grupo'] => {
+      const map: Record<string, DREClassifiedEntry['grupo']> = {
+        'RECEITA_BRUTA': 'receita_bruta',
+        'RECEITA_LIQUIDA': 'receita_liquida',
+        'CMV': 'cmv',
+        'LUCRO_BRUTO': 'lucro_bruto',
+        'DESPESAS_OPERACIONAIS': 'despesas_operacionais',
+        'DEDUCOES': 'receita_bruta',
+        'LUCRO_OPERACIONAL': 'lucro_operacional',
+        'RESULTADO_FINANCEIRO': 'resultado_financeiro',
+        'NAO_OPERACIONAL': 'nao_operacional',
+        'CONTRIBUICAO_SOCIAL': 'contribuicao_social',
+        'LUCRO_LIQUIDO': 'lucro_liquido',
+      };
+      return map[parserGrupo] || 'despesas_operacionais';
+    };
 
     for (const entry of entries) {
       const desc = normalizeText(entry.descricao);
       const valor = entry.valor;
       const valorAbs = Math.abs(valor);
 
-      // === BLOCO RECEITA BRUTA ===
-      const isReceitaOperacional = desc.includes('RECEITA OPERACIONAL') && !desc.includes('LIQUIDA');
-      if (isReceitaOperacional) {
-        isInsideReceitaBrutaBlock = true;
-      }
+      // Use stored grupo from parser (falls back to classifyDREEntry if no grupo stored)
+      let grupo: DREClassifiedEntry['grupo'];
+      let motivo: string;
+      let isExplicit: boolean;
 
-      // Detectar Receita Líquida → fecha Receita Bruta, habilita CMV
-      const isReceitaLiquida = desc.includes('RECEITA LIQUIDA');
-      if (isReceitaLiquida) {
-        foundReceitaLiquidaForCMV = true;
-        isInsideReceitaBrutaBlock = false;
-      }
-      
-      // Fechar bloco CMV ANTES de processar Lucro Bruto
-      const isLucroBrutoLine = desc.includes('LUCRO BRUTO') || desc.includes('RESULTADO BRUTO');
-      if (isLucroBrutoLine && isInsideCMVBlock) {
-        isInsideCMVBlock = false;
-      }
-
-      // Ativar bloco CMV: primeira conta após Receita Líquida
-      if (foundReceitaLiquidaForCMV && !isInsideCMVBlock && !isReceitaLiquida && !isLucroBrutoLine) {
-        isInsideCMVBlock = true;
-        foundReceitaLiquidaForCMV = false;
-      }
-
-      // Detect RESULTADO FINANCEIRO block start/end
-      const isResultadoFinanceiroHeader = desc.includes('DESPESAS FINANCEIRAS') || 
-                                            desc.includes('RECEITAS FINANCEIRAS') ||
-                                            desc.includes('RESULTADO FINANCEIRO') ||
-                                            desc.includes('DESPESA FINANCEIRA') ||
-                                            desc.includes('RECEITA FINANCEIRA');
-      
-      // Fechar bloco financeiro se encontrar outro grupo/seção que não é financeiro
-      const isOtherSectionHeader = !isResultadoFinanceiroHeader && (
-        desc.includes('DESPESAS') || desc.includes('RECEITA') || 
-        desc.includes('RESULTADO') || desc.includes('LUCRO') ||
-        desc.includes('CUSTOS') || desc.includes('OUTRAS')
-      );
-      
-      if (isInsideResultadoFinanceiroBlock && isOtherSectionHeader) {
-        isInsideResultadoFinanceiroBlock = false;
-      }
-      
-      if (isResultadoFinanceiroHeader) {
-        isInsideResultadoFinanceiroBlock = true;
-      }
-
-      // Detect NÃO OPERACIONAL block start
-      const isNaoOperacionalHeader = desc.includes('NAO OPERACIONAIS') || 
-                                      desc.includes('NÃO OPERACIONAIS') ||
-                                      desc.includes('NAO OPERACIONAL') || 
-                                      desc.includes('NÃO OPERACIONAL') ||
-                                      desc.includes('DESPESAS NAO OPERACIONAIS') ||
-                                      desc.includes('RECEITAS NAO OPERACIONAIS');
-      
-      if (isNaoOperacionalHeader) {
-        isInsideNaoOperacionalBlock = true;
-        isInsideResultadoFinanceiroBlock = false;
-      }
-      
-      // Detect exit from blocks (when hitting main sections)
-      const isMainSection = desc.includes('RESULTADO ANTES') || 
-                            desc.includes('LUCRO LIQUIDO') ||
-                            desc.includes('RESULTADO LIQUIDO') ||
-                            desc.includes('LUCRO DO EXERCICIO') ||
-                            desc.includes('RESULTADO DO EXERCICIO');
-      
-      if (isMainSection) {
-        isInsideNaoOperacionalBlock = false;
-        isInsideResultadoFinanceiroBlock = false;
-      }
-
-      // Classify entry - if inside CMV block, force CMV classification
-      let classification = classifyDREEntry(desc, entry.descricao, valor);
-      const wasInsideCMVBlock = isInsideCMVBlock;
-      const wasInsideNaoOperacionalBlock = isInsideNaoOperacionalBlock;
-      const wasInsideResultadoFinanceiroBlock = isInsideResultadoFinanceiroBlock;
-      
-      // Dentro do bloco CMV, forçar classificação CMV para TODAS as contas
-      // EXCETO subtotais explícitos (Lucro Bruto, Lucro Líquido, etc.)
-      const isSubtotalExplicito = classification.grupo === 'lucro_bruto' || 
-                                   classification.grupo === 'lucro_operacional' || 
-                                   classification.grupo === 'lucro_liquido' ||
-                                   classification.grupo === 'receita_liquida';
-      
-      // Dentro do bloco Receita Bruta, forçar classificação
-      if (isInsideReceitaBrutaBlock && !isSubtotalExplicito && !isReceitaOperacional) {
-        classification = { 
-          grupo: 'receita_bruta', 
-          isExplicit: false, 
-          motivo: 'Capturado pelo Bloco Receita Bruta (após Receita Operacional)' 
-        };
-      }
-      
-      if (isInsideCMVBlock && !isSubtotalExplicito) {
-        classification = { 
-          grupo: 'cmv', 
-          isExplicit: false, 
-          motivo: 'Capturado pelo Bloco CMV (após Receita Líquida, antes do Lucro Bruto)' 
-        };
-      }
-      
-      // Dentro do bloco RESULTADO FINANCEIRO, forçar classificação resultado_financeiro
-      // EXCETO se já é um subtotal explícito ou header de outro grupo
-      if (wasInsideResultadoFinanceiroBlock && !isSubtotalExplicito && !isResultadoFinanceiroHeader && !isOtherSectionHeader && !isMainSection) {
-        classification = { 
-          grupo: 'resultado_financeiro', 
-          isExplicit: false, 
-          motivo: 'Capturado pelo Bloco Resultado Financeiro (após DESPESAS/RECEITAS FINANCEIRAS)' 
-        };
-      }
-      
-      // Dentro do bloco NÃO OPERACIONAL, forçar classificação nao_operacional
-      // EXCETO se já é um subtotal explícito ou header
-      if (wasInsideNaoOperacionalBlock && !isSubtotalExplicito && !isNaoOperacionalHeader && !isMainSection) {
-        classification = { 
-          grupo: 'nao_operacional', 
-          isExplicit: false, 
-          motivo: 'Capturado pelo Bloco Não Operacional' 
-        };
+      if (entry.grupo && entry.grupo !== 'OUTROS') {
+        grupo = mapGrupo(entry.grupo);
+        isExplicit = false;
+        motivo = `Classificado pelo parser: ${entry.grupo}`;
+      } else {
+        const classification = classifyDREEntry(desc, entry.descricao, valor);
+        grupo = classification.grupo;
+        isExplicit = classification.isExplicit;
+        motivo = classification.motivo;
       }
 
       classifiedEntries.push({
         descricao: entry.descricao,
         valor: entry.valor,
         valorAnterior: entry.valor_anterior,
-        grupo: classification.grupo,
-        isExplicit: classification.isExplicit,
-        motivo: classification.motivo,
-        insideCMVBlock: wasInsideCMVBlock
+        grupo,
+        isExplicit,
+        motivo,
+        insideCMVBlock: grupo === 'cmv'
       });
 
       // Acumular baseado no grupo classificado (para fallback)
-      if (classification.grupo === 'despesas_operacionais' && !classification.isExplicit) {
+      if (grupo === 'despesas_operacionais') {
         somaDespesasOperacionais += valorAbs;
       }
-      // Somar TODAS as contas classificadas como resultado_financeiro (incluindo capturadas pelo bloco)
-      if (classification.grupo === 'resultado_financeiro' && !classification.isExplicit) {
+      if (grupo === 'resultado_financeiro') {
         somaResultadoFinanceiro += valor;
       }
+      if (grupo === 'cmv') {
+        somaCMV += valor;
+      }
+      if (grupo === 'receita_bruta') {
+        somaReceitaBruta += valorAbs;
+      }
 
-      // Bloco CMV é fechado ANTES do Lucro Bruto (já tratado acima)
-
-      // ===== RECEITA BRUTA =====
+      // ===== RECEITA BRUTA (linha explícita) =====
       if (desc.includes('RECEITA BRUTA') || desc.includes('RECEITA OPERACIONAL BRUTA')) {
         if (desc === 'RECEITA BRUTA' || desc === 'RECEITA OPERACIONAL BRUTA' || desc.includes('TOTAL')) {
           if (!foundReceitaBruta) {
@@ -556,13 +459,7 @@ const Resultado = () => {
             metrics.receitaBrutaOrigem = 'linha_explicita';
             foundReceitaBruta = true;
           }
-        } else {
-          somaReceitaBruta += valorAbs;
         }
-      }
-      // Vendas de mercadorias, prestação de serviços (componentes da receita bruta)
-      else if (desc.includes('VENDAS DE MERCADORIAS') || desc.includes('PRESTACAO DE SERVICOS') || desc.includes('FATURAMENTO')) {
-        somaReceitaBruta += valorAbs;
       }
 
       // ===== RECEITA LÍQUIDA =====
@@ -574,8 +471,7 @@ const Resultado = () => {
         }
       }
 
-      // ===== CMV =====
-      // Check for explicit CMV total line first
+      // ===== CMV (linha explícita) =====
       if (desc.includes('CMV') || desc.includes('CPV') || 
           desc.includes('CUSTO DA MERCADORIA') || desc.includes('CUSTO DAS MERCADORIAS') ||
           desc.includes('CUSTO DOS PRODUTOS') || desc.includes('CUSTO DOS SERVICOS')) {
@@ -586,16 +482,10 @@ const Resultado = () => {
                        desc === 'CUSTO DOS SERVICOS PRESTADOS' ||
                        desc.includes('TOTAL');
         if (isTotal && !foundCMV) {
-          metrics.cmv = valor; // Manter sinal
+          metrics.cmv = valor;
           metrics.cmvOrigem = 'linha_explicita';
           foundCMV = true;
-        } else if (!isTotal) {
-          somaCMV += valor;
         }
-      }
-      // Also sum accounts captured by CMV block (ESTOQUE INICIAL → ESTOQUE FINAL)
-      else if (wasInsideCMVBlock) {
-        somaCMV += valor;
       }
 
       // ===== LUCRO BRUTO =====
@@ -607,7 +497,7 @@ const Resultado = () => {
         }
       }
 
-      // ===== DESPESAS OPERACIONAIS =====
+      // ===== DESPESAS OPERACIONAIS (linha explícita) =====
       if (desc.includes('DESPESAS OPERACIONAIS') || desc.includes('DESPESAS ADMINISTRATIVAS') ||
           desc.includes('DESPESAS COM VENDAS') || desc.includes('DESPESAS GERAIS') ||
           desc.includes('DESPESAS TRABALHISTAS')) {
@@ -619,13 +509,10 @@ const Resultado = () => {
           metrics.despesasOperacionais = valorAbs;
           metrics.despesasOperacionaisOrigem = 'linha_explicita';
           foundDespesasOp = true;
-        } else if (!isTotal) {
-          somaDespesasOperacionais += valorAbs;
         }
       }
 
       // ===== LUCRO OPERACIONAL =====
-      // Inclui: LUCRO OPERACIONAL, RESULTADO OPERACIONAL, e qualquer conta com "OPERACIONAL LIQUIDO"
       if (desc === 'LUCRO OPERACIONAL' || desc === 'RESULTADO OPERACIONAL' || desc.includes('OPERACIONAL LIQUIDO')) {
         if (!foundLucroOp) {
           metrics.lucroOperacional = valorAbs;
@@ -634,18 +521,14 @@ const Resultado = () => {
         }
       }
 
-      // ===== RESULTADO FINANCEIRO (apenas captura de linha explícita total) =====
-      if (desc.includes('RESULTADO FINANCEIRO') || desc.includes('RECEITAS FINANCEIRAS') ||
-          desc.includes('DESPESAS FINANCEIRAS')) {
-        const isTotal = desc === 'RESULTADO FINANCEIRO' || 
-                       desc === 'RESULTADO FINANCEIRO LIQUIDO' ||
-                       (desc.includes('TOTAL') && desc.includes('FINANCEIRO'));
-        if (isTotal && !foundResultadoFin) {
+      // ===== RESULTADO FINANCEIRO (linha explícita total) =====
+      if (desc === 'RESULTADO FINANCEIRO' || desc === 'RESULTADO FINANCEIRO LIQUIDO' ||
+          (desc.includes('TOTAL') && desc.includes('FINANCEIRO'))) {
+        if (!foundResultadoFin) {
           metrics.resultadoFinanceiro = valor;
           metrics.resultadoFinanceiroOrigem = 'linha_explicita';
           foundResultadoFin = true;
         }
-        // Não soma aqui - a soma é feita acima para TODAS as contas com grupo resultado_financeiro
       }
 
       // ===== LUCRO LÍQUIDO =====
