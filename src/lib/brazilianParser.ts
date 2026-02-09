@@ -510,9 +510,9 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
           grupo = "CMV";
         }
         // 2. Se estamos dentro do bloco Receita Bruta, forçar classificação
-        // Apenas valores positivos são Receita Bruta; negativos são Deduções
+        // Apenas valores positivos são Receita Bruta; negativos são Despesas Operacionais
         else if (isInsideReceitaBrutaBlock) {
-          grupo = valorAtual >= 0 ? "RECEITA_BRUTA" : "DEDUCOES";
+          grupo = valorAtual >= 0 ? "RECEITA_BRUTA" : "DESPESAS_OPERACIONAIS";
         }
         // 3. Se estamos dentro do bloco Resultado Financeiro
         else if (isInsideResultadoFinanceiroBlock) {
@@ -1647,7 +1647,7 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
       classification = { grupo: "CMV", tipo: "normal", isGroupChange: false };
     } else if (isInsideReceitaBrutaBlock) {
       const valorPeriodo = numericValues[0]?.value;
-      classification = { grupo: valorPeriodo >= 0 ? "RECEITA_BRUTA" : "DEDUCOES", tipo: "normal", isGroupChange: false };
+      classification = { grupo: valorPeriodo >= 0 ? "RECEITA_BRUTA" : "DESPESAS_OPERACIONAIS", tipo: "normal", isGroupChange: false };
     } else {
       classification = classificarLinhaDRE(descricao, currentGrupo);
     }
@@ -1775,7 +1775,7 @@ function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
       debugLog(`CMV BLOCK CSV: Linha ${i} forçada como CMV: ${descricao}`);
     } else if (isInsideReceitaBrutaBlock) {
       const valorPeriodo = numericValues.length > 0 ? parseBrazilianNumber(numericValues[0]) : 0;
-      classification = { grupo: valorPeriodo >= 0 ? "RECEITA_BRUTA" : "DEDUCOES", tipo: "normal", isGroupChange: false };
+      classification = { grupo: valorPeriodo >= 0 ? "RECEITA_BRUTA" : "DESPESAS_OPERACIONAIS", tipo: "normal", isGroupChange: false };
     } else {
       classification = classificarLinhaDRE(descricao, currentGrupo);
     }
