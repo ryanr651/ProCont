@@ -552,6 +552,12 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
             normalConta.includes("DESCONTOS CONCEDIDOS")
           ) {
             grupo = "RESULTADO_FINANCEIRO";
+          } else if (
+            normalConta.includes("CONTRIBUICAO SOCIAL") ||
+            normalConta.includes("CSLL") ||
+            normalConta.includes("RESULTADO ANTES DA CONTRIBUICAO")
+          ) {
+            grupo = "CONTRIBUICAO_SOCIAL";
           } else if (normalConta.includes("LUCRO LIQUIDO") || normalConta.includes("RESULTADO DO EXERCICIO")) {
             grupo = "LUCRO_LIQUIDO";
           }
