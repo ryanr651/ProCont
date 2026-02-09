@@ -321,11 +321,10 @@ const Resultado = () => {
       return { grupo: 'despesas_operacionais', isExplicit: false, motivo: 'Conta de Impostos (Despesa Operacional)' };
     }
 
-    // ===== IMPOSTOS SOBRE LUCRO (IRPJ, CSLL, etc.) =====
-    if (desc.includes('IMPOSTO') || desc.includes('IR ') || 
-        desc.includes('IRPJ') || 
+    // ===== IMPOSTOS SOBRE LUCRO (IRPJ, etc.) =====
+    if (desc.includes('IMPOSTO DE RENDA') || desc.includes('IRPJ') || 
         desc.includes('PROVISAO PARA IMPOSTO')) {
-      return { grupo: 'resultado_financeiro', isExplicit: false, motivo: 'Imposto sobre lucro (não operacional)' };
+      return { grupo: 'despesas_operacionais', isExplicit: false, motivo: 'Imposto sobre lucro (Despesa Operacional)' };
     }
 
     // ===== DEDUÇÕES DA RECEITA (não vai para despesas operacionais) =====
