@@ -388,7 +388,7 @@ const Resultado = () => {
         'CMV': 'cmv',
         'LUCRO_BRUTO': 'lucro_bruto',
         'DESPESAS_OPERACIONAIS': 'despesas_operacionais',
-        'DEDUCOES': 'receita_bruta',
+        'DEDUCOES': 'despesas_operacionais',
         'LUCRO_OPERACIONAL': 'lucro_operacional',
         'RESULTADO_FINANCEIRO': 'resultado_financeiro',
         'NAO_OPERACIONAL': 'nao_operacional',
