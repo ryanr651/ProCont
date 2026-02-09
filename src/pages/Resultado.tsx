@@ -297,22 +297,10 @@ const Resultado = () => {
       return { grupo: 'nao_operacional', isExplicit: false, motivo: 'Conta de Alienação (Não Operacional)' };
     }
 
-    // ===== RESULTADO FINANCEIRO =====
-    if (desc.includes('RESULTADO FINANCEIRO') || desc.includes('RECEITAS FINANCEIRAS') ||
-        desc.includes('DESPESAS FINANCEIRAS') || desc.includes('JUROS') || 
-        desc.includes('VARIACAO MONETARIA') ||
-        desc.includes('BANCARIO') || desc.includes('BANCARIA') ||
-        desc.includes('BANCARIAS') ||
-        desc.includes('DIVIDENDOS') || desc.includes('ACOES') ||
-        desc.includes('FINANCEIRAS') || desc.startsWith('TAXA') ||
-        desc.includes('MULTAS') || desc.includes('IOC') || desc.includes('IOF') ||
-        desc.includes('DESCONTOS CONCEDIDOS') ||
-        descOriginal.toUpperCase().includes('BANCÁRIO') || descOriginal.toUpperCase().includes('BANCÁRIA') ||
-        descOriginal.toUpperCase().includes('AÇÕES')) {
-      const isExplicit = desc === 'RESULTADO FINANCEIRO' || 
-                         desc === 'RESULTADO FINANCEIRO LIQUIDO' ||
-                         (desc.includes('TOTAL') && desc.includes('FINANCEIRO'));
-      return { grupo: 'resultado_financeiro', isExplicit, motivo: isExplicit ? 'Linha explícita de Resultado Financeiro' : 'Componente do Resultado Financeiro' };
+    // ===== RESULTADO FINANCEIRO (apenas headers de bloco — classificação real é feita pelo bloco) =====
+    if (desc === 'RESULTADO FINANCEIRO' || desc === 'RESULTADO FINANCEIRO LIQUIDO' ||
+        (desc.includes('TOTAL') && desc.includes('FINANCEIRO'))) {
+      return { grupo: 'resultado_financeiro', isExplicit: true, motivo: 'Linha explícita de Resultado Financeiro' };
     }
 
     // ===== CONTRIBUIÇÃO SOCIAL =====
