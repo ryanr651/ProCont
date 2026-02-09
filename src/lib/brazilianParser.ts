@@ -541,7 +541,15 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
           } else if (
             normalConta.includes("FINANCEIR") ||
             normalConta.includes("JUROS") ||
-            normalConta.includes("NAO OPERACIONAL")
+            normalConta.includes("NAO OPERACIONAL") ||
+            normalConta.includes("DIVIDENDOS") ||
+            normalConta.includes("ACOES") ||
+            normalConta.includes("TAXA") ||
+            normalConta.includes("MULTAS") ||
+            normalConta.includes("IOC") ||
+            normalConta.includes("IOF") ||
+            normalConta.includes("BANCARIAS") ||
+            normalConta.includes("DESCONTOS CONCEDIDOS")
           ) {
             grupo = "RESULTADO_FINANCEIRO";
           } else if (normalConta.includes("LUCRO LIQUIDO") || normalConta.includes("RESULTADO DO EXERCICIO")) {
