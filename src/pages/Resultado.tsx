@@ -111,7 +111,7 @@ interface DREClassifiedEntry {
   descricao: string;
   valor: number;
   valorAnterior: number | null;
-  grupo: 'receita_bruta' | 'receita_liquida' | 'cmv' | 'lucro_bruto' | 'despesas_operacionais' | 'lucro_operacional' | 'resultado_financeiro' | 'nao_operacional' | 'contribuicao_social' | 'lucro_liquido';
+  grupo: 'receita_bruta' | 'receita_liquida' | 'cmv' | 'lucro_bruto' | 'despesas_operacionais' | 'lucro_operacional' | 'resultado_financeiro' | 'nao_operacional' | 'contribuicao_social' | 'lucro_liquido' | 'contas_resultado';
   isExplicit: boolean;
   motivo: string;
   insideCMVBlock?: boolean;
@@ -261,6 +261,7 @@ const Resultado = () => {
       return { grupo: 'lucro_bruto', isExplicit: true, motivo: 'Linha explícita de Lucro Bruto' };
     }
 
+
     // ===== DESPESAS OPERACIONAIS =====
     if (desc.includes('DESPESAS OPERACIONAIS') || desc.includes('DESPESAS ADMINISTRATIVAS') ||
         desc.includes('DESPESAS COM VENDAS') || desc.includes('DESPESAS GERAIS') ||
@@ -328,8 +329,12 @@ const Resultado = () => {
 
     // Deduções são classificadas pelo bloco do parser (entre Receita Operacional e Receita Líquida = DEDUCOES)
 
+    // ===== CONTAS RESULTADO (contas que começam com "RESULTADO" e não foram capturadas acima) =====
+    if (desc.startsWith('RESULTADO')) {
+      return { grupo: 'contas_resultado', isExplicit: false, motivo: 'Conta de Resultado (começa com RESULTADO)' };
+    }
+
     // ===== FALLBACK: Contas não classificadas vão para DESPESAS OPERACIONAIS =====
-    // Qualquer conta de despesa/receita que não seja NÃO OPERACIONAL vai para despesas operacionais
     return { grupo: 'despesas_operacionais', isExplicit: false, motivo: 'Classificado como Despesa Operacional (fallback)' };
   };
 
@@ -394,6 +399,7 @@ const Resultado = () => {
         'NAO_OPERACIONAL': 'nao_operacional',
         'CONTRIBUICAO_SOCIAL': 'contribuicao_social',
         'LUCRO_LIQUIDO': 'lucro_liquido',
+        'CONTAS_RESULTADO': 'contas_resultado',
       };
       return map[parserGrupo] || 'despesas_operacionais';
     };
@@ -585,6 +591,7 @@ const Resultado = () => {
       contribuicao_social: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30',
       nao_operacional: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
       lucro_liquido: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+      contas_resultado: 'bg-teal-500/20 text-teal-400 border-teal-500/30',
     };
     return colors[grupo];
   };
@@ -604,6 +611,7 @@ const Resultado = () => {
       contribuicao_social: 'Contribuição Social',
       nao_operacional: 'Não Operacional',
       lucro_liquido: 'Lucro Líquido',
+      contas_resultado: 'Contas Resultado',
     };
     return labels[grupo];
   };
