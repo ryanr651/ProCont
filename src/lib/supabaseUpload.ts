@@ -93,6 +93,7 @@ export async function uploadAndProcessFiles(dreFile: File, balancoFile: File, us
           valor: entry.valor,
           valor_anterior: entry.valor_anterior,
           raw_row: entry.raw_row,
+          grupo: entry.grupo,
         })),
       );
       if (error) {
