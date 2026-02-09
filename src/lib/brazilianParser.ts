@@ -413,6 +413,7 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
     let isInsideCMVBlock = false;
     let foundReceitaLiquida = false;
     let isInsideReceitaBrutaBlock = false;
+    let isInsideResultadoFinanceiroBlock = false;
     let startRowIndex = 0;
 
     // 1. ENCONTRAR ÂNCORA DE INÍCIO (Ignora cabeçalho até encontrar DEMONSTRACAO ou RECEITA)
@@ -479,6 +480,20 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
         debugLog("🟢 Bloco CMV Ativado (após Receita Líquida): " + conta);
       }
 
+      // === BLOCO RESULTADO FINANCEIRO ===
+      const isFinanceiroHeader = /DESPESAS?\s*FINANCEIRA|RECEITAS?\s*FINANCEIRA|RESULTADO\s*FINANCEIRO/i.test(normalConta);
+      const isTributarias = /DESPESAS?\s*TRIBUTARIA/i.test(normalConta);
+      
+      if (isTributarias && isInsideResultadoFinanceiroBlock) {
+        isInsideResultadoFinanceiroBlock = false;
+        debugLog("🔴 Bloco Resultado Financeiro Fechado (Despesas Tributárias): " + conta);
+      }
+      
+      if (isFinanceiroHeader && !isTributarias) {
+        isInsideResultadoFinanceiroBlock = true;
+        debugLog("🟢 Bloco Resultado Financeiro Ativado: " + conta);
+      }
+
       if (temValor) {
         // REGRA: Pegar o PRIMEIRO valor numérico (valor do período atual)
         // O segundo valor (se existir) é o valor anterior
@@ -495,7 +510,11 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
         else if (isInsideReceitaBrutaBlock) {
           grupo = "RECEITA_BRUTA";
         }
-        // 3. Se não, aplica as regras normais
+        // 3. Se estamos dentro do bloco Resultado Financeiro
+        else if (isInsideResultadoFinanceiroBlock) {
+          grupo = "RESULTADO_FINANCEIRO";
+        }
+        // 4. Se não, aplica as regras normais
         else {
           if (normalConta.includes("RECEITA LIQUIDA")) {
             grupo = "RECEITA_LIQUIDA";

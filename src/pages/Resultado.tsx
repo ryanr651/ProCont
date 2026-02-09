@@ -428,13 +428,22 @@ const Resultado = () => {
       }
 
       // Detect RESULTADO FINANCEIRO block start
-      const isResultadoFinanceiroHeader = desc === 'DESPESAS FINANCEIRAS' || 
-                                           desc === 'RECEITAS FINANCEIRAS' ||
-                                           desc === 'RESULTADO FINANCEIRO' ||
-                                           desc.includes('DESPESAS FINANCEIRAS') && !desc.includes('TOTAL') ||
-                                           desc.includes('RECEITAS FINANCEIRAS') && !desc.includes('TOTAL');
+      const isResultadoFinanceiroHeader = desc.includes('DESPESAS FINANCEIRAS') || 
+                                            desc.includes('RECEITAS FINANCEIRAS') ||
+                                            desc.includes('RESULTADO FINANCEIRO') ||
+                                            desc.includes('DESPESA FINANCEIRA') ||
+                                            desc.includes('RECEITA FINANCEIRA');
       
-      if (isResultadoFinanceiroHeader) {
+      // Detect DESPESAS TRIBUTÁRIAS → fecha bloco financeiro
+      const isDespesasTributarias = desc.includes('DESPESAS TRIBUTARIAS') || 
+                                     desc.includes('DESPESA TRIBUTARIA') ||
+                                     desc.includes('TRIBUTARIAS') && desc.includes('DESPESAS');
+      
+      if (isDespesasTributarias && isInsideResultadoFinanceiroBlock) {
+        isInsideResultadoFinanceiroBlock = false;
+      }
+      
+      if (isResultadoFinanceiroHeader && !isDespesasTributarias) {
         isInsideResultadoFinanceiroBlock = true;
       }
 
@@ -448,30 +457,18 @@ const Resultado = () => {
       
       if (isNaoOperacionalHeader) {
         isInsideNaoOperacionalBlock = true;
-        isInsideResultadoFinanceiroBlock = false; // Exit financial block when entering non-operating
+        isInsideResultadoFinanceiroBlock = false;
       }
       
-      // Detect exit from blocks (when hitting main sections or new subgroups)
+      // Detect exit from blocks (when hitting main sections)
       const isMainSection = desc.includes('RESULTADO ANTES') || 
                             desc.includes('LUCRO LIQUIDO') ||
                             desc.includes('RESULTADO LIQUIDO') ||
                             desc.includes('LUCRO DO EXERCICIO') ||
                             desc.includes('RESULTADO DO EXERCICIO');
       
-      // Detect new subgroups that exit the financial block
-      const isNewSubgroup = desc.includes('OUTRAS RECEITAS') ||
-                            desc.includes('OUTRAS DESPESAS') ||
-                            desc.includes('DESPESAS OPERACIONAIS') ||
-                            desc.includes('LUCRO OPERACIONAL') ||
-                            desc.includes('RESULTADO OPERACIONAL') ||
-                            isNaoOperacionalHeader;
-      
       if (isMainSection) {
         isInsideNaoOperacionalBlock = false;
-        isInsideResultadoFinanceiroBlock = false;
-      }
-      
-      if (isNewSubgroup && !isResultadoFinanceiroHeader) {
         isInsideResultadoFinanceiroBlock = false;
       }
 
@@ -507,7 +504,7 @@ const Resultado = () => {
       
       // Dentro do bloco RESULTADO FINANCEIRO, forçar classificação resultado_financeiro
       // EXCETO se já é um subtotal explícito ou header de outro grupo
-      if (wasInsideResultadoFinanceiroBlock && !isSubtotalExplicito && !isResultadoFinanceiroHeader && !isNewSubgroup && !isMainSection) {
+      if (wasInsideResultadoFinanceiroBlock && !isSubtotalExplicito && !isResultadoFinanceiroHeader && !isDespesasTributarias && !isMainSection) {
         classification = { 
           grupo: 'resultado_financeiro', 
           isExplicit: false, 
