@@ -388,6 +388,9 @@ const Resultado = () => {
     let isInsideCMVBlock = false;
     let foundReceitaLiquidaForCMV = false;
     
+    // RECEITA BRUTA Block detection (after Receita Operacional → next section)
+    let isInsideReceitaBrutaBlock = false;
+    
     // NÃO OPERACIONAL Block detection (Despesas/Receitas não Operacionais)
     let isInsideNaoOperacionalBlock = false;
     
@@ -399,10 +402,17 @@ const Resultado = () => {
       const valor = entry.valor;
       const valorAbs = Math.abs(valor);
 
-      // Detectar Receita Líquida
+      // === BLOCO RECEITA BRUTA ===
+      const isReceitaOperacional = desc.includes('RECEITA OPERACIONAL') && !desc.includes('LIQUIDA');
+      if (isReceitaOperacional) {
+        isInsideReceitaBrutaBlock = true;
+      }
+
+      // Detectar Receita Líquida → fecha Receita Bruta, habilita CMV
       const isReceitaLiquida = desc.includes('RECEITA LIQUIDA');
       if (isReceitaLiquida) {
         foundReceitaLiquidaForCMV = true;
+        isInsideReceitaBrutaBlock = false;
       }
       
       // Fechar bloco CMV ANTES de processar Lucro Bruto
@@ -477,6 +487,15 @@ const Resultado = () => {
                                    classification.grupo === 'lucro_operacional' || 
                                    classification.grupo === 'lucro_liquido' ||
                                    classification.grupo === 'receita_liquida';
+      
+      // Dentro do bloco Receita Bruta, forçar classificação
+      if (isInsideReceitaBrutaBlock && !isSubtotalExplicito && !isReceitaOperacional) {
+        classification = { 
+          grupo: 'receita_bruta', 
+          isExplicit: false, 
+          motivo: 'Capturado pelo Bloco Receita Bruta (após Receita Operacional)' 
+        };
+      }
       
       if (isInsideCMVBlock && !isSubtotalExplicito) {
         classification = { 

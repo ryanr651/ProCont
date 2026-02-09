@@ -412,6 +412,7 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
     // VARIÁVEIS DE ESTADO
     let isInsideCMVBlock = false;
     let foundReceitaLiquida = false;
+    let isInsideReceitaBrutaBlock = false;
     let startRowIndex = 0;
 
     // 1. ENCONTRAR ÂNCORA DE INÍCIO (Ignora cabeçalho até encontrar DEMONSTRACAO ou RECEITA)
@@ -438,7 +439,24 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
 
       const normalConta = normalizeText(conta);
 
-      // Detectar Receita Líquida para habilitar CMV na próxima linha com valor
+      // === BLOCO RECEITA BRUTA ===
+      // Ativar quando encontrar "Receita Operacional" como título
+      const isReceitaOperacional = /RECEITA\s*OPERACIONAL/i.test(normalConta);
+      
+      // Tenta extrair valores da linha (precisa antes para checar título sem valor)
+      const valores = getNumericValuesRightOfText(row);
+      const temValor = valores.length > 0;
+
+      if (isReceitaOperacional && !temValor) {
+        isInsideReceitaBrutaBlock = true;
+        debugLog("🟢 Bloco Receita Bruta Ativado (título Receita Operacional): " + conta);
+      } else if (isInsideReceitaBrutaBlock && !temValor && conta.length >= 2) {
+        // Próximo título sem valor → fecha o bloco
+        isInsideReceitaBrutaBlock = false;
+        debugLog("🔴 Bloco Receita Bruta Fechado (título sem valor): " + conta);
+      }
+
+      // === BLOCO CMV ===
       const isReceitaLiquida = /RECEITA\s*LIQUIDA/i.test(normalConta);
       const isLucroBruto = /LUCRO\s*BRUTO|RESULTADO\s*BRUTO/i.test(normalConta);
 
@@ -457,14 +475,11 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
       // Ativar bloco CMV: qualquer linha após Receita Líquida (e antes de Lucro Bruto)
       if (foundReceitaLiquida && !isInsideCMVBlock && !isReceitaLiquida && !isLucroBruto) {
         isInsideCMVBlock = true;
-        foundReceitaLiquida = false; // Reset para não reativar
+        foundReceitaLiquida = false;
         debugLog("🟢 Bloco CMV Ativado (após Receita Líquida): " + conta);
       }
 
-      // Tenta extrair valores da linha
-      const valores = getNumericValuesRightOfText(row);
-
-      if (valores.length > 0) {
+      if (temValor) {
         // REGRA: Pegar o PRIMEIRO valor numérico (valor do período atual)
         // O segundo valor (se existir) é o valor anterior
         const valorAtual = valores[0].value;
@@ -476,9 +491,12 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
         if (isInsideCMVBlock) {
           grupo = "CMV";
         }
-
-        // 2. Se não for CMV, aplica as regras normais
-        if (grupo === "OUTROS") {
+        // 2. Se estamos dentro do bloco Receita Bruta, forçar classificação
+        else if (isInsideReceitaBrutaBlock) {
+          grupo = "RECEITA_BRUTA";
+        }
+        // 3. Se não, aplica as regras normais
+        else {
           if (normalConta.includes("RECEITA LIQUIDA")) {
             grupo = "RECEITA_LIQUIDA";
           } else if (
@@ -1552,6 +1570,7 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
    let isInsideCMVBlock = false;
    let cmvBlockStarted = false;
    let foundReceitaLiquida = false;
+   let isInsideReceitaBrutaBlock = false;
 
   // Processar linhas DRE
   for (let i = startRow; i < rows.length; i++) {
@@ -1564,9 +1583,21 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
     // Skip headers
     if (normalDesc.includes("DESCRICAO") || normalDesc === "CONTA" || normalDesc.includes("________")) continue;
 
+    const numericValues = row.numericValues || [];
+    const temValor = numericValues.length > 0 && Number.isFinite(numericValues[0]?.value);
+
+    // === BLOCO RECEITA BRUTA ===
+    const isReceitaOperacional = normalDesc.includes("RECEITA OPERACIONAL");
+    if (isReceitaOperacional && !temValor) {
+      isInsideReceitaBrutaBlock = true;
+    } else if (isInsideReceitaBrutaBlock && !temValor && descricao.length >= 2) {
+      isInsideReceitaBrutaBlock = false;
+    }
+
     // Detectar Receita Líquida
     if (normalDesc.includes("RECEITA LIQUIDA")) {
       foundReceitaLiquida = true;
+      isInsideReceitaBrutaBlock = false; // Receita Líquida fecha bloco Receita Bruta
     }
 
     // Fechar bloco CMV ANTES de processar Lucro Bruto
@@ -1583,17 +1614,18 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
       foundReceitaLiquida = false;
     }
 
+    if (!temValor) continue;
+
     let classification: DREClassificationResult;
     if (isInsideCMVBlock) {
       classification = { grupo: "CMV", tipo: "normal", isGroupChange: false };
+    } else if (isInsideReceitaBrutaBlock) {
+      classification = { grupo: "RECEITA_BRUTA", tipo: "normal", isGroupChange: false };
     } else {
       classification = classificarLinhaDRE(descricao, currentGrupo);
     }
 
     currentGrupo = classification.grupo;
-
-    const numericValues = row.numericValues || [];
-    if (numericValues.length === 0) continue;
 
     const valorPeriodo = numericValues[0]?.value;
     if (valorPeriodo === undefined || valorPeriodo === null || !Number.isFinite(valorPeriodo)) continue;
@@ -1660,6 +1692,7 @@ function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
   let isInsideCMVBlock = false;
   let cmvBlockStarted = false;
   let foundReceitaLiquida = false;
+  let isInsideReceitaBrutaBlock = false;
 
   for (let i = startRow; i < rows.length; i++) {
     const row = rows[i];
@@ -1671,9 +1704,21 @@ function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
     const normalDesc = normalizeText(descricao);
     if (normalDesc.includes("DESCRICAO") || normalDesc === "CONTA") continue;
 
+    const numericValues = findNumericValuesInRow(row);
+    const temValor = numericValues.length > 0;
+
+    // === BLOCO RECEITA BRUTA ===
+    const isReceitaOperacional = normalDesc.includes("RECEITA OPERACIONAL");
+    if (isReceitaOperacional && !temValor) {
+      isInsideReceitaBrutaBlock = true;
+    } else if (isInsideReceitaBrutaBlock && !temValor && descricao.length >= 2) {
+      isInsideReceitaBrutaBlock = false;
+    }
+
     // Detectar Receita Líquida
     if (normalDesc.includes("RECEITA LIQUIDA")) {
       foundReceitaLiquida = true;
+      isInsideReceitaBrutaBlock = false;
       debugLog(`CMV CSV: Receita Líquida encontrada na linha ${i}`);
     }
 
@@ -1693,21 +1738,21 @@ function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
       debugLog(`CMV CSV: Bloco CMV ativado após Receita Líquida na linha ${i}: ${descricao}`);
     }
 
+    if (!temValor) continue;
+
     // Classificar linha usando nova lógica OU forçar CMV se estamos dentro do bloco
     let classification: DREClassificationResult;
 
     if (isInsideCMVBlock) {
-      // Dentro do bloco CMV: forçar classificação como CMV
       classification = { grupo: "CMV", tipo: "normal", isGroupChange: false };
       debugLog(`CMV BLOCK CSV: Linha ${i} forçada como CMV: ${descricao}`);
+    } else if (isInsideReceitaBrutaBlock) {
+      classification = { grupo: "RECEITA_BRUTA", tipo: "normal", isGroupChange: false };
     } else {
       classification = classificarLinhaDRE(descricao, currentGrupo);
     }
 
     currentGrupo = classification.grupo;
-
-    const numericValues = findNumericValuesInRow(row);
-    if (numericValues.length === 0) continue;
 
     // REGRA: Primeiro número = valor do período atual, segundo = valor anterior
     const valor = roundTo2Decimals(parseSimpleBrazilianNumber(numericValues[0]));
