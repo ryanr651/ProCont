@@ -482,14 +482,15 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
 
       // === BLOCO RESULTADO FINANCEIRO ===
       const isFinanceiroHeader = /DESPESAS?\s*FINANCEIRA|RECEITAS?\s*FINANCEIRA|RESULTADO\s*FINANCEIRO/i.test(normalConta);
-      const isTributarias = /DESPESAS?\s*TRIBUTARIA/i.test(normalConta);
       
-      if (isTributarias && isInsideResultadoFinanceiroBlock) {
+      // Fechar bloco financeiro se encontrar outro título de seção (sem valor)
+      if (isInsideResultadoFinanceiroBlock && !temValor && !isFinanceiroHeader && conta.length >= 2) {
         isInsideResultadoFinanceiroBlock = false;
-        debugLog("🔴 Bloco Resultado Financeiro Fechado (Despesas Tributárias): " + conta);
+        debugLog("🔴 Bloco Resultado Financeiro Fechado (novo título): " + conta);
       }
       
-      if (isFinanceiroHeader && !isTributarias) {
+      // Abrir bloco financeiro
+      if (isFinanceiroHeader && !temValor) {
         isInsideResultadoFinanceiroBlock = true;
         debugLog("🟢 Bloco Resultado Financeiro Ativado: " + conta);
       }
