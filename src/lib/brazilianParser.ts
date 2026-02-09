@@ -453,9 +453,9 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
       if (isReceitaOperacional && !temValor) {
         isInsideReceitaBrutaBlock = true;
         debugLog("🟢 Bloco Receita Bruta Ativado (título Receita Operacional): " + conta);
-      } else if (isInsideReceitaBrutaBlock && (isReceitaLiquida || (!temValor && conta.length >= 2))) {
+      } else if (isInsideReceitaBrutaBlock && isReceitaLiquida) {
         isInsideReceitaBrutaBlock = false;
-        debugLog("🔴 Bloco Receita Bruta Fechado (" + (isReceitaLiquida ? "Receita Líquida" : "título sem valor") + "): " + conta);
+        debugLog("🔴 Bloco Receita Bruta Fechado (Receita Líquida detectada): " + conta);
       }
 
       // === BLOCO CMV ===
@@ -1614,7 +1614,7 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
     const isReceitaOperacional = normalDesc.includes("RECEITA OPERACIONAL");
     if (isReceitaOperacional && !temValor) {
       isInsideReceitaBrutaBlock = true;
-    } else if (isInsideReceitaBrutaBlock && !temValor && descricao.length >= 2) {
+    } else if (isInsideReceitaBrutaBlock && normalDesc.includes("RECEITA LIQUIDA")) {
       isInsideReceitaBrutaBlock = false;
     }
 
@@ -1735,7 +1735,7 @@ function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
     const isReceitaOperacional = normalDesc.includes("RECEITA OPERACIONAL");
     if (isReceitaOperacional && !temValor) {
       isInsideReceitaBrutaBlock = true;
-    } else if (isInsideReceitaBrutaBlock && !temValor && descricao.length >= 2) {
+    } else if (isInsideReceitaBrutaBlock && normalDesc.includes("RECEITA LIQUIDA")) {
       isInsideReceitaBrutaBlock = false;
     }
 
