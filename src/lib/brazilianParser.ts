@@ -440,8 +440,14 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
       // REGEX PODEROSA: Ignora espaços múltiplos, traços, etc.
       // Ex: "ESTOQUE - INICIAL", "ESTOQUE    INICIAL" serão detectados.
       const isEstoqueInicial = /ESTOQUE.*INICIAL|INV.*INICIAL|EST.*INI/i.test(normalConta);
-      const isEstoqueFinal = /ESTOQUE.*FINAL|INV.*FINAL|EST.*FIM/i.test(normalConta);
       const isCompraMercadoria = /COMPRAS?.*MERCADORIA|ENTRADAS?.*MERCADORIA/i.test(normalConta);
+      const isLucroBruto = /LUCRO\s*BRUTO|RESULTADO\s*BRUTO/i.test(normalConta);
+
+      // Fechar bloco CMV ANTES de processar Lucro Bruto
+      if (isLucroBruto && isInsideCMVBlock) {
+        isInsideCMVBlock = false;
+        debugLog("🔴 Saiu do bloco CMV (Lucro Bruto detectado): " + conta);
+      }
 
       if (isEstoqueInicial || isCompraMercadoria) {
         isInsideCMVBlock = true;
@@ -510,13 +516,7 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
         });
       }
 
-      // --- DESLIGAR GATILHO ---
-      // Se for Estoque Final, desligamos o bloco APÓS processar a linha atual
-      // (assim a linha do Estoque Final ainda fica como CMV)
-      if (isEstoqueFinal) {
-        isInsideCMVBlock = false;
-        debugLog("🔴 Saiu do bloco CMV (Gatilho): " + conta);
-      }
+      // Bloco CMV é fechado ANTES do Lucro Bruto (já tratado acima)
     }
 
     return {
@@ -1565,6 +1565,12 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
       isInsideCMVBlock = true;
     }
 
+    // Fechar bloco CMV ANTES de processar Lucro Bruto
+    if (isInsideCMVBlock && (normalDesc.includes("LUCRO BRUTO") || normalDesc.includes("RESULTADO BRUTO"))) {
+      isInsideCMVBlock = false;
+      cmvBlockStarted = false;
+    }
+
     let classification: DREClassificationResult;
     if (isInsideCMVBlock) {
       classification = { grupo: "CMV", tipo: "normal", isGroupChange: false };
@@ -1595,10 +1601,7 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
       isCMV: isInsideCMVBlock, // Campo importante para o seu Debug
     });
 
-    if (isInsideCMVBlock && normalDesc.includes("ESTOQUE FINAL")) {
-      isInsideCMVBlock = false;
-      cmvBlockStarted = false;
-    }
+    // Bloco CMV é fechado ANTES do Lucro Bruto (já tratado acima)
   }
 
   return { entries, periodo, errors, parsed: entries.length > 0 };
@@ -1671,6 +1674,13 @@ function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
       debugLog(`CMV BLOCK START CSV: ESTOQUE INICIAL detectado na linha ${i}`);
     }
 
+    // Fechar bloco CMV ANTES de processar Lucro Bruto
+    if (isInsideCMVBlock && (normalDesc.includes("LUCRO BRUTO") || normalDesc.includes("RESULTADO BRUTO"))) {
+      isInsideCMVBlock = false;
+      cmvBlockStarted = false;
+      debugLog(`CMV BLOCK CLOSED CSV: Bloco CMV fechado antes de LUCRO BRUTO`);
+    }
+
     // Classificar linha usando nova lógica OU forçar CMV se estamos dentro do bloco
     let classification: DREClassificationResult;
 
@@ -1700,12 +1710,7 @@ function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
       raw_row: row.map(String),
     });
 
-    // FECHAR BLOCO CMV APÓS PROCESSAR ESTOQUE FINAL
-    if (isInsideCMVBlock && normalDesc.includes("ESTOQUE FINAL")) {
-      isInsideCMVBlock = false;
-      cmvBlockStarted = false;
-      debugLog(`CMV BLOCK CLOSED CSV: Bloco CMV fechado após processar ESTOQUE FINAL`);
-    }
+    // Bloco CMV é fechado ANTES do Lucro Bruto (já tratado acima)
   }
 
   return { entries, periodo, errors, parsed: true };

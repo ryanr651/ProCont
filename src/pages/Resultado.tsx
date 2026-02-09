@@ -404,6 +404,12 @@ const Resultado = () => {
         isInsideCMVBlock = true;
       }
 
+      // Fechar bloco CMV ANTES de processar Lucro Bruto
+      const isLucroBrutoLine = desc.includes('LUCRO BRUTO') || desc.includes('RESULTADO BRUTO');
+      if (isLucroBrutoLine && isInsideCMVBlock) {
+        isInsideCMVBlock = false;
+      }
+
       // Detect RESULTADO FINANCEIRO block start
       const isResultadoFinanceiroHeader = desc === 'DESPESAS FINANCEIRAS' || 
                                            desc === 'RECEITAS FINANCEIRAS' ||
@@ -469,7 +475,7 @@ const Resultado = () => {
         classification = { 
           grupo: 'cmv', 
           isExplicit: false, 
-          motivo: 'Capturado pelo Bloco CMV (entre ESTOQUE INICIAL e ESTOQUE FINAL)' 
+          motivo: 'Capturado pelo Bloco CMV (entre ESTOQUE INICIAL e LUCRO BRUTO)' 
         };
       }
       
@@ -512,11 +518,7 @@ const Resultado = () => {
         somaResultadoFinanceiro += valor;
       }
 
-      // Detect CMV block end: ESTOQUE FINAL (close AFTER processing)
-      const isEstoqueFinal = desc.includes('ESTOQUE FINAL');
-      if (isEstoqueFinal) {
-        isInsideCMVBlock = false;
-      }
+      // Bloco CMV é fechado ANTES do Lucro Bruto (já tratado acima)
 
       // ===== RECEITA BRUTA =====
       if (desc.includes('RECEITA BRUTA') || desc.includes('RECEITA OPERACIONAL BRUTA')) {
