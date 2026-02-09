@@ -300,7 +300,13 @@ const Resultado = () => {
         desc.includes('DESPESAS FINANCEIRAS') || desc.includes('JUROS') || 
         desc.includes('VARIACAO MONETARIA') ||
         desc.includes('BANCARIO') || desc.includes('BANCARIA') ||
-        descOriginal.toUpperCase().includes('BANCÁRIO') || descOriginal.toUpperCase().includes('BANCÁRIA')) {
+        desc.includes('BANCARIAS') ||
+        desc.includes('DIVIDENDOS') || desc.includes('ACOES') ||
+        desc.includes('FINANCEIRAS') || desc.includes('TAXA') ||
+        desc.includes('MULTAS') || desc.includes('IOC') || desc.includes('IOF') ||
+        desc.includes('DESCONTOS CONCEDIDOS') ||
+        descOriginal.toUpperCase().includes('BANCÁRIO') || descOriginal.toUpperCase().includes('BANCÁRIA') ||
+        descOriginal.toUpperCase().includes('AÇÕES')) {
       const isExplicit = desc === 'RESULTADO FINANCEIRO' || 
                          desc === 'RESULTADO FINANCEIRO LIQUIDO' ||
                          (desc.includes('TOTAL') && desc.includes('FINANCEIRO'));
