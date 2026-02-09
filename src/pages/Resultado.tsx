@@ -384,8 +384,9 @@ const Resultado = () => {
     let foundResultadoFin = false;
     let foundLucroLiq = false;
 
-    // CMV Block detection (range-based: ESTOQUE INICIAL → ESTOQUE FINAL)
+    // CMV Block detection (after Receita Líquida → before Lucro Bruto)
     let isInsideCMVBlock = false;
+    let foundReceitaLiquidaForCMV = false;
     
     // NÃO OPERACIONAL Block detection (Despesas/Receitas não Operacionais)
     let isInsideNaoOperacionalBlock = false;
@@ -398,10 +399,11 @@ const Resultado = () => {
       const valor = entry.valor;
       const valorAbs = Math.abs(valor);
 
-      // Detect CMV block start: cabeçalho "Custos das Mercadorias Vendidas"
-      const isCMVHeader = (desc.includes('CUSTO') && desc.includes('MERCADORIA')) || 
-                           (desc.includes('CUSTO') && desc.includes('PRODUTO')) ||
-                           desc === 'CMV' || desc === 'CPV';
+      // Detectar Receita Líquida
+      const isReceitaLiquida = desc.includes('RECEITA LIQUIDA');
+      if (isReceitaLiquida) {
+        foundReceitaLiquidaForCMV = true;
+      }
       
       // Fechar bloco CMV ANTES de processar Lucro Bruto
       const isLucroBrutoLine = desc.includes('LUCRO BRUTO') || desc.includes('RESULTADO BRUTO');
@@ -409,9 +411,10 @@ const Resultado = () => {
         isInsideCMVBlock = false;
       }
 
-      // Ativar bloco CMV quando encontrar o título do subgrupo
-      if (isCMVHeader && !isInsideCMVBlock) {
+      // Ativar bloco CMV: primeira conta após Receita Líquida
+      if (foundReceitaLiquidaForCMV && !isInsideCMVBlock && !isReceitaLiquida && !isLucroBrutoLine) {
         isInsideCMVBlock = true;
+        foundReceitaLiquidaForCMV = false;
       }
 
       // Detect RESULTADO FINANCEIRO block start
@@ -479,7 +482,7 @@ const Resultado = () => {
         classification = { 
           grupo: 'cmv', 
           isExplicit: false, 
-          motivo: 'Capturado pelo Bloco CMV (entre Custos das Mercadorias Vendidas e Lucro Bruto)' 
+          motivo: 'Capturado pelo Bloco CMV (após Receita Líquida, antes do Lucro Bruto)' 
         };
       }
       

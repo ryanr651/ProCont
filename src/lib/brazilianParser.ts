@@ -411,6 +411,7 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
 
     // VARIÁVEIS DE ESTADO
     let isInsideCMVBlock = false;
+    let foundReceitaLiquida = false;
     let startRowIndex = 0;
 
     // 1. ENCONTRAR ÂNCORA DE INÍCIO (Ignora cabeçalho até encontrar DEMONSTRACAO ou RECEITA)
@@ -437,8 +438,8 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
 
       const normalConta = normalizeText(conta);
 
-      // Detectar cabeçalho CMV para ativar bloco
-      const isCMVHeader = /CUSTO.*MERCADORIA|CUSTO.*PRODUTO|CMV|CPV/i.test(normalConta) && !isInsideCMVBlock;
+      // Detectar Receita Líquida para habilitar CMV na próxima linha com valor
+      const isReceitaLiquida = /RECEITA\s*LIQUIDA/i.test(normalConta);
       const isLucroBruto = /LUCRO\s*BRUTO|RESULTADO\s*BRUTO/i.test(normalConta);
 
       // Fechar bloco CMV ANTES de processar Lucro Bruto
@@ -447,10 +448,17 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
         debugLog("🔴 Saiu do bloco CMV (Lucro Bruto detectado): " + conta);
       }
 
-      // Ativar bloco CMV quando encontrar o título do subgrupo
-      if (isCMVHeader) {
+      // Marcar que passou pela Receita Líquida
+      if (isReceitaLiquida) {
+        foundReceitaLiquida = true;
+        debugLog("📌 Receita Líquida encontrada, CMV será ativado na próxima conta");
+      }
+
+      // Ativar bloco CMV: qualquer linha após Receita Líquida (e antes de Lucro Bruto)
+      if (foundReceitaLiquida && !isInsideCMVBlock && !isReceitaLiquida && !isLucroBruto) {
         isInsideCMVBlock = true;
-        debugLog("🟢 Bloco CMV Ativado (cabeçalho): " + conta);
+        foundReceitaLiquida = false; // Reset para não reativar
+        debugLog("🟢 Bloco CMV Ativado (após Receita Líquida): " + conta);
       }
 
       // Tenta extrair valores da linha
@@ -1541,8 +1549,9 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
   if (!found) startRow = Math.min(5, rows.length - 1);
 
   let currentGrupo: DREGrupo = "RECEITA_BRUTA";
-  let isInsideCMVBlock = false;
-  let cmvBlockStarted = false;
+   let isInsideCMVBlock = false;
+   let cmvBlockStarted = false;
+   let foundReceitaLiquida = false;
 
   // Processar linhas DRE
   for (let i = startRow; i < rows.length; i++) {
@@ -1555,12 +1564,10 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
     // Skip headers
     if (normalDesc.includes("DESCRICAO") || normalDesc === "CONTA" || normalDesc.includes("________")) continue;
 
-    // LÓGICA CMV: Detectar cabeçalho para ativar bloco diretamente
-    const isCMVHeader = normalDesc.includes("CUSTO DAS MERCADORIAS VENDIDAS") || 
-                         normalDesc.includes("CUSTO DA MERCADORIA VENDIDA") ||
-                         normalDesc.includes("CUSTO DOS PRODUTOS") ||
-                         normalDesc.includes("CMV") ||
-                         normalDesc.includes("CPV");
+    // Detectar Receita Líquida
+    if (normalDesc.includes("RECEITA LIQUIDA")) {
+      foundReceitaLiquida = true;
+    }
 
     // Fechar bloco CMV ANTES de processar Lucro Bruto
     if (isInsideCMVBlock && (normalDesc.includes("LUCRO BRUTO") || normalDesc.includes("RESULTADO BRUTO"))) {
@@ -1568,9 +1575,12 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
       cmvBlockStarted = false;
     }
 
-    if (isCMVHeader && !isInsideCMVBlock) {
+    // Ativar bloco CMV: primeira conta após Receita Líquida
+    if (foundReceitaLiquida && !isInsideCMVBlock && !normalDesc.includes("RECEITA LIQUIDA") && 
+        !(normalDesc.includes("LUCRO BRUTO") || normalDesc.includes("RESULTADO BRUTO"))) {
       isInsideCMVBlock = true;
       cmvBlockStarted = true;
+      foundReceitaLiquida = false;
     }
 
     let classification: DREClassificationResult;
@@ -1649,6 +1659,7 @@ function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
   // ESTADO PARA CAPTURA POR INTERVALO DO CMV (igual ao parser XLS)
   let isInsideCMVBlock = false;
   let cmvBlockStarted = false;
+  let foundReceitaLiquida = false;
 
   for (let i = startRow; i < rows.length; i++) {
     const row = rows[i];
@@ -1660,12 +1671,11 @@ function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
     const normalDesc = normalizeText(descricao);
     if (normalDesc.includes("DESCRICAO") || normalDesc === "CONTA") continue;
 
-    // REGRA CMV: Detectar cabeçalho para ativar bloco diretamente
-    const isCMVHeader = normalDesc.includes("CUSTO DAS MERCADORIAS VENDIDAS") ||
-                         normalDesc.includes("CUSTO DA MERCADORIA VENDIDA") ||
-                         normalDesc.includes("CUSTO DOS PRODUTOS") ||
-                         normalDesc.includes("CMV") ||
-                         normalDesc.includes("CPV");
+    // Detectar Receita Líquida
+    if (normalDesc.includes("RECEITA LIQUIDA")) {
+      foundReceitaLiquida = true;
+      debugLog(`CMV CSV: Receita Líquida encontrada na linha ${i}`);
+    }
 
     // Fechar bloco CMV ANTES de processar Lucro Bruto
     if (isInsideCMVBlock && (normalDesc.includes("LUCRO BRUTO") || normalDesc.includes("RESULTADO BRUTO"))) {
@@ -1674,11 +1684,13 @@ function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
       debugLog(`CMV BLOCK CLOSED CSV: Bloco CMV fechado antes de LUCRO BRUTO`);
     }
 
-    // Ativar bloco CMV quando encontrar o título do subgrupo
-    if (isCMVHeader && !isInsideCMVBlock) {
+    // Ativar bloco CMV: primeira conta após Receita Líquida
+    if (foundReceitaLiquida && !isInsideCMVBlock && !normalDesc.includes("RECEITA LIQUIDA") &&
+        !(normalDesc.includes("LUCRO BRUTO") || normalDesc.includes("RESULTADO BRUTO"))) {
       isInsideCMVBlock = true;
       cmvBlockStarted = true;
-      debugLog(`CMV CSV: Bloco CMV ativado pelo cabeçalho na linha ${i}: ${descricao}`);
+      foundReceitaLiquida = false;
+      debugLog(`CMV CSV: Bloco CMV ativado após Receita Líquida na linha ${i}: ${descricao}`);
     }
 
     // Classificar linha usando nova lógica OU forçar CMV se estamos dentro do bloco
