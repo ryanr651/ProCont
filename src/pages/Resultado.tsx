@@ -431,23 +431,25 @@ const Resultado = () => {
         foundReceitaLiquidaForCMV = false;
       }
 
-      // Detect RESULTADO FINANCEIRO block start
+      // Detect RESULTADO FINANCEIRO block start/end
       const isResultadoFinanceiroHeader = desc.includes('DESPESAS FINANCEIRAS') || 
                                             desc.includes('RECEITAS FINANCEIRAS') ||
                                             desc.includes('RESULTADO FINANCEIRO') ||
                                             desc.includes('DESPESA FINANCEIRA') ||
                                             desc.includes('RECEITA FINANCEIRA');
       
-      // Detect DESPESAS TRIBUTÁRIAS → fecha bloco financeiro
-      const isDespesasTributarias = desc.includes('DESPESAS TRIBUTARIAS') || 
-                                     desc.includes('DESPESA TRIBUTARIA') ||
-                                     desc.includes('TRIBUTARIAS') && desc.includes('DESPESAS');
+      // Fechar bloco financeiro se encontrar outro grupo/seção que não é financeiro
+      const isOtherSectionHeader = !isResultadoFinanceiroHeader && (
+        desc.includes('DESPESAS') || desc.includes('RECEITA') || 
+        desc.includes('RESULTADO') || desc.includes('LUCRO') ||
+        desc.includes('CUSTOS') || desc.includes('OUTRAS')
+      );
       
-      if (isDespesasTributarias && isInsideResultadoFinanceiroBlock) {
+      if (isInsideResultadoFinanceiroBlock && isOtherSectionHeader) {
         isInsideResultadoFinanceiroBlock = false;
       }
       
-      if (isResultadoFinanceiroHeader && !isDespesasTributarias) {
+      if (isResultadoFinanceiroHeader) {
         isInsideResultadoFinanceiroBlock = true;
       }
 
@@ -508,7 +510,7 @@ const Resultado = () => {
       
       // Dentro do bloco RESULTADO FINANCEIRO, forçar classificação resultado_financeiro
       // EXCETO se já é um subtotal explícito ou header de outro grupo
-      if (wasInsideResultadoFinanceiroBlock && !isSubtotalExplicito && !isResultadoFinanceiroHeader && !isDespesasTributarias && !isMainSection) {
+      if (wasInsideResultadoFinanceiroBlock && !isSubtotalExplicito && !isResultadoFinanceiroHeader && !isOtherSectionHeader && !isMainSection) {
         classification = { 
           grupo: 'resultado_financeiro', 
           isExplicit: false, 
