@@ -544,7 +544,7 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
             normalConta.includes("NAO OPERACIONAL") ||
             normalConta.includes("DIVIDENDOS") ||
             normalConta.includes("ACOES") ||
-            normalConta.includes("TAXA") ||
+            normalConta.startsWith("TAXA") ||
             normalConta.includes("MULTAS") ||
             normalConta.includes("IOC") ||
             normalConta.includes("IOF") ||

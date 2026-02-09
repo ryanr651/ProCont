@@ -304,7 +304,7 @@ const Resultado = () => {
         desc.includes('BANCARIO') || desc.includes('BANCARIA') ||
         desc.includes('BANCARIAS') ||
         desc.includes('DIVIDENDOS') || desc.includes('ACOES') ||
-        desc.includes('FINANCEIRAS') || desc.includes('TAXA') ||
+        desc.includes('FINANCEIRAS') || desc.startsWith('TAXA') ||
         desc.includes('MULTAS') || desc.includes('IOC') || desc.includes('IOF') ||
         desc.includes('DESCONTOS CONCEDIDOS') ||
         descOriginal.toUpperCase().includes('BANCÁRIO') || descOriginal.toUpperCase().includes('BANCÁRIA') ||
