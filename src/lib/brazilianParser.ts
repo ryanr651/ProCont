@@ -440,26 +440,25 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
 
       const normalConta = normalizeText(conta);
 
-      // === BLOCO RECEITA BRUTA ===
-      // Ativar quando encontrar "Receita Operacional" como título
+      // === Detecções de seção ===
       const isReceitaOperacional = /RECEITA\s*OPERACIONAL/i.test(normalConta);
+      const isReceitaLiquida = /RECEITA\s*LIQUIDA/i.test(normalConta);
+      const isLucroBruto = /LUCRO\s*BRUTO|RESULTADO\s*BRUTO/i.test(normalConta);
       
       // Tenta extrair valores da linha (precisa antes para checar título sem valor)
       const valores = getNumericValuesRightOfText(row);
       const temValor = valores.length > 0;
 
+      // === BLOCO RECEITA BRUTA ===
       if (isReceitaOperacional && !temValor) {
         isInsideReceitaBrutaBlock = true;
         debugLog("🟢 Bloco Receita Bruta Ativado (título Receita Operacional): " + conta);
-      } else if (isInsideReceitaBrutaBlock && !temValor && conta.length >= 2) {
-        // Próximo título sem valor → fecha o bloco
+      } else if (isInsideReceitaBrutaBlock && (isReceitaLiquida || (!temValor && conta.length >= 2))) {
         isInsideReceitaBrutaBlock = false;
-        debugLog("🔴 Bloco Receita Bruta Fechado (título sem valor): " + conta);
+        debugLog("🔴 Bloco Receita Bruta Fechado (" + (isReceitaLiquida ? "Receita Líquida" : "título sem valor") + "): " + conta);
       }
 
       // === BLOCO CMV ===
-      const isReceitaLiquida = /RECEITA\s*LIQUIDA/i.test(normalConta);
-      const isLucroBruto = /LUCRO\s*BRUTO|RESULTADO\s*BRUTO/i.test(normalConta);
 
       // Fechar bloco CMV ANTES de processar Lucro Bruto
       if (isLucroBruto && isInsideCMVBlock) {
@@ -523,9 +522,7 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
           if (normalConta.includes("RECEITA LIQUIDA")) {
             grupo = "RECEITA_LIQUIDA";
           } else if (
-            normalConta.includes("RECEITA OPERACIONAL") ||
-            normalConta.includes("RECEITA BRUTA") ||
-            normalConta.includes("VENDAS")
+            normalConta.includes("RECEITA BRUTA")
           ) {
             grupo = "RECEITA_BRUTA";
           } else if (
