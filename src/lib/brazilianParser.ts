@@ -483,10 +483,13 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
       // === BLOCO RESULTADO FINANCEIRO ===
       const isFinanceiroHeader = /DESPESAS?\s*FINANCEIRA|RECEITAS?\s*FINANCEIRA|RESULTADO\s*FINANCEIRO/i.test(normalConta);
       
-      // Fechar bloco financeiro se encontrar outro título de seção (sem valor)
-      if (isInsideResultadoFinanceiroBlock && !temValor && !isFinanceiroHeader && conta.length >= 2) {
-        isInsideResultadoFinanceiroBlock = false;
-        debugLog("🔴 Bloco Resultado Financeiro Fechado (novo título): " + conta);
+      // Fechar bloco financeiro se encontrar outro título de seção (sem valor) OU subtotais principais (com valor)
+      const isSubtotalPrincipal = /RESULTADO\s*(OPERACIONAL|ANTES|DO\s*EXERCICIO)|LUCRO\s*(OPERACIONAL|LIQUIDO|BRUTO)|CONTRIBUICAO\s*SOCIAL|CSLL|IRPJ|IMPOSTO\s*DE\s*RENDA/i.test(normalConta);
+      if (isInsideResultadoFinanceiroBlock && !isFinanceiroHeader) {
+        if ((!temValor && conta.length >= 2) || isSubtotalPrincipal) {
+          isInsideResultadoFinanceiroBlock = false;
+          debugLog("🔴 Bloco Resultado Financeiro Fechado (" + (isSubtotalPrincipal ? "subtotal principal" : "novo título") + "): " + conta);
+        }
       }
       
       // Abrir bloco financeiro
