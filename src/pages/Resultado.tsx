@@ -398,16 +398,20 @@ const Resultado = () => {
       const valor = entry.valor;
       const valorAbs = Math.abs(valor);
 
-      // Detect CMV block start: ESTOQUE INICIAL
-      const isEstoqueInicial = desc.includes('ESTOQUE INICIAL');
-      if (isEstoqueInicial) {
-        isInsideCMVBlock = true;
-      }
-
+      // Detect CMV block start: cabeçalho "Custos das Mercadorias Vendidas"
+      const isCMVHeader = (desc.includes('CUSTO') && desc.includes('MERCADORIA')) || 
+                           (desc.includes('CUSTO') && desc.includes('PRODUTO')) ||
+                           desc === 'CMV' || desc === 'CPV';
+      
       // Fechar bloco CMV ANTES de processar Lucro Bruto
       const isLucroBrutoLine = desc.includes('LUCRO BRUTO') || desc.includes('RESULTADO BRUTO');
       if (isLucroBrutoLine && isInsideCMVBlock) {
         isInsideCMVBlock = false;
+      }
+
+      // Ativar bloco CMV quando encontrar o título do subgrupo
+      if (isCMVHeader && !isInsideCMVBlock) {
+        isInsideCMVBlock = true;
       }
 
       // Detect RESULTADO FINANCEIRO block start
@@ -475,7 +479,7 @@ const Resultado = () => {
         classification = { 
           grupo: 'cmv', 
           isExplicit: false, 
-          motivo: 'Capturado pelo Bloco CMV (entre ESTOQUE INICIAL e LUCRO BRUTO)' 
+          motivo: 'Capturado pelo Bloco CMV (entre Custos das Mercadorias Vendidas e Lucro Bruto)' 
         };
       }
       

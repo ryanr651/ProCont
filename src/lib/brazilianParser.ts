@@ -437,10 +437,8 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
 
       const normalConta = normalizeText(conta);
 
-      // REGEX PODEROSA: Ignora espaços múltiplos, traços, etc.
-      // Ex: "ESTOQUE - INICIAL", "ESTOQUE    INICIAL" serão detectados.
-      const isEstoqueInicial = /ESTOQUE.*INICIAL|INV.*INICIAL|EST.*INI/i.test(normalConta);
-      const isCompraMercadoria = /COMPRAS?.*MERCADORIA|ENTRADAS?.*MERCADORIA/i.test(normalConta);
+      // Detectar cabeçalho CMV para ativar bloco
+      const isCMVHeader = /CUSTO.*MERCADORIA|CUSTO.*PRODUTO|CMV|CPV/i.test(normalConta) && !isInsideCMVBlock;
       const isLucroBruto = /LUCRO\s*BRUTO|RESULTADO\s*BRUTO/i.test(normalConta);
 
       // Fechar bloco CMV ANTES de processar Lucro Bruto
@@ -449,9 +447,10 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
         debugLog("🔴 Saiu do bloco CMV (Lucro Bruto detectado): " + conta);
       }
 
-      if (isEstoqueInicial || isCompraMercadoria) {
+      // Ativar bloco CMV quando encontrar o título do subgrupo
+      if (isCMVHeader) {
         isInsideCMVBlock = true;
-        debugLog("🟢 Bloco CMV Ativado: " + conta);
+        debugLog("🟢 Bloco CMV Ativado (cabeçalho): " + conta);
       }
 
       // Tenta extrair valores da linha
@@ -1556,19 +1555,22 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
     // Skip headers
     if (normalDesc.includes("DESCRICAO") || normalDesc === "CONTA" || normalDesc.includes("________")) continue;
 
-    // LÓGICA CMV
-    if (normalDesc.includes("CUSTO DAS MERCADORIAS VENDIDAS") || normalDesc.includes("CMV")) {
-      cmvBlockStarted = true;
-    }
-
-    if (cmvBlockStarted && normalDesc.includes("ESTOQUE INICIAL")) {
-      isInsideCMVBlock = true;
-    }
+    // LÓGICA CMV: Detectar cabeçalho para ativar bloco diretamente
+    const isCMVHeader = normalDesc.includes("CUSTO DAS MERCADORIAS VENDIDAS") || 
+                         normalDesc.includes("CUSTO DA MERCADORIA VENDIDA") ||
+                         normalDesc.includes("CUSTO DOS PRODUTOS") ||
+                         normalDesc.includes("CMV") ||
+                         normalDesc.includes("CPV");
 
     // Fechar bloco CMV ANTES de processar Lucro Bruto
     if (isInsideCMVBlock && (normalDesc.includes("LUCRO BRUTO") || normalDesc.includes("RESULTADO BRUTO"))) {
       isInsideCMVBlock = false;
       cmvBlockStarted = false;
+    }
+
+    if (isCMVHeader && !isInsideCMVBlock) {
+      isInsideCMVBlock = true;
+      cmvBlockStarted = true;
     }
 
     let classification: DREClassificationResult;
@@ -1658,27 +1660,25 @@ function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
     const normalDesc = normalizeText(descricao);
     if (normalDesc.includes("DESCRICAO") || normalDesc === "CONTA") continue;
 
-    // REGRA CMV: Detectar cabeçalho "Custo das mercadorias vendidas" para ativar contexto
-    if (
-      normalDesc.includes("CUSTO DAS MERCADORIAS VENDIDAS") ||
-      normalDesc.includes("CUSTO DA MERCADORIA VENDIDA") ||
-      normalDesc.includes("CMV")
-    ) {
-      cmvBlockStarted = true;
-      debugLog(`CMV CSV: Cabeçalho detectado na linha ${i}: ${descricao}`);
-    }
-
-    // GATILHO DE INÍCIO CMV: "ESTOQUE INICIAL" (após detectar cabeçalho CMV)
-    if (cmvBlockStarted && normalDesc.includes("ESTOQUE INICIAL")) {
-      isInsideCMVBlock = true;
-      debugLog(`CMV BLOCK START CSV: ESTOQUE INICIAL detectado na linha ${i}`);
-    }
+    // REGRA CMV: Detectar cabeçalho para ativar bloco diretamente
+    const isCMVHeader = normalDesc.includes("CUSTO DAS MERCADORIAS VENDIDAS") ||
+                         normalDesc.includes("CUSTO DA MERCADORIA VENDIDA") ||
+                         normalDesc.includes("CUSTO DOS PRODUTOS") ||
+                         normalDesc.includes("CMV") ||
+                         normalDesc.includes("CPV");
 
     // Fechar bloco CMV ANTES de processar Lucro Bruto
     if (isInsideCMVBlock && (normalDesc.includes("LUCRO BRUTO") || normalDesc.includes("RESULTADO BRUTO"))) {
       isInsideCMVBlock = false;
       cmvBlockStarted = false;
       debugLog(`CMV BLOCK CLOSED CSV: Bloco CMV fechado antes de LUCRO BRUTO`);
+    }
+
+    // Ativar bloco CMV quando encontrar o título do subgrupo
+    if (isCMVHeader && !isInsideCMVBlock) {
+      isInsideCMVBlock = true;
+      cmvBlockStarted = true;
+      debugLog(`CMV CSV: Bloco CMV ativado pelo cabeçalho na linha ${i}: ${descricao}`);
     }
 
     // Classificar linha usando nova lógica OU forçar CMV se estamos dentro do bloco
