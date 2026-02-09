@@ -236,9 +236,7 @@ const Resultado = () => {
         motivo: isExplicit ? 'Linha explícita de Receita Bruta' : 'Componente da Receita Bruta' 
       };
     }
-    if (desc.includes('VENDAS DE MERCADORIAS') || desc.includes('PRESTACAO DE SERVICOS') || desc.includes('FATURAMENTO')) {
-      return { grupo: 'receita_bruta', isExplicit: false, motivo: 'Componente da Receita Bruta (vendas/serviços)' };
-    }
+    // Vendas/serviços/faturamento são classificados pelo bloco do parser, não por keyword aqui
 
     // ===== RECEITA LÍQUIDA =====
     if (desc.includes('RECEITA LIQUIDA') || desc.includes('RECEITA OPERACIONAL LIQUIDA')) {
@@ -328,13 +326,7 @@ const Resultado = () => {
       return { grupo: 'despesas_operacionais', isExplicit: false, motivo: 'Imposto sobre lucro (Despesa Operacional)' };
     }
 
-    // ===== DEDUÇÕES DA RECEITA (não vai para despesas operacionais) =====
-    if (desc.includes('DEDUCAO') || desc.includes('DEDUCOES') || 
-        desc.includes('ABATIMENTO') || desc.includes('DEVOLUCAO') ||
-        desc.includes('(-) ') || desc.startsWith('(-')) {
-      // Estas são deduções da receita, não despesas operacionais
-      return { grupo: 'receita_bruta', isExplicit: false, motivo: 'Dedução da Receita Bruta' };
-    }
+    // Deduções são classificadas pelo bloco do parser (entre Receita Operacional e Receita Líquida = DEDUCOES)
 
     // ===== FALLBACK: Contas não classificadas vão para DESPESAS OPERACIONAIS =====
     // Qualquer conta de despesa/receita que não seja NÃO OPERACIONAL vai para despesas operacionais
