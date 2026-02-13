@@ -111,7 +111,7 @@ interface DREClassifiedEntry {
   descricao: string;
   valor: number;
   valorAnterior: number | null;
-  grupo: 'receita_bruta' | 'receita_liquida' | 'cmv' | 'lucro_bruto' | 'despesas_operacionais' | 'lucro_operacional' | 'resultado_financeiro' | 'nao_operacional' | 'contribuicao_social' | 'lucro_liquido' | 'contas_resultado';
+  grupo: 'receita_bruta' | 'receita_liquida' | 'cmv' | 'lucro_bruto' | 'despesas_operacionais' | 'lucro_operacional' | 'resultado_financeiro' | 'nao_operacional' | 'contribuicao_social' | 'lucro_liquido' | 'contas_resultado' | 'provisoes';
   isExplicit: boolean;
   motivo: string;
   insideCMVBlock?: boolean;
@@ -329,6 +329,11 @@ const Resultado = () => {
 
     // Deduções são classificadas pelo bloco do parser (entre Receita Operacional e Receita Líquida = DEDUCOES)
 
+    // ===== PROVISÕES (contas que começam com "PROVISÃO" ou "PROVISAO") =====
+    if (desc.startsWith('PROVISAO') || desc.startsWith('PROVISÃO')) {
+      return { grupo: 'provisoes', isExplicit: false, motivo: 'Provisão (começa com PROVISÃO)' };
+    }
+
     // ===== CONTAS RESULTADO (contas que começam com "RESULTADO" e não foram capturadas acima) =====
     if (desc.startsWith('RESULTADO')) {
       return { grupo: 'contas_resultado', isExplicit: false, motivo: 'Conta de Resultado (começa com RESULTADO)' };
@@ -400,6 +405,7 @@ const Resultado = () => {
         'CONTRIBUICAO_SOCIAL': 'contribuicao_social',
         'LUCRO_LIQUIDO': 'lucro_liquido',
         'CONTAS_RESULTADO': 'contas_resultado',
+        'PROVISOES': 'provisoes',
       };
       return map[parserGrupo] || 'despesas_operacionais';
     };
@@ -592,6 +598,7 @@ const Resultado = () => {
       nao_operacional: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
       lucro_liquido: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
       contas_resultado: 'bg-teal-500/20 text-teal-400 border-teal-500/30',
+      provisoes: 'bg-rose-500/20 text-rose-400 border-rose-500/30',
     };
     return colors[grupo];
   };
@@ -612,6 +619,7 @@ const Resultado = () => {
       nao_operacional: 'Não Operacional',
       lucro_liquido: 'Lucro Líquido',
       contas_resultado: 'Contas Resultado',
+      provisoes: 'Provisões',
     };
     return labels[grupo];
   };
