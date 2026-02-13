@@ -545,6 +545,11 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
           ) {
             grupo = "RESULTADO_FINANCEIRO";
           } else if (
+            normalConta.includes("PROVISAO") ||
+            normalConta.includes("PROVISÃO")
+          ) {
+            grupo = "PROVISOES";
+          } else if (
             normalConta.includes("CONTRIBUICAO SOCIAL") ||
             normalConta.includes("CSLL") ||
             normalConta.includes("RESULTADO ANTES DA CONTRIBUICAO")
@@ -1403,6 +1408,7 @@ type DREGrupo =
   | "RESULTADO_FINANCEIRO"
   | "LUCRO_LIQUIDO"
   | "DEDUCOES"
+  | "PROVISOES"
   | "OUTROS";
 
 // Tipo de linha DRE
