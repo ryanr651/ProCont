@@ -303,6 +303,12 @@ const Resultado = () => {
       return { grupo: 'resultado_financeiro', isExplicit: true, motivo: 'Linha explícita de Resultado Financeiro' };
     }
 
+    // ===== PROVISÕES (contas que começam com "PROVISÃO" ou "PROVISAO") — ANTES de Contribuição Social e IRPJ =====
+    if (desc.startsWith('PROVISAO') || desc.startsWith('PROVISÃO') ||
+        descOriginal.toUpperCase().startsWith('PROVISÃO') || descOriginal.toUpperCase().startsWith('PROVISAO')) {
+      return { grupo: 'provisoes', isExplicit: false, motivo: 'Provisão (começa com PROVISÃO)' };
+    }
+
     // ===== CONTRIBUIÇÃO SOCIAL =====
     if (desc.includes('RESULTADO ANTES DA CONTRIBUICAO') || 
         desc.includes('CONTRIBUICAO SOCIAL') || desc.includes('CSLL')) {
@@ -322,17 +328,11 @@ const Resultado = () => {
     }
 
     // ===== IMPOSTOS SOBRE LUCRO (IRPJ, etc.) =====
-    if (desc.includes('IMPOSTO DE RENDA') || desc.includes('IRPJ') || 
-        desc.includes('PROVISAO PARA IMPOSTO')) {
+    if (desc.includes('IMPOSTO DE RENDA') || desc.includes('IRPJ')) {
       return { grupo: 'despesas_operacionais', isExplicit: false, motivo: 'Imposto sobre lucro (Despesa Operacional)' };
     }
 
     // Deduções são classificadas pelo bloco do parser (entre Receita Operacional e Receita Líquida = DEDUCOES)
-
-    // ===== PROVISÕES (contas que começam com "PROVISÃO" ou "PROVISAO") =====
-    if (desc.startsWith('PROVISAO') || desc.startsWith('PROVISÃO')) {
-      return { grupo: 'provisoes', isExplicit: false, motivo: 'Provisão (começa com PROVISÃO)' };
-    }
 
     // ===== CONTAS RESULTADO (contas que começam com "RESULTADO" e não foram capturadas acima) =====
     if (desc.startsWith('RESULTADO')) {
