@@ -11,6 +11,19 @@ interface Message {
   content: string;
 }
 
+interface DREEntryDetail {
+  descricao: string;
+  valor: number;
+  grupo: string;
+}
+
+interface BalancoEntryDetail {
+  conta: string;
+  valor: number;
+  tipo: string;
+  hierarchy: string;
+}
+
 interface FinancialContext {
   dre: {
     receitaBruta: number;
@@ -34,6 +47,8 @@ interface FinancialContext {
     passivoTotal: number;
     patrimonioLiquido: number;
   };
+  dreEntries?: DREEntryDetail[];
+  balancoEntries?: BalancoEntryDetail[];
 }
 
 interface FinancialChatBoxProps {

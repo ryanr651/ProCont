@@ -10,6 +10,19 @@ interface ChatMessage {
   content: string;
 }
 
+interface DREEntryDetail {
+  descricao: string;
+  valor: number;
+  grupo: string;
+}
+
+interface BalancoEntryDetail {
+  conta: string;
+  valor: number;
+  tipo: string;
+  hierarchy: string;
+}
+
 interface FinancialContext {
   dre: {
     receitaBruta: number;
@@ -33,6 +46,8 @@ interface FinancialContext {
     passivoTotal: number;
     patrimonioLiquido: number;
   };
+  dreEntries?: DREEntryDetail[];
+  balancoEntries?: BalancoEntryDetail[];
 }
 
 serve(async (req) => {
@@ -77,6 +92,19 @@ serve(async (req) => {
       ? (dre.lucroLiquido / balanco.patrimonioLiquido) * 100
       : 0;
 
+    // Build individual entries sections
+    const dreEntriesSection = financialContext.dreEntries?.length
+      ? `\n### Contas Individuais da DRE\n${financialContext.dreEntries
+          .map(e => `- [${e.grupo}] ${e.descricao}: ${formatCurrency(e.valor)}`)
+          .join('\n')}`
+      : '';
+
+    const balancoEntriesSection = financialContext.balancoEntries?.length
+      ? `\n### Contas Individuais do Balanço\n${financialContext.balancoEntries
+          .map(e => `- [${e.tipo}${e.hierarchy ? ` > ${e.hierarchy}` : ''}] ${e.conta}: ${formatCurrency(e.valor)}`)
+          .join('\n')}`
+      : '';
+
     const systemPrompt = `Você é um simulador de cenários financeiros para empresas brasileiras. Seu ÚNICO propósito é fazer simulações e projeções financeiras baseadas nos dados reais da empresa abaixo.
 
 ## REGRAS OBRIGATÓRIAS
@@ -89,10 +117,11 @@ serve(async (req) => {
 3. NÃO responda perguntas sobre: clima, esportes, receitas, política, tecnologia, entretenimento, saúde, viagens, ou qualquer tema fora de finanças empresariais.
 4. NÃO gere código, textos criativos, poemas, histórias ou conteúdo não financeiro.
 5. Sempre baseie suas respostas nos dados financeiros concretos da empresa listados abaixo.
+6. Você tem acesso às contas individuais da DRE e do Balanço. Use-as para análises detalhadas quando o usuário perguntar sobre contas específicas.
 
 ## Dados Financeiros Atuais da Empresa
 
-### DRE (Demonstração do Resultado)
+### DRE (Demonstração do Resultado) — Totais
 - Receita Bruta: ${formatCurrency(dre.receitaBruta)}
 - Receita Líquida: ${formatCurrency(dre.receitaLiquida)}
 - CMV (Custo das Mercadorias): ${formatCurrency(dre.cmv)}
@@ -104,14 +133,16 @@ serve(async (req) => {
 - Margem Bruta: ${formatPercent(dre.margemBruta)}
 - Margem Operacional: ${formatPercent(dre.margemOperacional)}
 - Margem Líquida: ${formatPercent(dre.margemLiquida)}
+${dreEntriesSection}
 
-### Balanço Patrimonial
+### Balanço Patrimonial — Totais
 - Ativo Circulante: ${formatCurrency(balanco.ativoCirculante)}
 - Ativo Não Circulante: ${formatCurrency(balanco.ativoNaoCirculante)}
 - Ativo Total: ${formatCurrency(balanco.ativoTotal)}
 - Passivo Circulante: ${formatCurrency(balanco.passivoCirculante)}
 - Passivo Não Circulante: ${formatCurrency(balanco.passivoNaoCirculante)}
 - Patrimônio Líquido: ${formatCurrency(balanco.patrimonioLiquido)}
+${balancoEntriesSection}
 
 ### Indicadores Calculados
 - Liquidez Corrente: ${liquidezCorrente.toFixed(2)}
@@ -126,8 +157,8 @@ serve(async (req) => {
 4. Apresente os resultados de forma clara com comparativos antes/depois
 5. Use formatação markdown para estruturar a resposta
 6. Seja direto e objetivo, mas explique o raciocínio
-7. Destaque impactos positivos com ✅ e negativos com ⚠️`;
-
+7. Destaque impactos positivos com ✅ e negativos com ⚠️
+8. Quando relevante, mencione contas individuais para dar mais profundidade à análise`;
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {

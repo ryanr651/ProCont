@@ -1949,6 +1949,17 @@ const Resultado = () => {
               financialContext={{
                 dre: dreData,
                 balanco: balancoData,
+                dreEntries: dreClassifiedEntries.map(e => ({
+                  descricao: e.descricao,
+                  valor: e.valor,
+                  grupo: e.grupo,
+                })),
+                balancoEntries: rawBalancoEntries.map(e => ({
+                  conta: e.conta,
+                  valor: e.valor,
+                  tipo: e.tipo,
+                  hierarchy: e.hierarchy || '',
+                })),
               }}
             />
           </section>
