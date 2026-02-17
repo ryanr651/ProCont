@@ -309,14 +309,10 @@ const Resultado = () => {
       return { grupo: 'provisoes', isExplicit: false, motivo: 'Provisão (começa com PROVISÃO)' };
     }
 
-    // ===== CONTAS DE RESULTADO (ex: "Resultado antes da contribuição social") =====
-    if (desc.includes('RESULTADO ANTES')) {
-      return { grupo: 'contas_resultado', isExplicit: true, motivo: 'Linha de Resultado (começa com RESULTADO ANTES)' };
-    }
-
     // ===== CONTRIBUIÇÃO SOCIAL =====
-    if (desc.includes('CONTRIBUICAO SOCIAL') || desc.includes('CSLL')) {
-      const isExplicit = desc === 'CONTRIBUICAO SOCIAL' || desc === 'CSLL';
+    if (desc.includes('RESULTADO ANTES DA CONTRIBUICAO') || 
+        desc.includes('CONTRIBUICAO SOCIAL') || desc.includes('CSLL')) {
+      const isExplicit = desc.includes('RESULTADO ANTES') || desc === 'CONTRIBUICAO SOCIAL' || desc === 'CSLL';
       return { grupo: 'contribuicao_social', isExplicit, motivo: isExplicit ? 'Linha explícita de Contribuição Social' : 'Componente de Contribuição Social' };
     }
 
