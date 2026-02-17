@@ -24,6 +24,14 @@ interface BalancoEntryDetail {
   hierarchy: string;
 }
 
+interface EmpresaContext {
+  nome: string;
+  cnpj: string;
+  cnae: string;
+  regime_tributario: string;
+  contexto: string | null;
+}
+
 interface FinancialContext {
   dre: {
     receitaBruta: number;
@@ -49,6 +57,7 @@ interface FinancialContext {
   };
   dreEntries?: DREEntryDetail[];
   balancoEntries?: BalancoEntryDetail[];
+  empresa?: EmpresaContext;
 }
 
 interface FinancialChatBoxProps {

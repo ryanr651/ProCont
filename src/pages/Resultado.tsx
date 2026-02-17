@@ -117,6 +117,14 @@ interface DREClassifiedEntry {
   insideCMVBlock?: boolean;
 }
 
+interface EmpresaData {
+  nome: string;
+  cnpj: string;
+  cnae: string;
+  regime_tributario: string;
+  contexto: string | null;
+}
+
 const Resultado = () => {
   const [loading, setLoading] = useState(true);
   const [dreData, setDreData] = useState<CalculatedDRE | null>(null);
@@ -141,6 +149,9 @@ const Resultado = () => {
   
   // AI Presentation state
   const [showAIPresentation, setShowAIPresentation] = useState(false);
+
+  // Empresa context
+  const [selectedEmpresa, setSelectedEmpresa] = useState<EmpresaData | null>(null);
   
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
@@ -211,6 +222,18 @@ const Resultado = () => {
         const rows = (log.validation_rows as unknown) as ValidationRow[];
         setValidationRows(Array.isArray(rows) ? rows : []);
         setValidationFilename(log.filename || "balanco.xls");
+      }
+
+      // Load empresa data
+      const { data: empresas } = await supabase
+        .from("empresas")
+        .select("nome, cnpj, cnae, regime_tributario, contexto")
+        .eq("user_id", user.id)
+        .order("updated_at", { ascending: false })
+        .limit(1);
+
+      if (empresas && empresas.length > 0) {
+        setSelectedEmpresa(empresas[0]);
       }
 
       // Generate insights
@@ -1960,6 +1983,13 @@ const Resultado = () => {
                   tipo: e.tipo,
                   hierarchy: e.hierarchy || '',
                 })),
+                empresa: selectedEmpresa ? {
+                  nome: selectedEmpresa.nome,
+                  cnpj: selectedEmpresa.cnpj,
+                  cnae: selectedEmpresa.cnae,
+                  regime_tributario: selectedEmpresa.regime_tributario,
+                  contexto: selectedEmpresa.contexto,
+                } : undefined,
               }}
             />
           </section>

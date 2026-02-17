@@ -23,6 +23,14 @@ interface BalancoEntryDetail {
   hierarchy: string;
 }
 
+interface EmpresaContext {
+  nome: string;
+  cnpj: string;
+  cnae: string;
+  regime_tributario: string;
+  contexto: string | null;
+}
+
 interface FinancialContext {
   dre: {
     receitaBruta: number;
@@ -48,6 +56,7 @@ interface FinancialContext {
   };
   dreEntries?: DREEntryDetail[];
   balancoEntries?: BalancoEntryDetail[];
+  empresa?: EmpresaContext;
 }
 
 serve(async (req) => {
@@ -105,6 +114,16 @@ serve(async (req) => {
           .join('\n')}`
       : '';
 
+    // Build empresa context section
+    const empresaSection = financialContext.empresa
+      ? `\n## Dados da Empresa
+- Nome: ${financialContext.empresa.nome}
+- CNPJ: ${financialContext.empresa.cnpj}
+${financialContext.empresa.cnae ? `- CNAE: ${financialContext.empresa.cnae}` : ''}
+${financialContext.empresa.regime_tributario ? `- Regime Tributário: ${financialContext.empresa.regime_tributario}` : ''}
+${financialContext.empresa.contexto ? `- Contexto: ${financialContext.empresa.contexto}` : ''}\n`
+      : '';
+
     const systemPrompt = `Você é um simulador de cenários financeiros para empresas brasileiras. Seu ÚNICO propósito é fazer simulações e projeções financeiras baseadas nos dados reais da empresa abaixo.
 
 ## REGRAS OBRIGATÓRIAS
@@ -118,6 +137,8 @@ serve(async (req) => {
 4. NÃO gere código, textos criativos, poemas, histórias ou conteúdo não financeiro.
 5. Sempre baseie suas respostas nos dados financeiros concretos da empresa listados abaixo.
 6. Você tem acesso às contas individuais da DRE e do Balanço. Use-as para análises detalhadas quando o usuário perguntar sobre contas específicas.
+7. Use o contexto da empresa (setor, regime tributário, CNAE) para dar respostas mais relevantes ao setor de atuação.
+${empresaSection}
 
 ## Dados Financeiros Atuais da Empresa
 
