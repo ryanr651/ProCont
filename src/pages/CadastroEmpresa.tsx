@@ -65,11 +65,8 @@ const CadastroEmpresa = () => {
     } else if (!isValidCNPJ(formData.cnpj)) {
       newErrors.cnpj = "CNPJ deve ter 14 dígitos";
     }
-    if (!formData.cnae.trim()) {
-      newErrors.cnae = "CNAE é obrigatório";
-    }
-    if (!formData.regime_tributario) {
-      newErrors.regime_tributario = "Regime tributário é obrigatório";
+    if (!formData.contexto.trim()) {
+      newErrors.contexto = "Contexto da empresa é obrigatório";
     }
 
     setErrors(newErrors);
@@ -96,9 +93,9 @@ const CadastroEmpresa = () => {
       const { error } = await supabase.from("empresas").insert({
         nome: formData.nome.trim(),
         cnpj: formData.cnpj,
-        cnae: formData.cnae.trim(),
-        regime_tributario: formData.regime_tributario,
-        contexto: formData.contexto.trim() || null,
+        cnae: formData.cnae.trim() || '',
+        regime_tributario: formData.regime_tributario || 'Outro',
+        contexto: formData.contexto.trim(),
         user_id: user.id,
       });
 
@@ -188,29 +185,44 @@ const CadastroEmpresa = () => {
               )}
             </div>
 
+            {/* Contexto */}
+            <div className="space-y-2">
+              <Label htmlFor="contexto">Contexto da Empresa *</Label>
+              <Textarea
+                id="contexto"
+                placeholder="Descreva o contexto da empresa: setor de atuação, porte, principais atividades, etc. Este campo será utilizado para análises com IA."
+                value={formData.contexto}
+                onChange={(e) => handleChange("contexto", e.target.value)}
+                rows={5}
+                className={`resize-none ${errors.contexto ? "border-destructive" : ""}`}
+              />
+              {errors.contexto && (
+                <p className="text-sm text-destructive">{errors.contexto}</p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Este campo será utilizado pela IA para entender melhor o cenário da empresa.
+              </p>
+            </div>
+
             {/* CNAE */}
             <div className="space-y-2">
-              <Label htmlFor="cnae">CNAE *</Label>
+              <Label htmlFor="cnae">CNAE</Label>
               <Input
                 id="cnae"
                 placeholder="Ex: 6201-5/00"
                 value={formData.cnae}
                 onChange={(e) => handleChange("cnae", e.target.value)}
-                className={errors.cnae ? "border-destructive" : ""}
               />
-              {errors.cnae && (
-                <p className="text-sm text-destructive">{errors.cnae}</p>
-              )}
             </div>
 
             {/* Regime Tributário */}
             <div className="space-y-2">
-              <Label>Regime Tributário *</Label>
+              <Label>Regime Tributário</Label>
               <Select
                 value={formData.regime_tributario}
                 onValueChange={(value) => handleChange("regime_tributario", value)}
               >
-                <SelectTrigger className={errors.regime_tributario ? "border-destructive" : ""}>
+                <SelectTrigger>
                   <SelectValue placeholder="Selecione o regime tributário" />
                 </SelectTrigger>
                 <SelectContent>
@@ -221,25 +233,6 @@ const CadastroEmpresa = () => {
                   ))}
                 </SelectContent>
               </Select>
-              {errors.regime_tributario && (
-                <p className="text-sm text-destructive">{errors.regime_tributario}</p>
-              )}
-            </div>
-
-            {/* Contexto */}
-            <div className="space-y-2">
-              <Label htmlFor="contexto">Contexto da Empresa</Label>
-              <Textarea
-                id="contexto"
-                placeholder="Descreva o contexto da empresa (opcional). Este campo será utilizado futuramente para análises com IA."
-                value={formData.contexto}
-                onChange={(e) => handleChange("contexto", e.target.value)}
-                rows={5}
-                className="resize-none"
-              />
-              <p className="text-xs text-muted-foreground">
-                Este campo será utilizado no futuro para a IA entender melhor o cenário da empresa.
-              </p>
             </div>
 
             {/* Buttons */}
