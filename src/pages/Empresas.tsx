@@ -13,6 +13,8 @@ import {
   LogOut,
   Home,
   Trash2,
+  BarChart3,
+  Upload,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -33,6 +35,7 @@ interface Empresa {
   cnae: string;
   regime_tributario: string;
   created_at: string;
+  hasData?: boolean;
 }
 
 const Empresas = () => {
@@ -57,7 +60,20 @@ const Empresas = () => {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setEmpresas(data || []);
+      
+      // Check which empresas have imported data
+      const empresasWithData = await Promise.all(
+        (data || []).map(async (empresa) => {
+          const { count } = await supabase
+            .from("dre_entries")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id)
+            .eq("empresa_id", empresa.id);
+          return { ...empresa, hasData: (count || 0) > 0 };
+        })
+      );
+      
+      setEmpresas(empresasWithData);
     } catch (error: any) {
       console.error("Erro ao buscar empresas:", error);
       toast({
@@ -186,6 +202,24 @@ const Empresas = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  {empresa.hasData ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => navigate(`/resultado?empresa_id=${empresa.id}`)}
+                    >
+                      <BarChart3 className="w-4 h-4 mr-1" />
+                      Ver Resultado
+                    </Button>
+                  ) : null}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate(`/upload?empresa_id=${empresa.id}`)}
+                  >
+                    <Upload className="w-4 h-4 mr-1" />
+                    Importar
+                  </Button>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive">

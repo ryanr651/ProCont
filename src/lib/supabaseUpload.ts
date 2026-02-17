@@ -19,13 +19,18 @@ export interface UploadResult {
   balanco_validation?: ValidationRow[];
 }
 
-export async function uploadAndProcessFiles(dreFile: File, balancoFile: File, userId: string): Promise<UploadResult> {
+export async function uploadAndProcessFiles(dreFile: File, balancoFile: File, userId: string, empresaId?: string): Promise<UploadResult> {
   const errors: string[] = [];
 
   try {
-    // Clear previous entries for this user
-    await supabase.from("dre_entries").delete().eq("user_id", userId);
-    await supabase.from("balanco_entries").delete().eq("user_id", userId);
+    // Clear previous entries for this user (and empresa if specified)
+    if (empresaId) {
+      await supabase.from("dre_entries").delete().eq("user_id", userId).eq("empresa_id", empresaId);
+      await supabase.from("balanco_entries").delete().eq("user_id", userId).eq("empresa_id", empresaId);
+    } else {
+      await supabase.from("dre_entries").delete().eq("user_id", userId);
+      await supabase.from("balanco_entries").delete().eq("user_id", userId);
+    }
 
     // Parse DRE file - uses AUTO detection (CSV vs XLS/XLSX)
     const dreResult = await parseDREFileAuto(dreFile);
@@ -88,6 +93,7 @@ export async function uploadAndProcessFiles(dreFile: File, balancoFile: File, us
       const { error } = await supabase.from("dre_entries").insert(
         batch.map((entry) => ({
           user_id: userId,
+          empresa_id: empresaId || null,
           periodo: dreResult.periodo,
           descricao: entry.descricao,
           valor: entry.valor,
@@ -110,6 +116,7 @@ export async function uploadAndProcessFiles(dreFile: File, balancoFile: File, us
       const { error } = await supabase.from("balanco_entries").insert(
         batch.map((entry) => ({
           user_id: userId,
+          empresa_id: empresaId || null,
           periodo: balancoResult.periodo,
           conta: entry.conta,
           tipo: entry.tipo,
