@@ -111,7 +111,7 @@ interface DREClassifiedEntry {
   descricao: string;
   valor: number;
   valorAnterior: number | null;
-  grupo: 'receita_bruta' | 'receita_liquida' | 'cmv' | 'lucro_bruto' | 'despesas_operacionais' | 'lucro_operacional' | 'resultado_financeiro' | 'nao_operacional' | 'contribuicao_social' | 'lucro_liquido' | 'contas_resultado' | 'provisoes';
+  grupo: 'receita_bruta' | 'receita_liquida' | 'cmv' | 'lucro_bruto' | 'despesas_operacionais' | 'lucro_operacional' | 'resultado_financeiro' | 'nao_operacional' | 'contribuicao_social' | 'ir' | 'lucro_liquido' | 'contas_resultado' | 'provisoes';
   isExplicit: boolean;
   motivo: string;
   insideCMVBlock?: boolean;
@@ -337,11 +337,22 @@ const Resultado = () => {
       return { grupo: 'provisoes', isExplicit: false, motivo: 'Provisão (começa com PROVISÃO)' };
     }
 
-    // ===== CONTRIBUIÇÃO SOCIAL =====
-    if (desc.includes('RESULTADO ANTES DA CONTRIBUICAO') || 
-        desc.includes('CONTRIBUICAO SOCIAL') || desc.includes('CSLL')) {
-      const isExplicit = desc.includes('RESULTADO ANTES') || desc === 'CONTRIBUICAO SOCIAL' || desc === 'CSLL';
+    // ===== CONTAS RESULTADO (contas que começam com "RESULTADO" — prioridade sobre CSLL e IR) =====
+    if (desc.startsWith('RESULTADO')) {
+      // Exceto as já capturadas acima (RESULTADO FINANCEIRO, RESULTADO BRUTO, RESULTADO OPERACIONAL, RESULTADO LÍQUIDO)
+      return { grupo: 'contas_resultado', isExplicit: false, motivo: 'Conta de Resultado (começa com RESULTADO)' };
+    }
+
+    // ===== CONTRIBUIÇÃO SOCIAL (não começa com RESULTADO) =====
+    if (desc.includes('CONTRIBUICAO SOCIAL') || desc.includes('CSLL')) {
+      const isExplicit = desc === 'CONTRIBUICAO SOCIAL' || desc === 'CSLL';
       return { grupo: 'contribuicao_social', isExplicit, motivo: isExplicit ? 'Linha explícita de Contribuição Social' : 'Componente de Contribuição Social' };
+    }
+
+    // ===== IR / IRPJ / IMPOSTO DE RENDA (não começa com RESULTADO) =====
+    if (desc.includes('IRPJ') || desc.includes('IMPOSTO DE RENDA') || 
+        (desc.includes(' IR ') || desc.endsWith(' IR') || desc === 'IR')) {
+      return { grupo: 'ir', isExplicit: false, motivo: 'Imposto de Renda (IR/IRPJ)' };
     }
 
     if (desc.includes('LUCRO LIQUIDO') || desc.includes('RESULTADO LIQUIDO') ||
@@ -355,17 +366,7 @@ const Resultado = () => {
       return { grupo: 'despesas_operacionais', isExplicit: false, motivo: 'Conta de Impostos (Despesa Operacional)' };
     }
 
-    // ===== IMPOSTOS SOBRE LUCRO (IRPJ, etc.) =====
-    if (desc.includes('IMPOSTO DE RENDA') || desc.includes('IRPJ')) {
-      return { grupo: 'despesas_operacionais', isExplicit: false, motivo: 'Imposto sobre lucro (Despesa Operacional)' };
-    }
-
     // Deduções são classificadas pelo bloco do parser (entre Receita Operacional e Receita Líquida = DEDUCOES)
-
-    // ===== CONTAS RESULTADO (contas que começam com "RESULTADO" e não foram capturadas acima) =====
-    if (desc.startsWith('RESULTADO')) {
-      return { grupo: 'contas_resultado', isExplicit: false, motivo: 'Conta de Resultado (começa com RESULTADO)' };
-    }
 
     // ===== FALLBACK: Contas não classificadas vão para DESPESAS OPERACIONAIS =====
     return { grupo: 'despesas_operacionais', isExplicit: false, motivo: 'Classificado como Despesa Operacional (fallback)' };
@@ -434,6 +435,7 @@ const Resultado = () => {
         'LUCRO_LIQUIDO': 'lucro_liquido',
         'CONTAS_RESULTADO': 'contas_resultado',
         'PROVISOES': 'provisoes',
+        'IR': 'ir',
       };
       return map[parserGrupo] || 'despesas_operacionais';
     };
@@ -627,6 +629,7 @@ const Resultado = () => {
       lucro_liquido: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
       contas_resultado: 'bg-teal-500/20 text-teal-400 border-teal-500/30',
       provisoes: 'bg-rose-500/20 text-rose-400 border-rose-500/30',
+      ir: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
     };
     return colors[grupo];
   };
@@ -648,6 +651,7 @@ const Resultado = () => {
       lucro_liquido: 'Lucro Líquido',
       contas_resultado: 'Contas Resultado',
       provisoes: 'Provisões',
+      ir: 'Imposto de Renda',
     };
     return labels[grupo];
   };
