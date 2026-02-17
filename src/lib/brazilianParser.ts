@@ -549,12 +549,22 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
             normalConta.includes("PROVISÃO")
           ) {
             grupo = "PROVISOES";
+          } else if (normalConta.startsWith("RESULTADO")) {
+            // Contas que começam com "RESULTADO" → CONTAS_RESULTADO (antes de CSLL/IR)
+            grupo = "CONTAS_RESULTADO";
           } else if (
             normalConta.includes("CONTRIBUICAO SOCIAL") ||
-            normalConta.includes("CSLL") ||
-            normalConta.includes("RESULTADO ANTES DA CONTRIBUICAO")
+            normalConta.includes("CSLL")
           ) {
             grupo = "CONTRIBUICAO_SOCIAL";
+          } else if (
+            normalConta.includes("IRPJ") ||
+            normalConta.includes("IMPOSTO DE RENDA") ||
+            normalConta === "IR" ||
+            normalConta.includes(" IR ") ||
+            normalConta.endsWith(" IR")
+          ) {
+            grupo = "IR";
           } else if (normalConta.includes("LUCRO LIQUIDO") || normalConta.includes("RESULTADO DO EXERCICIO")) {
             grupo = "LUCRO_LIQUIDO";
           }
