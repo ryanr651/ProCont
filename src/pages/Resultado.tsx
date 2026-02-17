@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -154,6 +154,8 @@ const Resultado = () => {
   const [selectedEmpresa, setSelectedEmpresa] = useState<EmpresaData | null>(null);
   
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const empresaIdParam = searchParams.get("empresa_id");
   const { user, signOut } = useAuth();
 
   useEffect(() => {
@@ -163,26 +165,27 @@ const Resultado = () => {
     }
 
     loadData();
-  }, [user, navigate]);
+  }, [user, navigate, empresaIdParam]);
 
   const loadData = async () => {
     if (!user) return;
 
     try {
-      // Load DRE entries
-      const { data: dreEntries, error: dreError } = await supabase
-        .from('dre_entries')
-        .select('*')
-        .eq('user_id', user.id);
+      // Build query filters
+      let dreQuery = supabase.from('dre_entries').select('*').eq('user_id', user.id);
+      let balancoQuery = supabase.from('balanco_entries').select('*').eq('user_id', user.id);
 
+      if (empresaIdParam) {
+        dreQuery = dreQuery.eq('empresa_id', empresaIdParam);
+        balancoQuery = balancoQuery.eq('empresa_id', empresaIdParam);
+      }
+
+      // Load DRE entries
+      const { data: dreEntries, error: dreError } = await dreQuery;
       if (dreError) throw dreError;
 
       // Load Balanço entries
-      const { data: balancoEntries, error: balancoError } = await supabase
-        .from('balanco_entries')
-        .select('*')
-        .eq('user_id', user.id);
-
+      const { data: balancoEntries, error: balancoError } = await balancoQuery;
       if (balancoError) throw balancoError;
 
       if (!dreEntries?.length && !balancoEntries?.length) {
@@ -225,15 +228,17 @@ const Resultado = () => {
       }
 
       // Load empresa data
-      const { data: empresas } = await supabase
-        .from("empresas")
-        .select("nome, cnpj, cnae, regime_tributario, contexto")
-        .eq("user_id", user.id)
-        .order("updated_at", { ascending: false })
-        .limit(1);
+      if (empresaIdParam) {
+        const { data: empresas } = await supabase
+          .from("empresas")
+          .select("nome, cnpj, cnae, regime_tributario, contexto")
+          .eq("id", empresaIdParam)
+          .eq("user_id", user.id)
+          .limit(1);
 
-      if (empresas && empresas.length > 0) {
-        setSelectedEmpresa(empresas[0]);
+        if (empresas && empresas.length > 0) {
+          setSelectedEmpresa(empresas[0]);
+        }
       }
 
       // Generate insights

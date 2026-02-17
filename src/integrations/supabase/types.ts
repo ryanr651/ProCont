@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           conta: string
           created_at: string
+          empresa_id: string | null
           hierarchy: string
           id: string
           periodo: string
@@ -30,6 +31,7 @@ export type Database = {
         Insert: {
           conta: string
           created_at?: string
+          empresa_id?: string | null
           hierarchy?: string
           id?: string
           periodo: string
@@ -42,6 +44,7 @@ export type Database = {
         Update: {
           conta?: string
           created_at?: string
+          empresa_id?: string | null
           hierarchy?: string
           id?: string
           periodo?: string
@@ -51,12 +54,21 @@ export type Database = {
           valor?: number
           valor_anterior?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "balanco_entries_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       dre_entries: {
         Row: {
           created_at: string
           descricao: string
+          empresa_id: string | null
           grupo: string | null
           id: string
           periodo: string
@@ -68,6 +80,7 @@ export type Database = {
         Insert: {
           created_at?: string
           descricao: string
+          empresa_id?: string | null
           grupo?: string | null
           id?: string
           periodo: string
@@ -79,6 +92,7 @@ export type Database = {
         Update: {
           created_at?: string
           descricao?: string
+          empresa_id?: string | null
           grupo?: string | null
           id?: string
           periodo?: string
@@ -87,7 +101,15 @@ export type Database = {
           valor?: number
           valor_anterior?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "dre_entries_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       empresas: {
         Row: {

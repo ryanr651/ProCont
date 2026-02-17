@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -31,8 +31,17 @@ const Upload = () => {
   const [loadingEmpresas, setLoadingEmpresas] = useState(true);
 
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const { user, signOut } = useAuth();
+
+  // Pre-select empresa from URL param
+  useEffect(() => {
+    const empresaIdFromUrl = searchParams.get("empresa_id");
+    if (empresaIdFromUrl && !selectedEmpresa) {
+      setSelectedEmpresa(empresaIdFromUrl);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (user) fetchEmpresas();
@@ -55,12 +64,12 @@ const Upload = () => {
   };
 
   const handleProcess = async () => {
-    if (!dreFile || !balancoFile || !user) return;
+    if (!dreFile || !balancoFile || !user || !selectedEmpresa) return;
 
     setIsProcessing(true);
 
     try {
-      const result = await uploadAndProcessFiles(dreFile, balancoFile, user.id);
+      const result = await uploadAndProcessFiles(dreFile, balancoFile, user.id, selectedEmpresa);
 
       if (result.balanco_validation?.length) {
         setValidationRows(result.balanco_validation);
@@ -83,7 +92,7 @@ const Upload = () => {
         description: "Arquivos processados com sucesso",
       });
 
-      navigate("/resultado");
+      navigate(`/resultado?empresa_id=${selectedEmpresa}`);
     } catch (err) {
       toast({
         title: "Erro inesperado",
