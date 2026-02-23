@@ -16,10 +16,15 @@ import {
   Target,
   BarChart3,
   FileSearch,
+  PieChart as PieChartIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ProgressBar } from "@/components/ProgressBar";
 import { IndicatorCard, IndicatorSection, type IndicatorConfig, type AccountDetail } from "@/components/IndicatorCard";
+import {
+  RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar,
+  PieChart, Pie, Cell, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
+} from "recharts";
 
 interface DREClassifiedEntry {
   descricao: string;
@@ -438,9 +443,48 @@ export function DashboardIndicadores({
     },
   ];
 
+  // ===== Chart Data =====
+  const PIE_COLORS = ["hsl(142, 76%, 36%)", "hsl(0, 84%, 60%)", "hsl(47, 96%, 53%)", "hsl(221, 83%, 53%)", "hsl(262, 83%, 58%)"];
+  const BALANCE_COLORS = ["hsl(221, 83%, 53%)", "hsl(262, 83%, 58%)"];
+  const CAPITAL_COLORS = ["hsl(0, 84%, 60%)", "hsl(47, 96%, 53%)", "hsl(142, 76%, 36%)"];
+
+  // Normalize a value to 0-100 range for radar
+  const clamp = (v: number, max: number) => Math.min(Math.max((v / max) * 100, 0), 100);
+
+  const radarData = useMemo(() => [
+    { label: "M. Bruta", value: clamp(dreData.margemBruta, 60) },
+    { label: "M. Oper.", value: clamp(dreData.margemOperacional, 40) },
+    { label: "M. Líquida", value: clamp(dreData.margemLiquida, 30) },
+    { label: "M. EBITDA", value: clamp(margemEbitda, 50) },
+    { label: "Liq. Corrente", value: clamp(liquidezCorrente, 3) },
+    { label: "ROE", value: clamp(roe, 30) },
+    { label: "ROA", value: clamp(roa, 15) },
+  ], [dreData, margemEbitda, liquidezCorrente, roe, roa]);
+
+  const drePieData = useMemo(() => {
+    const items = [
+      { name: "CMV", value: Math.abs(dreData.cmv) },
+      { name: "Desp. Operacionais", value: Math.abs(dreData.despesasOperacionais) },
+      { name: "Lucro Líquido", value: Math.abs(dreData.lucroLiquido) },
+    ].filter(d => d.value > 0);
+    const rest = Math.abs(dreData.receitaLiquida) - items.reduce((s, i) => s + i.value, 0);
+    if (rest > 0) items.push({ name: "Outros", value: rest });
+    return items;
+  }, [dreData]);
+
+  const ativoPieData = useMemo(() => [
+    { name: "Ativo Circulante", value: balancoData.ativoCirculante },
+    { name: "Ativo Não Circulante", value: balancoData.ativoNaoCirculante },
+  ].filter(d => d.value > 0), [balancoData]);
+
+  const capitalPieData = useMemo(() => [
+    { name: "Passivo Circulante", value: balancoData.passivoCirculante },
+    { name: "Passivo Não Circulante", value: balancoData.passivoNaoCirculante },
+    { name: "Patrimônio Líquido", value: Math.abs(balancoData.patrimonioLiquido) },
+  ].filter(d => d.value > 0), [balancoData]);
+
   return (
     <>
-      {/* DRE Indicators */}
       <IndicatorSection title="Demonstração do Resultado (DRE)" icon={TrendingUp}>
         {dreIndicators.map((config, i) => (
           <IndicatorCard key={i} config={config} />
@@ -454,98 +498,83 @@ export function DashboardIndicadores({
         ))}
       </IndicatorSection>
 
+      {/* Gráficos Visuais */}
+      <section className="mb-10">
+        <h2 className="font-display text-2xl font-bold mb-6 flex items-center gap-3">
+          <PieChartIcon className="w-6 h-6 text-primary" />
+          Visão Gráfica
+        </h2>
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* Radar Chart – Indicadores Financeiros */}
+          <div className="glass-card p-6">
+            <h3 className="font-display font-semibold mb-4">Radar de Indicadores</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="70%">
+                <PolarGrid stroke="hsl(var(--border))" />
+                <PolarAngleAxis dataKey="label" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
+                <PolarRadiusAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} domain={[0, 100]} />
+                <Radar name="Indicador" dataKey="value" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.25} strokeWidth={2} />
+              </RadarChart>
+            </ResponsiveContainer>
+            <p className="text-xs text-muted-foreground mt-2 text-center">Valores normalizados de 0 a 100 para comparação visual</p>
+          </div>
+
+          {/* Pie Chart – Composição da DRE */}
+          <div className="glass-card p-6">
+            <h3 className="font-display font-semibold mb-4">Composição da DRE</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie data={drePieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} innerRadius={50} paddingAngle={2} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
+                  {drePieData.map((_, idx) => (
+                    <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                  ))}
+                </Pie>
+                <RechartsTooltip formatter={(v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Pie Chart – Composição do Ativo */}
+          <div className="glass-card p-6">
+            <h3 className="font-display font-semibold mb-4">Composição do Ativo</h3>
+            <ResponsiveContainer width="100%" height={280}>
+              <PieChart>
+                <Pie data={ativoPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+                  {ativoPieData.map((_, idx) => (
+                    <Cell key={idx} fill={BALANCE_COLORS[idx % BALANCE_COLORS.length]} />
+                  ))}
+                </Pie>
+                <RechartsTooltip formatter={(v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Pie Chart – Estrutura de Capital */}
+          <div className="glass-card p-6">
+            <h3 className="font-display font-semibold mb-4">Estrutura de Capital</h3>
+            <ResponsiveContainer width="100%" height={280}>
+              <PieChart>
+                <Pie data={capitalPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+                  {capitalPieData.map((_, idx) => (
+                    <Cell key={idx} fill={CAPITAL_COLORS[idx % CAPITAL_COLORS.length]} />
+                  ))}
+                </Pie>
+                <RechartsTooltip formatter={(v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </section>
+
       {/* Balanço */}
       <IndicatorSection title="Balanço Patrimonial" icon={Scale}>
         {balancoIndicators.map((config, i) => (
           <IndicatorCard key={i} config={config} />
         ))}
       </IndicatorSection>
-
-      {/* Composição do Ativo/Passivo */}
-      <section className="mb-10">
-        <h2 className="font-display text-2xl font-bold mb-6 flex items-center gap-3">
-          <Building className="w-6 h-6 text-primary" />
-          Composição Patrimonial
-        </h2>
-        <div className="grid md:grid-cols-2 gap-6">
-          <div className="glass-card p-6">
-            <h3 className="font-display font-semibold mb-4">Composição do Ativo</h3>
-            <div className="space-y-4">
-              <div>
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-muted-foreground">Ativo Circulante</span>
-                  <span className="text-foreground">
-                    {balancoData.ativoCirculante.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                  </span>
-                </div>
-                <ProgressBar
-                  value={balancoData.ativoTotal > 0 ? (balancoData.ativoCirculante / balancoData.ativoTotal) * 100 : 0}
-                  showPercentage={false}
-                  variant="purple"
-                />
-              </div>
-              <div>
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-muted-foreground">Ativo Não Circulante</span>
-                  <span className="text-foreground">
-                    {balancoData.ativoNaoCirculante.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                  </span>
-                </div>
-                <ProgressBar
-                  value={balancoData.ativoTotal > 0 ? (balancoData.ativoNaoCirculante / balancoData.ativoTotal) * 100 : 0}
-                  showPercentage={false}
-                  variant="blue"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="glass-card p-6">
-            <h3 className="font-display font-semibold mb-4">Estrutura de Capital</h3>
-            <div className="space-y-4">
-              <div>
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-muted-foreground">Passivo Circulante</span>
-                  <span className="text-foreground">
-                    {balancoData.passivoCirculante.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                  </span>
-                </div>
-                <ProgressBar
-                  value={balancoData.ativoTotal > 0 ? (balancoData.passivoCirculante / balancoData.ativoTotal) * 100 : 0}
-                  showPercentage={false}
-                  variant="purple"
-                />
-              </div>
-              <div>
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-muted-foreground">Passivo Não Circulante</span>
-                  <span className="text-foreground">
-                    {balancoData.passivoNaoCirculante.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                  </span>
-                </div>
-                <ProgressBar
-                  value={balancoData.ativoTotal > 0 ? (balancoData.passivoNaoCirculante / balancoData.ativoTotal) * 100 : 0}
-                  showPercentage={false}
-                  variant="blue"
-                />
-              </div>
-              <div>
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-muted-foreground">Patrimônio Líquido</span>
-                  <span className="text-foreground">
-                    {balancoData.patrimonioLiquido.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                  </span>
-                </div>
-                <ProgressBar
-                  value={balancoData.ativoTotal > 0 ? (balancoData.patrimonioLiquido / balancoData.ativoTotal) * 100 : 0}
-                  showPercentage={false}
-                  variant="gradient"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
 
       {/* Solvência & Rentabilidade */}
       <IndicatorSection title="Solvência & Rentabilidade" icon={ShieldCheck}>
