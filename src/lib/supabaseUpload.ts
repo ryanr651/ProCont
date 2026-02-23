@@ -17,13 +17,73 @@ export interface UploadResult {
   balanco_entries?: ParsedBalancoEntry[];
   balanco_metrics?: BalancoMetrics;
   balanco_validation?: ValidationRow[];
+  ai_stats?: { total: number; from_cache: number; from_ai: number };
 }
 
-export async function uploadAndProcessFiles(dreFile: File, balancoFile: File, userId: string, empresaId?: string): Promise<UploadResult> {
+interface ClassificationResult {
+  descricao: string;
+  grupo: string;
+  motivo: string;
+}
+
+/**
+ * Call the AI classification edge function
+ */
+async function classifyWithAI(
+  entries: { descricao: string; valor: number; valor_anterior?: number | null }[],
+  contextoTipo: string
+): Promise<{ classifications: ClassificationResult[]; stats: { total: number; from_cache: number; from_ai: number } } | null> {
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData?.session?.access_token;
+    if (!token) return null;
+
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/classify-accounts`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({
+          entries: entries.map((e, i) => ({
+            descricao: e.descricao,
+            valor: e.valor,
+            valor_anterior: e.valor_anterior,
+            posicao_relativa: i,
+          })),
+          contexto_tipo: contextoTipo,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      console.error("AI classification error:", response.status, errData);
+      return null;
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("AI classification failed:", error);
+    return null;
+  }
+}
+
+export async function uploadAndProcessFiles(
+  dreFile: File,
+  balancoFile: File,
+  userId: string,
+  empresaId?: string,
+  onProgress?: (stage: string) => void
+): Promise<UploadResult> {
   const errors: string[] = [];
 
   try {
-    // Clear previous entries for this user (and empresa if specified)
+    // Step 1: Clear previous entries
+    onProgress?.("Limpando dados anteriores...");
     if (empresaId) {
       await supabase.from("dre_entries").delete().eq("user_id", userId).eq("empresa_id", empresaId);
       await supabase.from("balanco_entries").delete().eq("user_id", userId).eq("empresa_id", empresaId);
@@ -32,27 +92,19 @@ export async function uploadAndProcessFiles(dreFile: File, balancoFile: File, us
       await supabase.from("balanco_entries").delete().eq("user_id", userId);
     }
 
-    // Parse DRE file - uses AUTO detection (CSV vs XLS/XLSX)
+    // Step 2: Parse files
+    onProgress?.("Lendo arquivos contábeis...");
     const dreResult = await parseDREFileAuto(dreFile);
     errors.push(...dreResult.errors);
 
-    // Parse Balanço file - uses AUTO detection (CSV vs XLS/XLSX)
     const balancoResult = await parseBalancoFileAuto(balancoFile);
     errors.push(...balancoResult.errors);
 
-    // TOLERANT VALIDATION (especialmente para XLS):
-    // - Não use `entries.length === 0` como critério único
-    // - Dependa da flag `parsed` para saber se houve leitura/interpretação real
     const dreParsed = !!dreResult.parsed;
     const balancoParsed = !!balancoResult.parsed;
-    // === XLS SAFE: identifica se EXISTEM valores numéricos válidos ===
-    // Para XLS, `parsed === true` já significa leitura correta,
-    // mesmo que não existam entries estruturadas.
     const dreHasNumeric = dreParsed === true;
-
     const balancoHasNumeric = balancoParsed === true || balancoResult.metrics?.ativoTotal !== 0;
 
-    // Log de diagnóstico (temporário)
     console.log("Resumo XLS:", {
       dre_entries: dreResult.entries.length,
       balanco_entries: balancoResult.entries.length,
@@ -61,17 +113,6 @@ export async function uploadAndProcessFiles(dreFile: File, balancoFile: File, us
       balancoParsed,
     });
 
-    // Log explícito do parsing real (temporário)
-    console.log("PARSED RESULT", {
-      dre_entries_count: dreResult.entries.length,
-      balanco_entries_count: balancoResult.entries.length,
-      dre_first_entries: dreResult.entries.slice(0, 5),
-      balanco_first_entries: balancoResult.entries.slice(0, 5),
-      balanco_metrics: balancoResult.metrics,
-    });
-
-    // Validação tolerante: só bloqueia se NENHUM dado foi encontrado
-    // XLS com números, mesmo sem estrutura perfeita, não será bloqueado
     const hasAnyValidData =
       dreHasNumeric || balancoHasNumeric || dreResult.entries.length > 0 || balancoResult.entries.length > 0;
 
@@ -86,7 +127,40 @@ export async function uploadAndProcessFiles(dreFile: File, balancoFile: File, us
       };
     }
 
-    // Insert DRE entries in batches
+    // Step 3: AI Classification for DRE entries
+    let aiStats: { total: number; from_cache: number; from_ai: number } | undefined;
+
+    if (dreResult.entries.length > 0) {
+      onProgress?.("IA analisando estrutura contábil...");
+
+      const aiResult = await classifyWithAI(
+        dreResult.entries.map((e) => ({
+          descricao: e.descricao,
+          valor: e.valor,
+          valor_anterior: e.valor_anterior,
+        })),
+        "dre"
+      );
+
+      if (aiResult && aiResult.classifications.length > 0) {
+        // Apply AI classifications to entries
+        for (let i = 0; i < dreResult.entries.length; i++) {
+          const classification = aiResult.classifications[i];
+          if (classification) {
+            dreResult.entries[i].grupo = classification.grupo;
+          }
+        }
+        aiStats = aiResult.stats;
+        console.log("IA classificou:", aiStats);
+      } else {
+        // Fallback: keep parser classifications (regex-based)
+        console.warn("AI classification failed, using parser fallback");
+        errors.push("Classificação via IA falhou. Usando classificação local como fallback.");
+      }
+    }
+
+    // Step 4: Insert DRE entries
+    onProgress?.("Salvando dados da DRE...");
     let insertedDre = 0;
     const dreBatches = chunkArray(dreResult.entries, 500);
     for (const batch of dreBatches) {
@@ -109,7 +183,8 @@ export async function uploadAndProcessFiles(dreFile: File, balancoFile: File, us
       }
     }
 
-    // Insert Balanço entries in batches
+    // Step 5: Insert Balanço entries
+    onProgress?.("Salvando dados do Balanço...");
     let insertedBalanco = 0;
     const balancoBatches = chunkArray(balancoResult.entries, 500);
     for (const batch of balancoBatches) {
@@ -133,7 +208,6 @@ export async function uploadAndProcessFiles(dreFile: File, balancoFile: File, us
       }
     }
 
-    // Aviso de UX: arquivo foi lido (parsed=true), mas nenhuma linha foi materializada/persistida.
     if (dreParsed && insertedDre === 0) {
       errors.push("DRE foi lido, mas nenhuma linha foi materializada para persistência (entries=0).");
     }
@@ -141,12 +215,9 @@ export async function uploadAndProcessFiles(dreFile: File, balancoFile: File, us
       errors.push("Balanço foi lido, mas nenhuma linha foi materializada para persistência (entries=0).");
     }
 
-    // Salvar validação no banco para visualização posterior
+    // Save validation logs
     if (balancoResult.validationRows && balancoResult.validationRows.length > 0) {
-      // Deletar validação anterior
       await supabase.from("xls_validation_logs").delete().eq("user_id", userId).eq("tipo", "balanco");
-      
-      // Inserir nova validação
       await supabase.from("xls_validation_logs").insert([{
         user_id: userId,
         tipo: "balanco" as const,
@@ -154,6 +225,8 @@ export async function uploadAndProcessFiles(dreFile: File, balancoFile: File, us
         validation_rows: JSON.parse(JSON.stringify(balancoResult.validationRows)),
       }]);
     }
+
+    onProgress?.("Concluído!");
 
     return {
       success: dreParsed || balancoParsed,
@@ -164,6 +237,7 @@ export async function uploadAndProcessFiles(dreFile: File, balancoFile: File, us
       balanco_entries: balancoResult.entries,
       balanco_metrics: balancoResult.metrics,
       balanco_validation: balancoResult.validationRows,
+      ai_stats: aiStats,
     };
   } catch (error) {
     return {
