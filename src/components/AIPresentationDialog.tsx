@@ -743,51 +743,76 @@ export function AIPresentationDialog({
               Math.abs(dreData.lucroBruto), Math.abs(dreData.despesasOperacionais),
               Math.abs(dreData.lucroLiquido)
             ];
-            const chartData = [{
-              name: 'DRE',
-              labels: ['Receita Líquida', 'CMV / Custos', 'Lucro Bruto', 'Desp. Operacionais', 'Lucro Líquido'],
-              values: vals
-            }];
+            const labels = ['Receita Líquida', 'CMV / Custos', 'Lucro Bruto', 'Desp. Operacionais', 'Lucro Líquido'];
+            const barColors = [colors.accent, colors.red, colors.emerald, colors.amber, colors.cyan];
 
-            // Add subtitle with formatted values
-            pptSlide.addText('Valores em Reais (R$)', {
-              x: 1, y: 1.55, w: 11.33, h: 0.35,
+            // Use individual series per bar for individual colors + 3D effect
+            const chartData = labels.map((label, i) => ({
+              name: label,
+              labels: [label],
+              values: [vals[i]]
+            }));
+
+            // Subtitle
+            pptSlide.addText('Valores em Reais (R$) — Composição do Resultado', {
+              x: 1, y: 1.5, w: 11.33, h: 0.35,
               fontSize: 11, fontFace: 'Segoe UI', italic: true, color: colors.textLight
             });
 
-            pptSlide.addChart(pptx.ChartType.bar, chartData, {
-              x: 1, y: 1.9, w: 11.33, h: 4.4,
+            pptSlide.addChart(pptx.ChartType.bar3d, chartData, {
+              x: 0.8, y: 1.85, w: 11.73, h: 4.3,
               showValue: true,
               dataLabelColor: colors.text,
-              dataLabelFontSize: 11,
+              dataLabelFontSize: 12,
               dataLabelFontBold: true,
               dataLabelFormatCode: '#,##0',
+              dataLabelPosition: 'outEnd',
               catAxisLabelFontSize: 12,
               catAxisLabelFontBold: true,
               catAxisLabelColor: colors.text,
+              catAxisOrientation: 'minMax',
               valAxisHidden: true,
-              chartColors: [colors.accent, colors.red, colors.emerald, colors.amber, colors.cyan],
-              plotArea: { fill: { color: colors.white }, border: { color: colors.border, pt: 0.5 } },
+              chartColors: barColors,
+              plotArea: { fill: { color: colors.white } },
               catGridLine: { style: 'none' },
               valGridLine: { style: 'none' },
               showLegend: false,
-              barGapWidthPct: 80,
+              barGapWidthPct: 60,
+              bar3DShape: 'cylinder',
+              shadow: { type: 'outer', blur: 6, offset: 3, color: '000000', opacity: 0.2 },
             });
 
-            // Add value labels below chart as summary cards
+            // Summary cards below the chart
             const cardLabels = ['Receita Líq.', 'CMV', 'Lucro Bruto', 'Desp. Op.', 'Lucro Líq.'];
-            const cardColors = [colors.accent, colors.red, colors.emerald, colors.amber, colors.cyan];
             cardLabels.forEach((label, i) => {
-              const cardX = 1 + (i * 2.4);
+              const cardW = 2.2;
+              const gap = 0.2;
+              const totalW = (cardW * 5) + (gap * 4);
+              const startX = (13.33 - totalW) / 2;
+              const cardX = startX + (i * (cardW + gap));
+
+              // Card background
               pptSlide.addShape(pptx.ShapeType.roundRect, {
-                x: cardX, y: 6.35, w: 2.15, h: 0.55,
-                fill: { color: colors.lightGray },
-                line: { color: cardColors[i], width: 1.5 },
-                rectRadius: 0.06
+                x: cardX, y: 6.25, w: cardW, h: 0.65,
+                fill: { color: colors.white },
+                line: { color: barColors[i], width: 2 },
+                rectRadius: 0.08,
+                shadow: { type: 'outer', blur: 4, offset: 2, color: '000000', opacity: 0.1 }
               });
+              // Color accent bar on top
+              pptSlide.addShape(pptx.ShapeType.rect, {
+                x: cardX, y: 6.25, w: cardW, h: 0.06,
+                fill: { color: barColors[i] }
+              });
+              // Label
+              pptSlide.addText(label, {
+                x: cardX, y: 6.26, w: cardW, h: 0.3,
+                fontSize: 8, fontFace: 'Segoe UI', color: colors.textLight, align: 'center'
+              });
+              // Value
               pptSlide.addText(formatCurrencyLabel(vals[i]), {
-                x: cardX, y: 6.35, w: 2.15, h: 0.55,
-                fontSize: 11, fontFace: 'Segoe UI', bold: true, color: cardColors[i], align: 'center'
+                x: cardX, y: 6.5, w: cardW, h: 0.35,
+                fontSize: 12, fontFace: 'Segoe UI', bold: true, color: barColors[i], align: 'center'
               });
             });
 
