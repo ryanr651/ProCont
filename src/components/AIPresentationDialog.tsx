@@ -427,65 +427,142 @@ export function AIPresentationDialog({
     
     setIsExporting(true);
     try {
-      // Create a container for all slides
-      const container = document.createElement('div');
-      container.style.cssText = 'background: white; padding: 40px; width: 1000px;';
-      
-      // Add header
-      const header = document.createElement('div');
       const brandName = branding?.nome_empresa || 'ProCont';
-      header.innerHTML = `
-        <div style="text-align: center; margin-bottom: 40px; border-bottom: 3px solid #8b5cf6; padding-bottom: 20px;">
-          ${branding?.logo_url ? `<img src="${branding.logo_url}" alt="Logo" style="max-height: 60px; max-width: 200px; margin-bottom: 10px;" crossorigin="anonymous" />` : ''}
-          <h1 style="color: #1a1a2e; font-size: 28px; margin: 0;">📊 Apresentação Executiva</h1>
-          <p style="color: #444; margin-top: 8px; font-weight: 600;">${brandName}</p>
-          ${branding?.cnpj_empresa ? `<p style="color: #666; margin-top: 2px; font-size: 13px;">CNPJ: ${branding.cnpj_empresa}</p>` : ''}
-          <p style="color: #666; margin-top: 6px;">${empresaNome} - ${new Date().toLocaleDateString('pt-BR')}</p>
-        </div>
-      `;
-      container.appendChild(header);
+      const currentDate = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+      
+      const container = document.createElement('div');
+      container.style.cssText = 'background: white; width: 1000px;';
+      
+      container.innerHTML = `
+        <style>
+          * { font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; box-sizing: border-box; margin: 0; padding: 0; }
+          .cover-page {
+            height: 1400px;
+            background: linear-gradient(135deg, #1e1b4b 0%, #312e81 40%, #4338ca 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 80px;
+            position: relative;
+            overflow: hidden;
+          }
+          .cover-page::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -30%;
+            width: 800px;
+            height: 800px;
+            background: radial-gradient(circle, rgba(139,92,246,0.3) 0%, transparent 70%);
+            border-radius: 50%;
+          }
+          .cover-page::after {
+            content: '';
+            position: absolute;
+            bottom: -40%;
+            left: -20%;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(99,102,241,0.2) 0%, transparent 70%);
+            border-radius: 50%;
+          }
+          .cover-logo { position: relative; z-index: 2; margin-bottom: 40px; }
+          .cover-logo img { max-height: 80px; max-width: 250px; filter: brightness(0) invert(1); }
+          .cover-title { position: relative; z-index: 2; font-size: 42px; font-weight: 800; color: white; letter-spacing: -1px; line-height: 1.2; margin-bottom: 16px; }
+          .cover-subtitle { position: relative; z-index: 2; font-size: 22px; color: rgba(255,255,255,0.8); font-weight: 300; margin-bottom: 40px; }
+          .cover-empresa { position: relative; z-index: 2; background: rgba(255,255,255,0.15); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2); border-radius: 16px; padding: 24px 48px; }
+          .cover-empresa-name { font-size: 24px; font-weight: 700; color: white; margin-bottom: 4px; }
+          .cover-empresa-info { font-size: 14px; color: rgba(255,255,255,0.7); }
+          .cover-date { position: relative; z-index: 2; margin-top: 40px; font-size: 14px; color: rgba(255,255,255,0.5); }
+          .cover-brand-bar { position: absolute; bottom: 0; left: 0; right: 0; height: 6px; background: linear-gradient(90deg, #8b5cf6, #06b6d4, #10b981); z-index: 2; }
 
-      // Add each slide as a section
-      slides.forEach((slide, index) => {
-        const slideDiv = document.createElement('div');
-        slideDiv.style.cssText = 'margin-bottom: 40px; page-break-inside: avoid;';
-        
-        const highlightColor = slide.highlight === 'positive' ? '#10b981' : 
-                               slide.highlight === 'negative' ? '#ef4444' : '#8b5cf6';
-        
-        slideDiv.innerHTML = `
-          <div style="border-left: 4px solid ${highlightColor}; padding-left: 20px; margin-bottom: 20px;">
-            <h2 style="color: #1a1a2e; font-size: 20px; margin: 0 0 15px 0;">${slide.title}</h2>
-            ${slide.type === 'charts' ? `
-              <p style="color: #666; font-style: italic;">📈 Gráfico disponível na versão PowerPoint</p>
-            ` : `
-              <ul style="margin: 0; padding-left: 20px; color: #333;">
-                ${slide.content.map(item => `<li style="margin-bottom: 8px; line-height: 1.6;">${item}</li>`).join('')}
-              </ul>
-            `}
+          .pdf-body { padding: 50px 60px; }
+          .section { margin-bottom: 50px; page-break-inside: avoid; }
+          .section-header { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; padding-bottom: 14px; border-bottom: 2px solid #e5e7eb; }
+          .section-icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 22px; color: white; flex-shrink: 0; }
+          .section-icon-positive { background: linear-gradient(135deg, #059669, #10b981); }
+          .section-icon-negative { background: linear-gradient(135deg, #dc2626, #ef4444); }
+          .section-icon-neutral { background: linear-gradient(135deg, #7c3aed, #8b5cf6); }
+          .section-title { font-size: 22px; font-weight: 700; color: #1e293b; }
+          .section-badge { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; padding: 4px 12px; border-radius: 20px; }
+          .badge-positive { background: #ecfdf5; color: #059669; }
+          .badge-negative { background: #fef2f2; color: #dc2626; }
+          .badge-neutral { background: #f5f3ff; color: #7c3aed; }
+
+          .content-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px 28px; }
+          .content-item { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f1f5f9; line-height: 1.7; font-size: 15px; color: #334155; }
+          .content-item:last-child { border-bottom: none; }
+          .content-bullet { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 8px; }
+          .bullet-positive { background: #10b981; }
+          .bullet-negative { background: #ef4444; }
+          .bullet-neutral { background: #8b5cf6; }
+          .chart-placeholder { text-align: center; padding: 40px; color: #94a3b8; font-style: italic; background: #f1f5f9; border-radius: 12px; border: 2px dashed #cbd5e1; }
+
+          .pdf-footer { margin-top: 60px; padding: 24px 0; border-top: 2px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #94a3b8; }
+          .footer-brand { font-weight: 600; color: #7c3aed; }
+        </style>
+
+        <!-- COVER PAGE -->
+        <div class="cover-page">
+          ${branding?.logo_url ? `<div class="cover-logo"><img src="${branding.logo_url}" alt="Logo" crossorigin="anonymous" /></div>` : ''}
+          <div class="cover-title">Apresentação Executiva</div>
+          <div class="cover-subtitle">Análise Financeira com Inteligência Artificial</div>
+          <div class="cover-empresa">
+            <div class="cover-empresa-name">${empresaNome}</div>
+            ${branding?.cnpj_empresa ? `<div class="cover-empresa-info">CNPJ: ${branding.cnpj_empresa}</div>` : ''}
           </div>
-        `;
-        container.appendChild(slideDiv);
-      });
+          <div class="cover-date">${currentDate}</div>
+          <div class="cover-brand-bar"></div>
+        </div>
 
-      // Add footer
-      const footer = document.createElement('div');
-      footer.innerHTML = `
-        <div style="text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; color: #999; font-size: 12px;">
-          Gerado por ${branding?.nome_empresa || 'ProCont'} com Inteligência Artificial
-          ${branding?.telefone_fixo ? `<br/>Contato: ${branding.telefone_fixo}` : ''}
+        <!-- CONTENT -->
+        <div class="pdf-body">
+          ${slides.filter(s => s.type !== 'cover').map((slide) => {
+            const hl = slide.highlight || 'neutral';
+            const iconEmoji = slide.type === 'charts' ? '📊' : slide.type === 'profitability' ? '💰' : slide.type === 'liquidity' ? '💧' : slide.type === 'structure' ? '🏗️' : slide.type === 'strengths' ? '✅' : slide.type === 'risks' ? '⚠️' : slide.type === 'recommendations' ? '🎯' : slide.type === 'conclusion' ? '📋' : '📄';
+            const badgeText = hl === 'positive' ? 'Favorável' : hl === 'negative' ? 'Atenção' : '';
+            
+            return `
+              <div class="section">
+                <div class="section-header">
+                  <div class="section-icon section-icon-${hl}">${iconEmoji}</div>
+                  <div class="section-title">${slide.title}</div>
+                  ${badgeText ? `<span class="section-badge badge-${hl}">${badgeText}</span>` : ''}
+                </div>
+                ${slide.type === 'charts' ? `
+                  <div class="chart-placeholder">📈 Gráficos interativos disponíveis na versão PowerPoint</div>
+                ` : `
+                  <div class="content-card">
+                    ${slide.content.map(item => `
+                      <div class="content-item">
+                        <div class="content-bullet bullet-${hl}"></div>
+                        <div>${item}</div>
+                      </div>
+                    `).join('')}
+                  </div>
+                `}
+              </div>
+            `;
+          }).join('')}
+
+          <div class="pdf-footer">
+            <div><span class="footer-brand">${brandName}</span> — Análise gerada com IA</div>
+            <div>${currentDate}${branding?.telefone_fixo ? ` | ${branding.telefone_fixo}` : ''}</div>
+          </div>
         </div>
       `;
-      container.appendChild(footer);
 
       document.body.appendChild(container);
 
       const opt = {
-        margin: 10,
+        margin: 0,
         filename: `apresentacao-${empresaNome.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2 },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
+        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
       };
 
       await html2pdf().set(opt).from(container).save();
@@ -517,125 +594,248 @@ export function AIPresentationDialog({
       pptx.author = brandName;
       pptx.title = `Análise Financeira - ${empresaNome}`;
       pptx.subject = 'Apresentação Executiva';
+      pptx.layout = 'LAYOUT_WIDE'; // 13.33 x 7.5 inches
 
-      // Define master slide
-      pptx.defineSlideMaster({
-        title: 'MASTER_SLIDE',
-        background: { color: 'FFFFFF' },
-        objects: [
-          { rect: { x: 0, y: '90%', w: '100%', h: '10%', fill: { color: '8b5cf6' } } },
-          { text: { text: `${brandName} - Análise Financeira com IA${branding?.telefone_fixo ? ` | ${branding.telefone_fixo}` : ''}`, options: { x: 0.5, y: '92%', w: '90%', h: 0.5, fontSize: 10, color: 'FFFFFF' } } }
-        ]
+      // Color palette
+      const colors = {
+        darkBg: '1E1B4B',
+        midBg: '312E81',
+        accent: '8B5CF6',
+        accentLight: 'A78BFA',
+        positive: '059669',
+        positiveLight: 'ECFDF5',
+        negative: 'DC2626',
+        negativeLight: 'FEF2F2',
+        text: '1E293B',
+        textLight: '64748B',
+        white: 'FFFFFF',
+        lightGray: 'F8FAFC',
+        border: 'E2E8F0',
+        cyan: '06B6D4',
+        emerald: '10B981',
+        amber: 'F59E0B',
+        red: 'EF4444',
+      };
+
+      // ========== COVER SLIDE ==========
+      const coverSlide = pptx.addSlide();
+      coverSlide.background = { fill: colors.darkBg };
+      
+      // Decorative circles
+      coverSlide.addShape(pptx.ShapeType.ellipse, { x: 8.5, y: -2, w: 6, h: 6, fill: { color: colors.accent, transparency: 80 } });
+      coverSlide.addShape(pptx.ShapeType.ellipse, { x: -2, y: 4, w: 5, h: 5, fill: { color: colors.midBg, transparency: 50 } });
+      
+      // Bottom gradient bar
+      coverSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 7.2, w: 13.33, h: 0.3, fill: { color: colors.accent } });
+
+      // Logo (if available)
+      if (branding?.logo_url) {
+        try {
+          coverSlide.addImage({ path: branding.logo_url, x: 5.17, y: 0.8, w: 3, h: 1, sizing: { type: 'contain', w: 3, h: 1 } });
+        } catch { /* logo might fail, continue */ }
+      }
+
+      // Title
+      coverSlide.addText('Apresentação Executiva', {
+        x: 1.5, y: 2.2, w: 10.33, h: 1.2,
+        fontSize: 40, fontFace: 'Segoe UI', bold: true, color: colors.white,
+        align: 'center'
+      });
+      coverSlide.addText('Análise Financeira com Inteligência Artificial', {
+        x: 2.5, y: 3.3, w: 8.33, h: 0.6,
+        fontSize: 20, fontFace: 'Segoe UI Light', color: colors.accentLight,
+        align: 'center'
       });
 
-      slides.forEach((slide, index) => {
-        const pptSlide = pptx.addSlide({ masterName: 'MASTER_SLIDE' });
+      // Company card
+      coverSlide.addShape(pptx.ShapeType.roundRect, {
+        x: 3.67, y: 4.3, w: 6, h: 1.5,
+        fill: { color: colors.white, transparency: 88 },
+        line: { color: colors.white, width: 1, transparency: 70 },
+        rectRadius: 0.15
+      });
+      coverSlide.addText(empresaNome, {
+        x: 3.67, y: 4.4, w: 6, h: 0.8,
+        fontSize: 22, fontFace: 'Segoe UI', bold: true, color: colors.white,
+        align: 'center'
+      });
+      if (branding?.cnpj_empresa) {
+        coverSlide.addText(`CNPJ: ${branding.cnpj_empresa}`, {
+          x: 3.67, y: 5.1, w: 6, h: 0.5,
+          fontSize: 13, fontFace: 'Segoe UI', color: colors.accentLight,
+          align: 'center'
+        });
+      }
 
-        // Slide title
+      // Date
+      coverSlide.addText(new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }), {
+        x: 4.17, y: 6.3, w: 5, h: 0.5,
+        fontSize: 13, fontFace: 'Segoe UI', color: colors.accentLight, align: 'center'
+      });
+
+      // ========== CONTENT SLIDES ==========
+      slides.filter(s => s.type !== 'cover').forEach((slide) => {
+        const pptSlide = pptx.addSlide();
+        pptSlide.background = { fill: colors.white };
+
+        // Top accent bar
+        pptSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 13.33, h: 0.06, fill: { color: colors.accent } });
+
+        // Footer bar
+        pptSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 7.0, w: 13.33, h: 0.5, fill: { color: colors.lightGray } });
+        pptSlide.addText(`${brandName}${branding?.telefone_fixo ? `  |  ${branding.telefone_fixo}` : ''}`, {
+          x: 0.5, y: 7.05, w: 6, h: 0.4,
+          fontSize: 9, fontFace: 'Segoe UI', color: colors.textLight
+        });
+        pptSlide.addText(empresaNome, {
+          x: 7, y: 7.05, w: 5.83, h: 0.4,
+          fontSize: 9, fontFace: 'Segoe UI', color: colors.textLight, align: 'right'
+        });
+
+        // Slide number indicator
+        const hlColor = slide.highlight === 'positive' ? colors.positive : slide.highlight === 'negative' ? colors.negative : colors.accent;
+
+        // Title area with accent left border
+        pptSlide.addShape(pptx.ShapeType.rect, { x: 0.6, y: 0.4, w: 0.08, h: 0.8, fill: { color: hlColor } });
         pptSlide.addText(slide.title, {
-          x: 0.5,
-          y: 0.3,
-          w: 9,
-          h: 0.8,
-          fontSize: 28,
-          bold: true,
-          color: '1a1a2e'
+          x: 0.9, y: 0.35, w: 11, h: 0.9,
+          fontSize: 28, fontFace: 'Segoe UI', bold: true, color: colors.text
+        });
+
+        // Badge
+        if (slide.highlight === 'positive' || slide.highlight === 'negative') {
+          const badgeText = slide.highlight === 'positive' ? '● FAVORÁVEL' : '● ATENÇÃO';
+          const badgeBg = slide.highlight === 'positive' ? colors.positiveLight : colors.negativeLight;
+          const badgeFg = slide.highlight === 'positive' ? colors.positive : colors.negative;
+          pptSlide.addShape(pptx.ShapeType.roundRect, {
+            x: 10.5, y: 0.5, w: 2.2, h: 0.45,
+            fill: { color: badgeBg }, rectRadius: 0.2
+          });
+          pptSlide.addText(badgeText, {
+            x: 10.5, y: 0.5, w: 2.2, h: 0.45,
+            fontSize: 10, fontFace: 'Segoe UI', bold: true, color: badgeFg, align: 'center'
+          });
+        }
+
+        // Divider line
+        pptSlide.addShape(pptx.ShapeType.line, {
+          x: 0.6, y: 1.35, w: 12.13, h: 0,
+          line: { color: colors.border, width: 1 }
         });
 
         if (slide.type === 'charts' && slide.chartType) {
-          // Add charts
+          // Chart background card
+          pptSlide.addShape(pptx.ShapeType.roundRect, {
+            x: 0.6, y: 1.6, w: 12.13, h: 5.1,
+            fill: { color: colors.lightGray },
+            line: { color: colors.border, width: 0.5 },
+            rectRadius: 0.12
+          });
+
           if (slide.chartType === 'dre') {
-            const chartData = [
-              {
-                name: 'DRE',
-                labels: ['Receita Líq.', 'CMV', 'Lucro Bruto', 'Desp. Op.', 'Lucro Líq.'],
-                values: [
-                  Math.abs(dreData.receitaLiquida),
-                  Math.abs(dreData.cmv),
-                  Math.abs(dreData.lucroBruto),
-                  Math.abs(dreData.despesasOperacionais),
-                  Math.abs(dreData.lucroLiquido)
-                ]
-              }
-            ];
+            const chartData = [{
+              name: 'DRE',
+              labels: ['Receita Líquida', 'CMV / Custos', 'Lucro Bruto', 'Desp. Operacionais', 'Lucro Líquido'],
+              values: [
+                Math.abs(dreData.receitaLiquida), Math.abs(dreData.cmv),
+                Math.abs(dreData.lucroBruto), Math.abs(dreData.despesasOperacionais),
+                Math.abs(dreData.lucroLiquido)
+              ]
+            }];
             pptSlide.addChart(pptx.ChartType.bar, chartData, {
-              x: 0.5,
-              y: 1.5,
-              w: 9,
-              h: 4,
+              x: 1, y: 1.8, w: 11.33, h: 4.6,
               showValue: true,
-              valAxisTitle: 'Valores (R$)',
-              chartColors: ['8b5cf6', 'ef4444', '10b981', 'f59e0b', '06b6d4']
+              catAxisLabelFontSize: 11, valAxisLabelFontSize: 9,
+              chartColors: [colors.accent, colors.red, colors.emerald, colors.amber, colors.cyan],
+              plotArea: { fill: { color: colors.white } },
+              catGridLine: { style: 'none' },
+              valGridLine: { color: colors.border, style: 'dash' },
             });
           } else if (slide.chartType === 'balanco') {
-            const chartData = [
-              {
-                name: 'Estrutura',
-                labels: ['Ativo Circ.', 'Ativo Não Circ.', 'Passivo Circ.', 'Passivo Não Circ.', 'Patrimônio Líq.'],
-                values: [
-                  balancoData.ativoCirculante,
-                  balancoData.ativoNaoCirculante,
-                  balancoData.passivoCirculante,
-                  balancoData.passivoNaoCirculante,
-                  balancoData.patrimonioLiquido
-                ]
-              }
-            ];
-            pptSlide.addChart(pptx.ChartType.pie, chartData, {
-              x: 1.5,
-              y: 1.5,
-              w: 7,
-              h: 4,
-              showPercent: true,
-              showLegend: true,
-              legendPos: 'r',
-              chartColors: ['8b5cf6', '06b6d4', 'f59e0b', 'ef4444', '10b981']
+            const chartData = [{
+              name: 'Estrutura',
+              labels: ['Ativo Circulante', 'Ativo Não Circulante', 'Passivo Circulante', 'Passivo Não Circ.', 'Patrimônio Líquido'],
+              values: [
+                balancoData.ativoCirculante, balancoData.ativoNaoCirculante,
+                balancoData.passivoCirculante, balancoData.passivoNaoCirculante,
+                balancoData.patrimonioLiquido
+              ]
+            }];
+            pptSlide.addChart(pptx.ChartType.doughnut, chartData, {
+              x: 2, y: 1.8, w: 9.33, h: 4.6,
+              showPercent: true, showLegend: true, legendPos: 'r',
+              legendFontSize: 12,
+              chartColors: [colors.accent, colors.cyan, colors.amber, colors.red, colors.emerald],
             });
           } else if (slide.chartType === 'margens') {
-            const chartData = [
-              {
-                name: 'Margens',
-                labels: ['Margem Bruta', 'Margem Operacional', 'Margem Líquida'],
-                values: [dreData.margemBruta, dreData.margemOperacional, dreData.margemLiquida]
-              }
-            ];
+            const chartData = [{
+              name: 'Margens (%)',
+              labels: ['Margem Bruta', 'Margem Operacional', 'Margem Líquida'],
+              values: [dreData.margemBruta, dreData.margemOperacional, dreData.margemLiquida]
+            }];
             pptSlide.addChart(pptx.ChartType.bar, chartData, {
-              x: 1,
-              y: 1.5,
-              w: 8,
-              h: 4,
+              x: 1.5, y: 1.8, w: 10.33, h: 4.6,
               showValue: true,
-              valAxisTitle: 'Percentual (%)',
-              chartColors: ['8b5cf6', '06b6d4', '10b981']
+              catAxisLabelFontSize: 13, valAxisLabelFontSize: 10,
+              valAxisTitle: 'Percentual (%)', valAxisTitleFontSize: 10,
+              chartColors: [colors.accent, colors.cyan, colors.emerald],
+              plotArea: { fill: { color: colors.white } },
+              catGridLine: { style: 'none' },
+              valGridLine: { color: colors.border, style: 'dash' },
             });
           }
-        } else if (slide.type === 'cover') {
-          // Cover slide special treatment
-          pptSlide.addText(slide.content.join('\n'), {
-            x: 0.5,
-            y: 2.5,
-            w: 9,
-            h: 2,
-            fontSize: 18,
-            color: '666666',
-            align: 'center'
-          });
         } else {
-          // Regular content slides with bullet points
-          const bulletPoints = slide.content.map(item => ({
-            text: item,
-            options: { bullet: true, color: '333333', fontSize: 16 }
-          }));
+          // Content slides with styled cards
+          const contentY = 1.6;
+          const itemHeight = Math.min(0.9, 4.8 / Math.max(slide.content.length, 1));
+          
+          slide.content.forEach((item, i) => {
+            const y = contentY + (i * itemHeight);
+            
+            // Bullet circle
+            pptSlide.addShape(pptx.ShapeType.ellipse, {
+              x: 1, y: y + 0.15, w: 0.18, h: 0.18,
+              fill: { color: hlColor }
+            });
 
-          pptSlide.addText(bulletPoints, {
-            x: 0.5,
-            y: 1.5,
-            w: 9,
-            h: 4,
-            valign: 'top'
+            // Text
+            pptSlide.addText(item, {
+              x: 1.4, y: y, w: 11, h: itemHeight,
+              fontSize: 15, fontFace: 'Segoe UI', color: colors.text,
+              valign: 'middle', lineSpacingMultiple: 1.3
+            });
+
+            // Separator
+            if (i < slide.content.length - 1) {
+              pptSlide.addShape(pptx.ShapeType.line, {
+                x: 1, y: y + itemHeight - 0.02, w: 11.33, h: 0,
+                line: { color: colors.border, width: 0.5, dashType: 'dash' }
+              });
+            }
           });
         }
       });
+
+      // ========== CLOSING SLIDE ==========
+      const closingSlide = pptx.addSlide();
+      closingSlide.background = { fill: colors.darkBg };
+      closingSlide.addShape(pptx.ShapeType.ellipse, { x: 9, y: -1.5, w: 5, h: 5, fill: { color: colors.accent, transparency: 85 } });
+      closingSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 7.2, w: 13.33, h: 0.3, fill: { color: colors.accent } });
+
+      closingSlide.addText('Obrigado', {
+        x: 2, y: 2.5, w: 9.33, h: 1.2,
+        fontSize: 44, fontFace: 'Segoe UI', bold: true, color: colors.white, align: 'center'
+      });
+      closingSlide.addText(`${brandName} — Análise gerada com Inteligência Artificial`, {
+        x: 2.5, y: 3.8, w: 8.33, h: 0.6,
+        fontSize: 16, fontFace: 'Segoe UI Light', color: colors.accentLight, align: 'center'
+      });
+      if (branding?.telefone_fixo) {
+        closingSlide.addText(`Contato: ${branding.telefone_fixo}`, {
+          x: 3.67, y: 4.5, w: 6, h: 0.5,
+          fontSize: 14, fontFace: 'Segoe UI', color: colors.accentLight, align: 'center'
+        });
+      }
 
       await pptx.writeFile({ fileName: `apresentacao-${empresaNome.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.pptx` });
 
@@ -654,6 +854,8 @@ export function AIPresentationDialog({
       setIsExporting(false);
     }
   };
+
+
 
   const handleCopy = async () => {
     try {
