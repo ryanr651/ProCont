@@ -1,10 +1,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Logo } from "@/components/Logo";
-import { ThemeToggle } from "@/components/ThemeToggle";
+import { AppHeader } from "@/components/AppHeader";
 import { MultiFileUpload, type UploadedFile } from "@/components/MultiFileUpload";
-import { ArrowLeft, Loader2, Download, LogOut, Building2, Plus, Check, Sparkles } from "lucide-react";
+import { ArrowLeft, Loader2, Download, Building2, Plus, Check, Sparkles } from "lucide-react";
 import { uploadAndProcessMultipleFiles, identifyFileTypes, generateDownloadableJSON } from "@/lib/supabaseUpload";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -159,22 +158,9 @@ const Upload = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <nav className="container mx-auto px-6 py-6 flex justify-between items-center">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <Logo />
-        </div>
-        <div className="flex items-center gap-2">
-          <ThemeToggle />
-          <Button onClick={signOut} variant="ghost">
-            <LogOut className="w-4 h-4 mr-2" /> Sair
-          </Button>
-        </div>
-      </nav>
+      <AppHeader />
 
-      <main className="container mx-auto px-6 py-12 max-w-2xl">
+      <main className="container mx-auto px-6 pt-24 pb-12 max-w-2xl">
         {/* Step 1: Company Selection */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-4">

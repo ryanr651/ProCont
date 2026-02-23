@@ -233,6 +233,69 @@ export type Database = {
         }
         Relationships: []
       }
+      master_branding: {
+        Row: {
+          cnpj_empresa: string | null
+          created_at: string
+          id: string
+          logo_url: string | null
+          nome_empresa: string | null
+          telefone_fixo: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cnpj_empresa?: string | null
+          created_at?: string
+          id?: string
+          logo_url?: string | null
+          nome_empresa?: string | null
+          telefone_fixo?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cnpj_empresa?: string | null
+          created_at?: string
+          id?: string
+          logo_url?: string | null
+          nome_empresa?: string | null
+          telefone_fixo?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          id: string
+          master_id: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          master_id?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          master_id?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_logins: {
         Row: {
           created_at: string
@@ -250,6 +313,27 @@ export type Database = {
           created_at?: string
           id?: string
           ip_address?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
         }
         Relationships: []
@@ -286,10 +370,18 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_master_id: { Args: { _user_id: string }; Returns: string }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_user_active: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "master" | "funcionario"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -416,6 +508,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["master", "funcionario"],
+    },
   },
 } as const

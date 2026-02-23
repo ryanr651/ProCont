@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Logo } from "@/components/Logo";
-import { ThemeToggle } from "@/components/ThemeToggle";
+import { AppHeader } from "@/components/AppHeader";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -10,8 +9,6 @@ import {
   Building2,
   Plus,
   Loader2,
-  LogOut,
-  Home,
   Trash2,
   BarChart3,
   Upload,
@@ -27,6 +24,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+
+
 
 interface Empresa {
   id: string;
@@ -117,26 +116,10 @@ const Empresas = () => {
       <div className="hero-glow w-full h-[600px] top-0 left-0" />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-primary/5 rounded-full blur-3xl" />
 
-      {/* Navigation */}
-      <nav className="relative z-10 container mx-auto px-6 py-6 flex items-center justify-between">
-        <Logo />
-        <div className="flex items-center gap-4">
-          <ThemeToggle />
-          <Link to="/">
-            <Button variant="ghost" size="sm">
-              <Home className="w-4 h-4 mr-2" />
-              Início
-            </Button>
-          </Link>
-          <Button variant="ghost" size="sm" onClick={handleLogout}>
-            <LogOut className="w-4 h-4 mr-2" />
-            Sair
-          </Button>
-        </div>
-      </nav>
+      <AppHeader />
 
       {/* Main Content */}
-      <main className="relative z-10 container mx-auto px-6 py-8">
+      <main className="relative z-10 container mx-auto px-6 pt-24 pb-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-4">
