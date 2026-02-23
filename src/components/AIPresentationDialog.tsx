@@ -422,6 +422,71 @@ export function AIPresentationDialog({
     return slides;
   };
 
+  const generatePdfChartHtml = (chartType: string): string => {
+    const fmtVal = (v: number) => {
+      if (v >= 1000000) return 'R$ ' + (v/1000000).toFixed(1) + 'M';
+      if (v >= 1000) return 'R$ ' + (v/1000).toFixed(0) + 'K';
+      return 'R$ ' + v.toFixed(0);
+    };
+
+    if (chartType === 'dre' && dreData) {
+      const items = [
+        { label: 'Receita Líquida', value: Math.abs(dreData.receitaLiquida), color: '#8b5cf6' },
+        { label: 'CMV / Custos', value: Math.abs(dreData.cmv), color: '#ef4444' },
+        { label: 'Lucro Bruto', value: Math.abs(dreData.lucroBruto), color: '#10b981' },
+        { label: 'Desp. Operacionais', value: Math.abs(dreData.despesasOperacionais), color: '#f59e0b' },
+        { label: 'Lucro Líquido', value: Math.abs(dreData.lucroLiquido), color: dreData.lucroLiquido >= 0 ? '#06b6d4' : '#ef4444' },
+      ];
+      const maxVal = Math.max(...items.map(i => i.value));
+      return '<div class="chart-data-section">' + items.map(item =>
+        '<div class="chart-bar-row">' +
+          '<div class="chart-bar-label">' + item.label + '</div>' +
+          '<div class="chart-bar-track">' +
+            '<div class="chart-bar-fill" style="width: ' + Math.max((item.value / maxVal) * 100, 8) + '%; background: ' + item.color + ';">' +
+              '<span class="chart-bar-value">' + fmtVal(item.value) + '</span>' +
+            '</div>' +
+          '</div>' +
+        '</div>'
+      ).join('') + '</div>';
+    }
+
+    if (chartType === 'balanco' && balancoData) {
+      const items = [
+        { label: 'Ativo Circulante', value: balancoData.ativoCirculante, color: '#8b5cf6' },
+        { label: 'Ativo Não Circulante', value: balancoData.ativoNaoCirculante, color: '#06b6d4' },
+        { label: 'Passivo Circulante', value: balancoData.passivoCirculante, color: '#f59e0b' },
+        { label: 'Passivo Não Circ.', value: balancoData.passivoNaoCirculante, color: '#ef4444' },
+        { label: 'Patrimônio Líquido', value: balancoData.patrimonioLiquido, color: '#10b981' },
+      ];
+      const total = items.reduce((a, b) => a + Math.abs(b.value), 0);
+      return '<div class="chart-data-section"><div class="chart-donut-grid">' + items.map(item =>
+        '<div class="chart-donut-item">' +
+          '<div class="chart-donut-dot" style="background: ' + item.color + ';"></div>' +
+          '<div class="chart-donut-info">' +
+            '<div class="chart-donut-name">' + item.label + '</div>' +
+            '<div class="chart-donut-val">' + fmtVal(Math.abs(item.value)) + ' (' + (total > 0 ? ((Math.abs(item.value)/total)*100).toFixed(1) : '0') + '%)</div>' +
+          '</div>' +
+        '</div>'
+      ).join('') + '</div></div>';
+    }
+
+    if (chartType === 'margens' && dreData) {
+      const items = [
+        { label: 'Margem Bruta', value: dreData.margemBruta, color: '#8b5cf6' },
+        { label: 'Margem Operacional', value: dreData.margemOperacional, color: '#06b6d4' },
+        { label: 'Margem Líquida', value: dreData.margemLiquida, color: '#10b981' },
+      ];
+      return '<div class="chart-data-section"><div class="chart-kpi-row">' + items.map(item =>
+        '<div class="chart-kpi-card" style="border-top: 4px solid ' + item.color + ';">' +
+          '<div class="chart-kpi-value" style="color: ' + item.color + ';">' + item.value.toFixed(1) + '%</div>' +
+          '<div class="chart-kpi-label">' + item.label + '</div>' +
+        '</div>'
+      ).join('') + '</div></div>';
+    }
+
+    return '<div class="chart-data-section" style="text-align:center; color:#94a3b8; padding:40px;">Dados não disponíveis</div>';
+  };
+
   const handleExportPDF = async () => {
     if (!slideRef.current || slides.length === 0) return;
     
@@ -498,7 +563,22 @@ export function AIPresentationDialog({
           .bullet-positive { background: #10b981; }
           .bullet-negative { background: #ef4444; }
           .bullet-neutral { background: #8b5cf6; }
-          .chart-placeholder { text-align: center; padding: 40px; color: #94a3b8; font-style: italic; background: #f1f5f9; border-radius: 12px; border: 2px dashed #cbd5e1; }
+          .chart-data-section { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px 28px; }
+          .chart-bar-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+          .chart-bar-label { width: 160px; font-size: 13px; font-weight: 600; color: #334155; flex-shrink: 0; }
+          .chart-bar-track { flex: 1; background: #e2e8f0; border-radius: 6px; height: 28px; position: relative; overflow: hidden; }
+          .chart-bar-fill { height: 100%; border-radius: 6px; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; min-width: 60px; }
+          .chart-bar-value { font-size: 11px; font-weight: 700; color: white; white-space: nowrap; }
+          .chart-kpi-row { display: flex; gap: 16px; margin-top: 16px; }
+          .chart-kpi-card { flex: 1; background: white; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; text-align: center; }
+          .chart-kpi-value { font-size: 22px; font-weight: 800; margin-bottom: 2px; }
+          .chart-kpi-label { font-size: 11px; color: #64748b; }
+          .chart-donut-grid { display: flex; flex-wrap: wrap; gap: 12px; }
+          .chart-donut-item { flex: 1; min-width: 45%; background: white; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; display: flex; align-items: center; gap: 12px; }
+          .chart-donut-dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
+          .chart-donut-info { flex: 1; }
+          .chart-donut-name { font-size: 12px; font-weight: 600; color: #334155; }
+          .chart-donut-val { font-size: 11px; color: #64748b; }
 
           .pdf-footer { margin-top: 60px; padding: 24px 0; border-top: 2px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #94a3b8; }
           .footer-brand { font-weight: 600; color: #7c3aed; }
@@ -531,9 +611,9 @@ export function AIPresentationDialog({
                   <div class="section-title">${slide.title}</div>
                   ${badgeText ? `<span class="section-badge badge-${hl}">${badgeText}</span>` : ''}
                 </div>
-                ${slide.type === 'charts' ? `
-                  <div class="chart-placeholder">📈 Gráficos interativos disponíveis na versão PowerPoint</div>
-                ` : `
+                ${slide.type === 'charts' && slide.chartType
+                  ? generatePdfChartHtml(slide.chartType)
+                  : `
                   <div class="content-card">
                     ${slide.content.map(item => `
                       <div class="content-item">
@@ -584,6 +664,22 @@ export function AIPresentationDialog({
     }
   };
 
+  const fetchImageAsBase64 = async (url: string): Promise<string | null> => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      return await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (e) {
+      console.error('Failed to fetch image as base64:', e);
+      return null;
+    }
+  };
+
   const handleExportPPTX = async () => {
     if (slides.length === 0 || !dreData || !balancoData) return;
     
@@ -628,10 +724,13 @@ export function AIPresentationDialog({
       // Bottom gradient bar
       coverSlide.addShape(pptx.ShapeType.rect, { x: 0, y: 7.2, w: 13.33, h: 0.3, fill: { color: colors.accent } });
 
-      // Logo (if available)
+      // Logo (if available) - fetch as base64 for reliable embedding
       if (branding?.logo_url) {
         try {
-          coverSlide.addImage({ path: branding.logo_url, x: 5.17, y: 0.8, w: 3, h: 1, sizing: { type: 'contain', w: 3, h: 1 } });
+          const logoBase64 = await fetchImageAsBase64(branding.logo_url);
+          if (logoBase64) {
+            coverSlide.addImage({ data: logoBase64, x: 5.17, y: 0.8, w: 3, h: 1, sizing: { type: 'contain', w: 3, h: 1 } });
+          }
         } catch { /* logo might fail, continue */ }
       }
 
