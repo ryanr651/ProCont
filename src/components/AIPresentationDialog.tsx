@@ -60,12 +60,20 @@ interface Slide {
   chartType?: 'dre' | 'balanco' | 'margens';
 }
 
+interface BrandingInfo {
+  nome_empresa: string | null;
+  cnpj_empresa: string | null;
+  logo_url: string | null;
+  telefone_fixo: string | null;
+}
+
 interface AIPresentationDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   dreData: CalculatedDRE | null;
   balancoData: CalculatedBalanco | null;
   empresaNome?: string;
+  branding?: BrandingInfo | null;
 }
 
 const CHART_COLORS = ['#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899'];
@@ -75,7 +83,8 @@ export function AIPresentationDialog({
   onOpenChange,
   dreData,
   balancoData,
-  empresaNome = "Empresa"
+  empresaNome = "Empresa",
+  branding
 }: AIPresentationDialogProps) {
   const [slides, setSlides] = useState<Slide[]>([]);
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -424,10 +433,14 @@ export function AIPresentationDialog({
       
       // Add header
       const header = document.createElement('div');
+      const brandName = branding?.nome_empresa || 'ProCont';
       header.innerHTML = `
         <div style="text-align: center; margin-bottom: 40px; border-bottom: 3px solid #8b5cf6; padding-bottom: 20px;">
+          ${branding?.logo_url ? `<img src="${branding.logo_url}" alt="Logo" style="max-height: 60px; max-width: 200px; margin-bottom: 10px;" crossorigin="anonymous" />` : ''}
           <h1 style="color: #1a1a2e; font-size: 28px; margin: 0;">📊 Apresentação Executiva</h1>
-          <p style="color: #666; margin-top: 10px;">${empresaNome} - ${new Date().toLocaleDateString('pt-BR')}</p>
+          <p style="color: #444; margin-top: 8px; font-weight: 600;">${brandName}</p>
+          ${branding?.cnpj_empresa ? `<p style="color: #666; margin-top: 2px; font-size: 13px;">CNPJ: ${branding.cnpj_empresa}</p>` : ''}
+          <p style="color: #666; margin-top: 6px;">${empresaNome} - ${new Date().toLocaleDateString('pt-BR')}</p>
         </div>
       `;
       container.appendChild(header);
@@ -459,7 +472,8 @@ export function AIPresentationDialog({
       const footer = document.createElement('div');
       footer.innerHTML = `
         <div style="text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; color: #999; font-size: 12px;">
-          Gerado por ProCont com Inteligência Artificial
+          Gerado por ${branding?.nome_empresa || 'ProCont'} com Inteligência Artificial
+          ${branding?.telefone_fixo ? `<br/>Contato: ${branding.telefone_fixo}` : ''}
         </div>
       `;
       container.appendChild(footer);
@@ -499,7 +513,8 @@ export function AIPresentationDialog({
     setIsExporting(true);
     try {
       const pptx = new PptxGenJS();
-      pptx.author = 'ProCont';
+      const brandName = branding?.nome_empresa || 'ProCont';
+      pptx.author = brandName;
       pptx.title = `Análise Financeira - ${empresaNome}`;
       pptx.subject = 'Apresentação Executiva';
 
@@ -509,7 +524,7 @@ export function AIPresentationDialog({
         background: { color: 'FFFFFF' },
         objects: [
           { rect: { x: 0, y: '90%', w: '100%', h: '10%', fill: { color: '8b5cf6' } } },
-          { text: { text: 'ProCont - Análise Financeira com IA', options: { x: 0.5, y: '92%', w: '90%', h: 0.5, fontSize: 10, color: 'FFFFFF' } } }
+          { text: { text: `${brandName} - Análise Financeira com IA${branding?.telefone_fixo ? ` | ${branding.telefone_fixo}` : ''}`, options: { x: 0.5, y: '92%', w: '90%', h: 0.5, fontSize: 10, color: 'FFFFFF' } } }
         ]
       });
 

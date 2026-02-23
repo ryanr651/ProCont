@@ -12,6 +12,7 @@ import { DashboardIndicadores } from "@/components/DashboardIndicadores";
 import { DashboardBalancete, type BalanceteClassifiedEntry } from "@/components/DashboardBalancete";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useBranding } from "@/contexts/BrandingContext";
 import html2pdf from "html2pdf.js";
 import {
   ArrowLeft,
@@ -166,6 +167,7 @@ const Resultado = () => {
   const [searchParams] = useSearchParams();
   const empresaIdParam = searchParams.get("empresa_id");
   const { user, signOut } = useAuth();
+  const { branding } = useBranding();
 
   useEffect(() => {
     if (!user) {
@@ -1273,8 +1275,12 @@ const Resultado = () => {
       </style>
       <div class="pdf-container">
         <div class="pdf-header">
-          <div class="pdf-logo">📊 ProCont</div>
+          ${branding?.logo_url ? `<img src="${branding.logo_url}" alt="Logo" style="max-height: 60px; max-width: 200px; margin-bottom: 10px;" crossorigin="anonymous" />` : `<div class="pdf-logo">📊 ProCont</div>`}
+          <div class="pdf-logo" style="font-size: ${branding?.nome_empresa ? '24px' : '32px'};">${branding?.nome_empresa || 'ProCont'}</div>
+          ${branding?.cnpj_empresa ? `<div style="font-size: 13px; color: #6b7280; margin-bottom: 4px;">CNPJ: ${branding.cnpj_empresa}</div>` : ''}
+          ${branding?.telefone_fixo ? `<div style="font-size: 13px; color: #6b7280; margin-bottom: 8px;">Tel: ${branding.telefone_fixo}</div>` : ''}
           <div class="pdf-title">Relatório de Resultados Financeiros</div>
+          ${selectedEmpresa ? `<div style="font-size: 14px; color: #374151; margin-bottom: 4px;"><strong>${selectedEmpresa.nome}</strong> - CNPJ: ${selectedEmpresa.cnpj}</div>` : ''}
           <div class="pdf-date">Gerado em: ${currentDate}</div>
         </div>
 
@@ -1416,8 +1422,9 @@ const Resultado = () => {
         </div>
 
         <div class="pdf-footer">
-          <div class="pdf-footer-brand">Gerado por ProCont</div>
+          <div class="pdf-footer-brand">Gerado por ${branding?.nome_empresa || 'ProCont'}</div>
           <div>Sistema de Análise Financeira Contábil</div>
+          ${branding?.telefone_fixo ? `<div style="margin-top: 4px;">Contato: ${branding.telefone_fixo}</div>` : ''}
         </div>
       </div>
     `;
@@ -1785,7 +1792,8 @@ const Resultado = () => {
         onOpenChange={setShowAIPresentation}
         dreData={dreData}
         balancoData={balancoData}
-        empresaNome="Empresa"
+        empresaNome={selectedEmpresa?.nome || "Empresa"}
+        branding={branding}
       />
     </div>
   );
