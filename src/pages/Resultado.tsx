@@ -3,19 +3,20 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { MetricCard } from "@/components/MetricCard";
 import { ProgressBar } from "@/components/ProgressBar";
 import { XLSValidationMode, ValidationRow } from "@/components/XLSValidationMode";
 import { ManualEditDialog, EditableBalancoEntry, EditableDREEntry } from "@/components/ManualEditDialog";
 import { AIAnalysisDialog } from "@/components/AIAnalysisDialog";
 import { AIPresentationDialog } from "@/components/AIPresentationDialog";
 import { FinancialChatBox } from "@/components/FinancialChatBox";
+import { DashboardIndicadores } from "@/components/DashboardIndicadores";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import html2pdf from "html2pdf.js";
 import {
   ArrowLeft,
   TrendingUp,
+  TrendingDown,
   Wallet,
   PiggyBank,
   Building,
@@ -31,7 +32,12 @@ import {
   FileDown,
   Edit3,
   Sparkles,
-  Presentation
+  Presentation,
+  BarChart3,
+  Percent,
+  ShieldCheck,
+  Activity,
+  Target,
 } from "lucide-react";
 
 interface DREEntry {
@@ -1485,337 +1491,17 @@ const Resultado = () => {
           </p>
         </div>
 
-        {/* DRE Section */}
-        <section className="mb-12">
-          <h2 className="font-display text-2xl font-bold mb-6 flex items-center gap-3">
-            <TrendingUp className="w-6 h-6 text-primary" />
-            Demonstração do Resultado (DRE)
-          </h2>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <MetricCard
-              title="Receita Bruta"
-              value={dreData.receitaBruta}
-              icon={DollarSign}
-              variant="highlight"
-            />
-            <MetricCard
-              title="Receita Líquida"
-              value={dreData.receitaLiquida}
-              icon={Wallet}
-            />
-            <MetricCard
-              title="CMV / Custos"
-              value={dreData.cmv}
-              icon={Receipt}
-            />
-            <MetricCard
-              title="Lucro Bruto"
-              value={dreData.lucroBruto}
-              icon={PiggyBank}
-              variant="accent"
-            />
-          </div>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <MetricCard
-              title="Despesas Operacionais"
-              value={dreData.despesasOperacionais}
-              icon={Calculator}
-            />
-            <MetricCard
-              title="Lucro Operacional"
-              value={dreData.lucroOperacional}
-              icon={TrendingUp}
-            />
-            <MetricCard
-              title="Resultado Financeiro"
-              value={dreData.resultadoFinanceiro}
-              icon={Scale}
-            />
-            <MetricCard
-              title="Lucro Líquido"
-              value={dreData.lucroLiquido}
-              icon={TrendingUp}
-              variant="highlight"
-            />
-          </div>
-
-          {/* Margins */}
-          <div className="glass-card p-6">
-            <h3 className="font-display font-semibold mb-4">Margens</h3>
-            <div className="grid md:grid-cols-3 gap-6">
-              <div>
-                <ProgressBar
-                  label="Margem Bruta"
-                  value={dreData.margemBruta}
-                  variant="purple"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  {dreData.margemBruta.toFixed(2)}%
-                </p>
-              </div>
-              <div>
-                <ProgressBar
-                  label="Margem Operacional"
-                  value={dreData.margemOperacional}
-                  variant="blue"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  {dreData.margemOperacional.toFixed(2)}%
-                </p>
-              </div>
-              <div>
-                <ProgressBar
-                  label="Margem Líquida"
-                  value={dreData.margemLiquida}
-                  variant="gradient"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  {dreData.margemLiquida.toFixed(2)}%
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* DRE Debug Table */}
-          {dreClassifiedEntries.length > 0 && (
-            <div className="mt-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-display font-semibold flex items-center gap-2">
-                  🔬 Debug: Classificação DRE
-                </h3>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowDreDebug(!showDreDebug)}
-                >
-                  <FileSearch className="w-4 h-4 mr-2" />
-                  {showDreDebug ? "Ocultar" : "Ver"} Classificação ({dreClassifiedEntries.length} linhas)
-                </Button>
-              </div>
-              {showDreDebug && (
-                <div className="glass-card p-6">
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Todas as linhas DRE importadas com seu grupo e classificação:
-                  </p>
-                  
-                  {/* Group Legend */}
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {(['receita_bruta', 'receita_liquida', 'cmv', 'lucro_bruto', 'despesas_operacionais', 'lucro_operacional', 'resultado_financeiro', 'lucro_liquido'] as const).map((grupo) => (
-                      <span key={grupo} className={`px-2 py-1 rounded text-xs font-medium border ${getDREGroupColor(grupo)}`}>
-                        {getDREGroupLabel(grupo)}
-                      </span>
-                    ))}
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-border">
-                          <th className="text-left py-2 px-3 text-muted-foreground font-medium">#</th>
-                          <th className="text-left py-2 px-3 text-muted-foreground font-medium">Descrição</th>
-                          <th className="text-center py-2 px-3 text-muted-foreground font-medium">Grupo</th>
-                          <th className="text-right py-2 px-3 text-muted-foreground font-medium">Valor</th>
-                          <th className="text-center py-2 px-3 text-muted-foreground font-medium">Tipo</th>
-                          <th className="text-center py-2 px-3 text-muted-foreground font-medium">Bloco CMV</th>
-                          <th className="text-left py-2 px-3 text-muted-foreground font-medium">Motivo</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {dreClassifiedEntries.map((entry, index) => (
-                          <tr 
-                            key={index} 
-                            className={`border-b border-border/50 hover:bg-muted/30 ${entry.isExplicit ? 'font-semibold' : ''}`}
-                          >
-                            <td className="py-2 px-3 text-muted-foreground">{index + 1}</td>
-                            <td className="py-2 px-3 text-foreground max-w-xs">
-                              <span className="block truncate" title={entry.descricao}>
-                                {entry.descricao}
-                              </span>
-                            </td>
-                            <td className="py-2 px-3 text-center">
-                              <span className={`px-2 py-1 rounded text-xs font-medium border ${getDREGroupColor(entry.grupo)}`}>
-                                {getDREGroupLabel(entry.grupo)}
-                              </span>
-                            </td>
-                            <td className="py-2 px-3 text-right text-foreground">
-                              {entry.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                            </td>
-                            <td className="py-2 px-3 text-center">
-                              {entry.isExplicit 
-                                ? <span className="px-2 py-1 rounded text-xs font-medium bg-primary/20 text-primary border border-primary/30">Explícita</span>
-                                : <span className="px-2 py-1 rounded text-xs font-medium bg-muted text-muted-foreground border border-border">Componente</span>
-                              }
-                            </td>
-                            <td className="py-2 px-3 text-center">
-                              {entry.insideCMVBlock 
-                                ? <span className="px-2 py-1 rounded text-xs font-medium bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30">✓ Sim</span>
-                                : <span className="px-2 py-1 rounded text-xs font-medium bg-muted text-muted-foreground border border-border">—</span>
-                              }
-                            </td>
-                            <td className="py-2 px-3 text-muted-foreground text-xs max-w-xs truncate" title={entry.motivo}>
-                              {entry.motivo}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Summary by Group */}
-                  <div className="mt-6 pt-4 border-t border-border">
-                    <h4 className="font-medium mb-3">Resumo por Grupo</h4>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      {(['receita_bruta', 'receita_liquida', 'cmv', 'lucro_bruto', 'despesas_operacionais', 'lucro_operacional', 'resultado_financeiro', 'lucro_liquido'] as const).map((grupo) => {
-                        const entriesInGroup = dreClassifiedEntries.filter(e => e.grupo === grupo);
-                        const explicitEntry = entriesInGroup.find(e => e.isExplicit);
-                        const sumValue = entriesInGroup.reduce((sum, e) => sum + e.valor, 0);
-                        
-                        return (
-                          <div key={grupo} className={`p-3 rounded border ${getDREGroupColor(grupo)}`}>
-                            <div className="text-xs font-medium mb-1">{getDREGroupLabel(grupo)}</div>
-                            <div className="text-sm font-bold">
-                              {(explicitEntry?.valor ?? sumValue).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                            </div>
-                            <div className="text-xs opacity-70">
-                              {explicitEntry ? '(linha explícita)' : `(${entriesInGroup.length} linhas)`}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </section>
-
-        {/* Balance Sheet Section */}
-        <section className="mb-12">
-          <h2 className="font-display text-2xl font-bold mb-6 flex items-center gap-3">
-            <Scale className="w-6 h-6 text-secondary" />
-            Balanço Patrimonial
-          </h2>
-
-          <div className="grid md:grid-cols-3 gap-4 mb-8">
-            <MetricCard
-              title="Ativo Total"
-              value={balancoData.ativoTotal}
-              icon={Building}
-              variant="highlight"
-            />
-            <MetricCard
-              title="Passivo Total"
-              value={balancoData.passivoTotal}
-              icon={Scale}
-            />
-            <MetricCard
-              title="Patrimônio Líquido"
-              value={balancoData.patrimonioLiquido}
-              icon={Landmark}
-              variant="accent"
-            />
-          </div>
-
-
-          <div className="grid md:grid-cols-2 gap-6">
-            {/* Ativo Breakdown */}
-            <div className="glass-card p-6">
-              <h3 className="font-display font-semibold mb-4">Composição do Ativo</h3>
-              <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-muted-foreground">Ativo Circulante</span>
-                    <span className="text-foreground">
-                      {balancoData.ativoCirculante.toLocaleString("pt-BR", {
-                        style: "currency",
-                        currency: "BRL"
-                      })}
-                    </span>
-                  </div>
-                  <ProgressBar
-                    value={balancoData.ativoTotal > 0 ? (balancoData.ativoCirculante / balancoData.ativoTotal) * 100 : 0}
-                    showPercentage={false}
-                    variant="purple"
-                  />
-                </div>
-                <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-muted-foreground">Ativo Não Circulante</span>
-                    <span className="text-foreground">
-                      {balancoData.ativoNaoCirculante.toLocaleString("pt-BR", {
-                        style: "currency",
-                        currency: "BRL"
-                      })}
-                    </span>
-                  </div>
-                  <ProgressBar
-                    value={balancoData.ativoTotal > 0 ? (balancoData.ativoNaoCirculante / balancoData.ativoTotal) * 100 : 0}
-                    showPercentage={false}
-                    variant="blue"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Passivo Breakdown */}
-            <div className="glass-card p-6">
-              <h3 className="font-display font-semibold mb-4">Estrutura de Capital</h3>
-              <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-muted-foreground">Passivo Circulante</span>
-                    <span className="text-foreground">
-                      {balancoData.passivoCirculante.toLocaleString("pt-BR", {
-                        style: "currency",
-                        currency: "BRL"
-                      })}
-                    </span>
-                  </div>
-                  <ProgressBar
-                    value={balancoData.ativoTotal > 0 ? (balancoData.passivoCirculante / balancoData.ativoTotal) * 100 : 0}
-                    showPercentage={false}
-                    variant="purple"
-                  />
-                </div>
-                <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-muted-foreground">Passivo Não Circulante</span>
-                    <span className="text-foreground">
-                      {balancoData.passivoNaoCirculante.toLocaleString("pt-BR", {
-                        style: "currency",
-                        currency: "BRL"
-                      })}
-                    </span>
-                  </div>
-                  <ProgressBar
-                    value={balancoData.ativoTotal > 0 ? (balancoData.passivoNaoCirculante / balancoData.ativoTotal) * 100 : 0}
-                    showPercentage={false}
-                    variant="blue"
-                  />
-                </div>
-                <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-muted-foreground">Patrimônio Líquido</span>
-                    <span className="text-foreground">
-                      {balancoData.patrimonioLiquido.toLocaleString("pt-BR", {
-                        style: "currency",
-                        currency: "BRL"
-                      })}
-                    </span>
-                  </div>
-                  <ProgressBar
-                    value={balancoData.ativoTotal > 0 ? (balancoData.patrimonioLiquido / balancoData.ativoTotal) * 100 : 0}
-                    showPercentage={false}
-                    variant="gradient"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
+        {/* ===== DASHBOARD DE INDICADORES ===== */}
+        <DashboardIndicadores
+          dreData={dreData}
+          balancoData={balancoData}
+          dreClassifiedEntries={dreClassifiedEntries}
+          rawBalancoEntries={rawBalancoEntries}
+          getDREGroupColor={getDREGroupColor}
+          getDREGroupLabel={getDREGroupLabel}
+          showDreDebug={showDreDebug}
+          setShowDreDebug={setShowDreDebug}
+        />
 
         {/* Diagnóstico de Importação Section */}
         {diagnosticLines.length > 0 && (
