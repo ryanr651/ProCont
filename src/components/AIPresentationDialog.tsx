@@ -733,24 +733,64 @@ export function AIPresentationDialog({
           });
 
           if (slide.chartType === 'dre') {
+            const formatCurrencyLabel = (v: number) => {
+              if (Math.abs(v) >= 1000000) return `R$ ${(v / 1000000).toFixed(1)}M`;
+              if (Math.abs(v) >= 1000) return `R$ ${(v / 1000).toFixed(0)}K`;
+              return `R$ ${v.toFixed(0)}`;
+            };
+            const vals = [
+              Math.abs(dreData.receitaLiquida), Math.abs(dreData.cmv),
+              Math.abs(dreData.lucroBruto), Math.abs(dreData.despesasOperacionais),
+              Math.abs(dreData.lucroLiquido)
+            ];
             const chartData = [{
               name: 'DRE',
               labels: ['Receita Líquida', 'CMV / Custos', 'Lucro Bruto', 'Desp. Operacionais', 'Lucro Líquido'],
-              values: [
-                Math.abs(dreData.receitaLiquida), Math.abs(dreData.cmv),
-                Math.abs(dreData.lucroBruto), Math.abs(dreData.despesasOperacionais),
-                Math.abs(dreData.lucroLiquido)
-              ]
+              values: vals
             }];
-            pptSlide.addChart(pptx.ChartType.bar, chartData, {
-              x: 1, y: 1.8, w: 11.33, h: 4.6,
-              showValue: true,
-              catAxisLabelFontSize: 11, valAxisLabelFontSize: 9,
-              chartColors: [colors.accent, colors.red, colors.emerald, colors.amber, colors.cyan],
-              plotArea: { fill: { color: colors.white } },
-              catGridLine: { style: 'none' },
-              valGridLine: { color: colors.border, style: 'dash' },
+
+            // Add subtitle with formatted values
+            pptSlide.addText('Valores em Reais (R$)', {
+              x: 1, y: 1.55, w: 11.33, h: 0.35,
+              fontSize: 11, fontFace: 'Segoe UI', italic: true, color: colors.textLight
             });
+
+            pptSlide.addChart(pptx.ChartType.bar, chartData, {
+              x: 1, y: 1.9, w: 11.33, h: 4.4,
+              showValue: true,
+              dataLabelColor: colors.text,
+              dataLabelFontSize: 11,
+              dataLabelFontBold: true,
+              dataLabelFormatCode: '#,##0',
+              catAxisLabelFontSize: 12,
+              catAxisLabelFontBold: true,
+              catAxisLabelColor: colors.text,
+              valAxisHidden: true,
+              chartColors: [colors.accent, colors.red, colors.emerald, colors.amber, colors.cyan],
+              plotArea: { fill: { color: colors.white }, border: { color: colors.border, pt: 0.5 } },
+              catGridLine: { style: 'none' },
+              valGridLine: { style: 'none' },
+              showLegend: false,
+              barGapWidthPct: 80,
+            });
+
+            // Add value labels below chart as summary cards
+            const cardLabels = ['Receita Líq.', 'CMV', 'Lucro Bruto', 'Desp. Op.', 'Lucro Líq.'];
+            const cardColors = [colors.accent, colors.red, colors.emerald, colors.amber, colors.cyan];
+            cardLabels.forEach((label, i) => {
+              const cardX = 1 + (i * 2.4);
+              pptSlide.addShape(pptx.ShapeType.roundRect, {
+                x: cardX, y: 6.35, w: 2.15, h: 0.55,
+                fill: { color: colors.lightGray },
+                line: { color: cardColors[i], width: 1.5 },
+                rectRadius: 0.06
+              });
+              pptSlide.addText(formatCurrencyLabel(vals[i]), {
+                x: cardX, y: 6.35, w: 2.15, h: 0.55,
+                fontSize: 11, fontFace: 'Segoe UI', bold: true, color: cardColors[i], align: 'center'
+              });
+            });
+
           } else if (slide.chartType === 'balanco') {
             const chartData = [{
               name: 'Estrutura',
@@ -761,27 +801,103 @@ export function AIPresentationDialog({
                 balancoData.patrimonioLiquido
               ]
             }];
+
+            pptSlide.addText('Composição do Patrimônio', {
+              x: 1, y: 1.55, w: 11.33, h: 0.35,
+              fontSize: 11, fontFace: 'Segoe UI', italic: true, color: colors.textLight
+            });
+
             pptSlide.addChart(pptx.ChartType.doughnut, chartData, {
-              x: 2, y: 1.8, w: 9.33, h: 4.6,
-              showPercent: true, showLegend: true, legendPos: 'r',
-              legendFontSize: 12,
+              x: 1.5, y: 1.9, w: 5.5, h: 4.6,
+              showPercent: true,
+              dataLabelFontSize: 12,
+              dataLabelFontBold: true,
+              dataLabelColor: colors.text,
+              showLegend: false,
               chartColors: [colors.accent, colors.cyan, colors.amber, colors.red, colors.emerald],
             });
+
+            // Custom legend with values on the right side
+            const legendLabels = ['Ativo Circulante', 'Ativo Não Circulante', 'Passivo Circulante', 'Passivo Não Circ.', 'Patrimônio Líquido'];
+            const legendColors = [colors.accent, colors.cyan, colors.amber, colors.red, colors.emerald];
+            const legendValues = [
+              balancoData.ativoCirculante, balancoData.ativoNaoCirculante,
+              balancoData.passivoCirculante, balancoData.passivoNaoCirculante,
+              balancoData.patrimonioLiquido
+            ];
+            const total = legendValues.reduce((a, b) => a + Math.abs(b), 0);
+
+            legendLabels.forEach((label, i) => {
+              const y = 2.2 + (i * 0.85);
+              // Color dot
+              pptSlide.addShape(pptx.ShapeType.ellipse, {
+                x: 7.8, y: y + 0.1, w: 0.22, h: 0.22,
+                fill: { color: legendColors[i] }
+              });
+              // Label
+              pptSlide.addText(label, {
+                x: 8.15, y: y - 0.05, w: 3.5, h: 0.35,
+                fontSize: 12, fontFace: 'Segoe UI', bold: true, color: colors.text
+              });
+              // Value
+              const pct = total > 0 ? ((Math.abs(legendValues[i]) / total) * 100).toFixed(1) : '0.0';
+              pptSlide.addText(`R$ ${(legendValues[i] / 1000).toFixed(0)}K  (${pct}%)`, {
+                x: 8.15, y: y + 0.25, w: 3.5, h: 0.3,
+                fontSize: 10, fontFace: 'Segoe UI', color: colors.textLight
+              });
+            });
+
           } else if (slide.chartType === 'margens') {
+            const margensValues = [dreData.margemBruta, dreData.margemOperacional, dreData.margemLiquida];
             const chartData = [{
               name: 'Margens (%)',
               labels: ['Margem Bruta', 'Margem Operacional', 'Margem Líquida'],
-              values: [dreData.margemBruta, dreData.margemOperacional, dreData.margemLiquida]
+              values: margensValues
             }];
+
+            pptSlide.addText('Indicadores de Rentabilidade (%)', {
+              x: 1, y: 1.55, w: 11.33, h: 0.35,
+              fontSize: 11, fontFace: 'Segoe UI', italic: true, color: colors.textLight
+            });
+
             pptSlide.addChart(pptx.ChartType.bar, chartData, {
-              x: 1.5, y: 1.8, w: 10.33, h: 4.6,
+              x: 1.5, y: 1.9, w: 7, h: 4.4,
               showValue: true,
-              catAxisLabelFontSize: 13, valAxisLabelFontSize: 10,
-              valAxisTitle: 'Percentual (%)', valAxisTitleFontSize: 10,
+              dataLabelColor: colors.text,
+              dataLabelFontSize: 14,
+              dataLabelFontBold: true,
+              dataLabelFormatCode: '0.0"%"',
+              catAxisLabelFontSize: 13,
+              catAxisLabelFontBold: true,
+              catAxisLabelColor: colors.text,
+              valAxisHidden: true,
               chartColors: [colors.accent, colors.cyan, colors.emerald],
-              plotArea: { fill: { color: colors.white } },
+              plotArea: { fill: { color: colors.white }, border: { color: colors.border, pt: 0.5 } },
               catGridLine: { style: 'none' },
-              valGridLine: { color: colors.border, style: 'dash' },
+              valGridLine: { style: 'none' },
+              showLegend: false,
+              barGapWidthPct: 100,
+            });
+
+            // KPI cards on the right
+            const kpiLabels = ['Margem Bruta', 'Margem Operacional', 'Margem Líquida'];
+            const kpiColors = [colors.accent, colors.cyan, colors.emerald];
+            kpiLabels.forEach((label, i) => {
+              const y = 2.3 + (i * 1.5);
+              pptSlide.addShape(pptx.ShapeType.roundRect, {
+                x: 9.2, y: y, w: 3.5, h: 1.1,
+                fill: { color: colors.white },
+                line: { color: kpiColors[i], width: 2 },
+                rectRadius: 0.1
+              });
+              pptSlide.addText(`${margensValues[i].toFixed(1)}%`, {
+                x: 9.2, y: y + 0.05, w: 3.5, h: 0.6,
+                fontSize: 26, fontFace: 'Segoe UI', bold: true, color: kpiColors[i], align: 'center'
+              });
+              pptSlide.addText(label, {
+                x: 9.2, y: y + 0.6, w: 3.5, h: 0.4,
+                fontSize: 10, fontFace: 'Segoe UI', color: colors.textLight, align: 'center'
+              });
             });
           }
         } else {
