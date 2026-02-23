@@ -667,12 +667,30 @@ export function AIPresentationDialog({
   const fetchImageAsBase64 = async (url: string): Promise<string | null> => {
     try {
       const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const blob = await response.blob();
+      
+      // Convert to PNG via canvas to ensure PptxGenJS compatibility (WebP not supported)
       return await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) { reject(new Error('No canvas context')); return; }
+            ctx.drawImage(img, 0, 0);
+            const pngDataUrl = canvas.toDataURL('image/png');
+            console.log('Logo converted to PNG base64, length:', pngDataUrl.length);
+            resolve(pngDataUrl);
+          } catch (err) {
+            reject(err);
+          }
+        };
+        img.onerror = () => reject(new Error('Image load failed'));
+        img.src = URL.createObjectURL(blob);
       });
     } catch (e) {
       console.error('Failed to fetch image as base64:', e);
