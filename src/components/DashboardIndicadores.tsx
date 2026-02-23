@@ -524,7 +524,7 @@ export function DashboardIndicadores({
             <h3 className="font-display font-semibold mb-4">Composição da DRE</h3>
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
-                <Pie data={drePieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} innerRadius={50} paddingAngle={2} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
+                <Pie data={drePieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} innerRadius={50} paddingAngle={2} label={({ name, percent }) => { const p = percent * 100; return `${name} ${p < 1 && p > 0 ? p.toFixed(1) : p.toFixed(0)}%`; }} labelLine={false}>
                   {drePieData.map((_, idx) => (
                     <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
                   ))}
