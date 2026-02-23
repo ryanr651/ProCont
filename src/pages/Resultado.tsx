@@ -1,8 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Logo } from "@/components/Logo";
-import { ThemeToggle } from "@/components/ThemeToggle";
+import { AppHeader } from "@/components/AppHeader";
 import { ProgressBar } from "@/components/ProgressBar";
 import { XLSValidationMode, ValidationRow } from "@/components/XLSValidationMode";
 import { ManualEditDialog, EditableBalancoEntry, EditableDREEntry } from "@/components/ManualEditDialog";
@@ -1473,31 +1472,9 @@ const Resultado = () => {
       {/* Background effects */}
       <div className="hero-glow w-full h-[400px] top-0 left-0" />
 
-      {/* Navigation */}
-      <nav className="relative z-10 container mx-auto px-6 py-6 flex items-center justify-between">
-        <Logo />
-        <div className="flex items-center gap-4">
-          <ThemeToggle />
-          <Link to="/upload">
-            <Button variant="ghost" size="sm">
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Nova Análise
-            </Button>
-          </Link>
-          <Button variant="ghost" size="sm" onClick={handleLogout}>
-            <LogOut className="w-4 h-4 mr-2" />
-            Sair
-          </Button>
-          <Link to="/">
-            <Button variant="glass" size="sm">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Início
-            </Button>
-          </Link>
-        </div>
-      </nav>
+      <AppHeader />
 
-      <main className="relative z-10 container mx-auto px-6 py-12">
+      <main className="relative z-10 container mx-auto px-6 pt-24 pb-12">
         {/* Header */}
         <div className="max-w-4xl mx-auto text-center mb-12">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-green-500/10 border border-green-500/20 mb-6">
