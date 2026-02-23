@@ -117,6 +117,7 @@ async function classifyWithAI(
             valor: e.valor,
             valor_anterior: e.valor_anterior,
             posicao_relativa: i,
+            isCMV: (e as any).isCMV || false,
           })),
           contexto_tipo: contextoTipo,
         }),
@@ -255,6 +256,7 @@ export async function uploadAndProcessFiles(
           descricao: e.descricao,
           valor: e.valor,
           valor_anterior: e.valor_anterior,
+          isCMV: e.isCMV || false,
         })),
         "dre"
       );
@@ -263,15 +265,7 @@ export async function uploadAndProcessFiles(
         for (let i = 0; i < dreResult.entries.length; i++) {
           const classification = aiResult.classifications[i];
           if (classification) {
-            // REGRA CRÍTICA: Se o parser detectou que a conta está dentro do bloco CMV
-            // (entre Receita Líquida e Lucro Bruto), a classificação por posição tem
-            // prioridade absoluta sobre a IA. A IA não tem contexto de posição no arquivo.
-            if (dreResult.entries[i].isCMV) {
-              dreResult.entries[i].grupo = "CMV";
-              console.log(`[CMV OVERRIDE] "${dreResult.entries[i].descricao}" forçado para CMV (bloco posicional)`);
-            } else {
-              dreResult.entries[i].grupo = classification.grupo;
-            }
+            dreResult.entries[i].grupo = classification.grupo;
           }
         }
         aiStats = aiResult.stats;
