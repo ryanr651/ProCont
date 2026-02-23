@@ -38,6 +38,39 @@ const VALID_GRUPOS_DRE = [
   "OUTROS",
 ];
 
+const VALID_GRUPOS_BALANCETE = [
+  "DISPONIBILIDADES",
+  "CAIXA",
+  "BANCO",
+  "APLICACOES",
+  "CONTAS_A_RECEBER",
+  "CLIENTES",
+  "ESTOQUE",
+  "ATIVO_CIRCULANTE",
+  "IMOBILIZADO",
+  "INTANGIVEL",
+  "INVESTIMENTO",
+  "REALIZAVEL",
+  "ATIVO_NAO_CIRCULANTE",
+  "FORNECEDOR",
+  "OBRIGACOES",
+  "PASSIVO_CIRCULANTE",
+  "EMPRESTIMO_CP",
+  "SALARIOS_A_PAGAR",
+  "IMPOSTOS_A_PAGAR",
+  "PASSIVO_NAO_CIRCULANTE",
+  "EMPRESTIMO_LP",
+  "FINANCIAMENTO_LP",
+  "PATRIMONIO",
+  "CAPITAL_SOCIAL",
+  "RESERVA",
+  "LUCROS_ACUMULADOS",
+  "RECEITA",
+  "CUSTO",
+  "DESPESA",
+  "OUTROS",
+];
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -136,7 +169,53 @@ serve(async (req) => {
         sinal: e.valor >= 0 ? "positivo" : "negativo",
       }));
 
-      const systemPrompt = `Você é um contador brasileiro especialista em classificação de contas contábeis.
+      const validGrupos = contexto_tipo === "balancete" ? VALID_GRUPOS_BALANCETE : VALID_GRUPOS_DRE;
+
+      const systemPrompt = contexto_tipo === "balancete"
+        ? `Você é um contador brasileiro especialista em classificação de contas de Balancete Contábil.
+
+Sua tarefa: classificar cada conta do balancete em um dos grupos abaixo.
+
+## Grupos válidos para BALANCETE:
+- DISPONIBILIDADES: Caixa geral, fundo fixo, caixa pequena
+- CAIXA: Contas de caixa 
+- BANCO: Contas bancárias, banco conta movimento, aplicações bancárias de curto prazo
+- APLICACOES: Aplicações financeiras
+- CONTAS_A_RECEBER: Duplicatas a receber, clientes, títulos a receber
+- CLIENTES: Contas de clientes específicos
+- ESTOQUE: Estoques, mercadorias, produtos, matéria-prima
+- ATIVO_CIRCULANTE: Outros ativos circulantes não classificados acima
+- IMOBILIZADO: Imóveis, veículos, máquinas, equipamentos, móveis e utensílios
+- INTANGIVEL: Marcas, patentes, software, goodwill
+- INVESTIMENTO: Participações societárias, investimentos de longo prazo
+- REALIZAVEL: Realizável a longo prazo, depósitos judiciais
+- ATIVO_NAO_CIRCULANTE: Outros ativos não circulantes
+- FORNECEDOR: Fornecedores, contas a pagar por compras
+- OBRIGACOES: Obrigações diversas, contas a pagar gerais
+- PASSIVO_CIRCULANTE: Outros passivos de curto prazo
+- EMPRESTIMO_CP: Empréstimos e financiamentos de curto prazo
+- SALARIOS_A_PAGAR: Salários, férias, FGTS, INSS a pagar
+- IMPOSTOS_A_PAGAR: ICMS, ISS, PIS, COFINS, IRPJ, CSLL a recolher
+- PASSIVO_NAO_CIRCULANTE: Outros passivos de longo prazo
+- EMPRESTIMO_LP: Empréstimos de longo prazo
+- FINANCIAMENTO_LP: Financiamentos de longo prazo
+- PATRIMONIO: Patrimônio líquido geral
+- CAPITAL_SOCIAL: Capital social subscrito/integralizado
+- RESERVA: Reservas de lucros, reservas de capital
+- LUCROS_ACUMULADOS: Lucros ou prejuízos acumulados
+- RECEITA: Receitas operacionais e não operacionais
+- CUSTO: Custos de mercadoria, produção, serviços
+- DESPESA: Despesas operacionais, administrativas, financeiras
+- OUTROS: Contas que não se encaixam acima
+
+## Regras CRÍTICAS:
+1. Considere o NOME da conta para classificar corretamente
+2. Contas de ATIVO são tipicamente devedoras, PASSIVO/PL credoras
+3. Retorne um JSON array com objetos {index, grupo, motivo}
+4. O campo "motivo" deve ser BREVE (1 frase)
+
+Responda APENAS com o JSON array, sem markdown.`
+        : `Você é um contador brasileiro especialista em classificação de contas contábeis.
 
 Sua tarefa: classificar cada conta contábil em um dos grupos abaixo.
 
@@ -229,7 +308,7 @@ ${JSON.stringify(accountList, null, 2)}`;
       for (const item of parsed) {
         const entry = uncachedEntries[item.index];
         if (entry) {
-          const grupo = VALID_GRUPOS_DRE.includes(item.grupo) ? item.grupo : "OUTROS";
+          const grupo = validGrupos.includes(item.grupo) ? item.grupo : "OUTROS";
           aiResults.set(entry.descricao_normalized, {
             grupo,
             motivo: item.motivo || "Classificado pela IA",

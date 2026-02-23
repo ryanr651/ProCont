@@ -2,8 +2,10 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   parseDREFileAuto,
   parseBalancoFileAuto,
+  parseBalanceteFileAuto,
   ParsedDREEntry,
   ParsedBalancoEntry,
+  ParsedBalanceteEntry,
   BalancoMetrics,
   ValidationRow,
 } from "./brazilianParser";
@@ -13,9 +15,11 @@ export interface UploadResult {
   success: boolean;
   inserted_dre: number;
   inserted_balanco: number;
+  inserted_balancete: number;
   errors: string[];
   dre_entries?: ParsedDREEntry[];
   balanco_entries?: ParsedBalancoEntry[];
+  balancete_entries?: ParsedBalanceteEntry[];
   balanco_metrics?: BalancoMetrics;
   balanco_validation?: ValidationRow[];
   ai_stats?: { total: number; from_cache: number; from_ai: number };
@@ -143,19 +147,22 @@ export async function uploadAndProcessMultipleFiles(
 ): Promise<UploadResult> {
   const errors: string[] = [];
 
-  // Find DRE and Balanço files
+  // Find DRE, Balanço and Balancete files
   const dreType = fileTypes.find((ft) => ft.tipo === "DRE");
   const balancoType = fileTypes.find((ft) => ft.tipo === "BALANCO_PATRIMONIAL");
+  const balanceteType = fileTypes.find((ft) => ft.tipo === "BALANCETE");
 
   const dreFile = dreType ? files.find((f) => f.file.name === dreType.filename) : undefined;
   const balancoFile = balancoType ? files.find((f) => f.file.name === balancoType.filename) : undefined;
+  const balanceteFile = balanceteType ? files.find((f) => f.file.name === balanceteType.filename) : undefined;
 
-  if (!dreFile && !balancoFile) {
+  if (!dreFile && !balancoFile && !balanceteFile) {
     return {
       success: false,
       inserted_dre: 0,
       inserted_balanco: 0,
-      errors: ["Nenhum arquivo foi identificado como DRE ou Balanço Patrimonial. Verifique os arquivos enviados."],
+      inserted_balancete: 0,
+      errors: ["Nenhum arquivo foi identificado como DRE, Balanço Patrimonial ou Balancete. Verifique os arquivos enviados."],
       fileTypes: fileTypes as any,
     };
   }
@@ -165,7 +172,8 @@ export async function uploadAndProcessMultipleFiles(
     balancoFile?.file || null,
     userId,
     empresaId,
-    onProgress
+    onProgress,
+    balanceteFile?.file || null
   );
 }
 
@@ -174,7 +182,8 @@ export async function uploadAndProcessFiles(
   balancoFile: File | null,
   userId: string,
   empresaId?: string,
-  onProgress?: (stage: string) => void
+  onProgress?: (stage: string) => void,
+  balanceteFile?: File | null
 ): Promise<UploadResult> {
   const errors: string[] = [];
 
@@ -184,13 +193,16 @@ export async function uploadAndProcessFiles(
     if (empresaId) {
       await supabase.from("dre_entries").delete().eq("user_id", userId).eq("empresa_id", empresaId);
       await supabase.from("balanco_entries").delete().eq("user_id", userId).eq("empresa_id", empresaId);
+      await supabase.from("balancete_entries").delete().eq("user_id", userId).eq("empresa_id", empresaId);
     } else {
       await supabase.from("dre_entries").delete().eq("user_id", userId);
       await supabase.from("balanco_entries").delete().eq("user_id", userId);
+      await supabase.from("balancete_entries").delete().eq("user_id", userId);
     }
 
     let dreResult: Awaited<ReturnType<typeof parseDREFileAuto>> | null = null;
     let balancoResult: Awaited<ReturnType<typeof parseBalancoFileAuto>> | null = null;
+    let balanceteResult: Awaited<ReturnType<typeof parseBalanceteFileAuto>> | null = null;
 
     // Step 2: Parse files
     onProgress?.("Lendo arquivos contábeis...");
@@ -203,21 +215,29 @@ export async function uploadAndProcessFiles(
       balancoResult = await parseBalancoFileAuto(balancoFile);
       errors.push(...balancoResult.errors);
     }
+    if (balanceteFile) {
+      balanceteResult = await parseBalanceteFileAuto(balanceteFile);
+      errors.push(...balanceteResult.errors);
+    }
 
     const dreParsed = !!dreResult?.parsed;
     const balancoParsed = !!balancoResult?.parsed || (balancoResult?.metrics?.ativoTotal ?? 0) !== 0;
+    const balanceteParsed = !!balanceteResult?.parsed;
 
     const hasAnyValidData =
       dreParsed ||
       balancoParsed ||
+      balanceteParsed ||
       (dreResult?.entries?.length ?? 0) > 0 ||
-      (balancoResult?.entries?.length ?? 0) > 0;
+      (balancoResult?.entries?.length ?? 0) > 0 ||
+      (balanceteResult?.entries?.length ?? 0) > 0;
 
     if (!hasAnyValidData) {
       return {
         success: false,
         inserted_dre: 0,
         inserted_balanco: 0,
+        inserted_balancete: 0,
         errors: [
           "Não foi possível interpretar a estrutura dos arquivos enviados. Verifique se são arquivos válidos da contabilidade.",
         ],
@@ -251,6 +271,34 @@ export async function uploadAndProcessFiles(
       } else {
         console.warn("AI classification failed, using parser fallback");
         errors.push("Classificação via IA falhou. Usando classificação local como fallback.");
+      }
+    }
+
+    // Step 3b: AI Classification for Balancete entries
+    if (balanceteResult && balanceteResult.entries.length > 0) {
+      onProgress?.("IA classificando contas do balancete...");
+
+      const aiResult = await classifyWithAI(
+        balanceteResult.entries.map((e) => ({
+          descricao: e.conta,
+          valor: e.saldo_atual,
+        })),
+        "balancete"
+      );
+
+      if (aiResult && aiResult.classifications.length > 0) {
+        for (let i = 0; i < balanceteResult.entries.length; i++) {
+          const classification = aiResult.classifications[i];
+          if (classification) {
+            balanceteResult.entries[i].grupo = classification.grupo;
+          }
+        }
+        if (!aiStats) aiStats = aiResult.stats;
+        else {
+          aiStats.total += aiResult.stats.total;
+          aiStats.from_cache += aiResult.stats.from_cache;
+          aiStats.from_ai += aiResult.stats.from_ai;
+        }
       }
     }
 
@@ -307,11 +355,43 @@ export async function uploadAndProcessFiles(
       }
     }
 
+    // Step 6: Insert Balancete entries
+    let insertedBalancete = 0;
+    if (balanceteResult && balanceteResult.entries.length > 0) {
+      onProgress?.("Salvando dados do Balancete...");
+      const balanceteBatches = chunkArray(balanceteResult.entries, 500);
+      for (const batch of balanceteBatches) {
+        const { error } = await supabase.from("balancete_entries").insert(
+          batch.map((entry) => ({
+            user_id: userId,
+            empresa_id: empresaId || null,
+            periodo: balanceteResult!.periodo,
+            conta: entry.conta,
+            grupo: entry.grupo,
+            saldo_anterior: entry.saldo_anterior,
+            debitos: entry.debitos,
+            creditos: entry.creditos,
+            saldo_atual: entry.saldo_atual,
+            natureza: entry.natureza,
+            raw_row: entry.raw_row,
+          }))
+        );
+        if (error) {
+          errors.push(`Erro ao inserir Balancete: ${error.message}`);
+        } else {
+          insertedBalancete += batch.length;
+        }
+      }
+    }
+
     if (dreParsed && insertedDre === 0) {
       errors.push("DRE foi lido, mas nenhuma linha foi materializada para persistência (entries=0).");
     }
     if (balancoParsed && insertedBalanco === 0) {
       errors.push("Balanço foi lido, mas nenhuma linha foi materializada para persistência (entries=0).");
+    }
+    if (balanceteParsed && insertedBalancete === 0) {
+      errors.push("Balancete foi lido, mas nenhuma linha foi materializada para persistência (entries=0).");
     }
 
     // Save validation logs
@@ -328,12 +408,14 @@ export async function uploadAndProcessFiles(
     onProgress?.("Concluído!");
 
     return {
-      success: dreParsed || balancoParsed,
+      success: dreParsed || balancoParsed || balanceteParsed,
       inserted_dre: insertedDre,
       inserted_balanco: insertedBalanco,
+      inserted_balancete: insertedBalancete,
       errors,
       dre_entries: dreResult?.entries,
       balanco_entries: balancoResult?.entries,
+      balancete_entries: balanceteResult?.entries,
       balanco_metrics: balancoResult?.metrics,
       balanco_validation: balancoResult?.validationRows,
       ai_stats: aiStats,
@@ -343,6 +425,7 @@ export async function uploadAndProcessFiles(
       success: false,
       inserted_dre: 0,
       inserted_balanco: 0,
+      inserted_balancete: 0,
       errors: [error instanceof Error ? error.message : "Erro desconhecido ao processar arquivos."],
     };
   }

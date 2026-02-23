@@ -14,6 +14,62 @@ export type Database = {
   }
   public: {
     Tables: {
+      balancete_entries: {
+        Row: {
+          conta: string
+          created_at: string
+          creditos: number | null
+          debitos: number | null
+          empresa_id: string | null
+          grupo: string | null
+          id: string
+          natureza: string | null
+          periodo: string
+          raw_row: Json | null
+          saldo_anterior: number | null
+          saldo_atual: number | null
+          user_id: string
+        }
+        Insert: {
+          conta: string
+          created_at?: string
+          creditos?: number | null
+          debitos?: number | null
+          empresa_id?: string | null
+          grupo?: string | null
+          id?: string
+          natureza?: string | null
+          periodo: string
+          raw_row?: Json | null
+          saldo_anterior?: number | null
+          saldo_atual?: number | null
+          user_id: string
+        }
+        Update: {
+          conta?: string
+          created_at?: string
+          creditos?: number | null
+          debitos?: number | null
+          empresa_id?: string | null
+          grupo?: string | null
+          id?: string
+          natureza?: string | null
+          periodo?: string
+          raw_row?: Json | null
+          saldo_anterior?: number | null
+          saldo_atual?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "balancete_entries_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       balanco_entries: {
         Row: {
           conta: string

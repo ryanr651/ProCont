@@ -136,7 +136,7 @@ const Upload = () => {
 
       toast({
         title: "Processamento concluído",
-        description: `DRE: ${result.inserted_dre} linhas · Balanço: ${result.inserted_balanco} linhas`,
+        description: `DRE: ${result.inserted_dre} · Balanço: ${result.inserted_balanco} · Balancete: ${result.inserted_balancete} linhas`,
       });
 
       navigate(`/resultado?empresa_id=${selectedEmpresa}`);
@@ -154,7 +154,8 @@ const Upload = () => {
 
   const hasDre = fileTypes.some((ft) => ft.tipo === "DRE");
   const hasBalanco = fileTypes.some((ft) => ft.tipo === "BALANCO_PATRIMONIAL");
-  const canProcess = uploadedFiles.length > 0 && (hasDre || hasBalanco) && !isIdentifying;
+  const hasBalancete = fileTypes.some((ft) => ft.tipo === "BALANCETE");
+  const canProcess = uploadedFiles.length > 0 && (hasDre || hasBalanco || hasBalancete) && !isIdentifying;
 
   return (
     <div className="min-h-screen bg-background">
@@ -273,9 +274,9 @@ const Upload = () => {
             )}
 
             {/* Warning if no DRE/Balanço identified */}
-            {fileTypes.length > 0 && !hasDre && !hasBalanco && !isIdentifying && (
+            {fileTypes.length > 0 && !hasDre && !hasBalanco && !hasBalancete && !isIdentifying && (
               <p className="mt-2 text-sm text-destructive">
-                Nenhum arquivo foi identificado como DRE ou Balanço Patrimonial. Verifique os arquivos.
+                Nenhum arquivo foi identificado como DRE, Balanço Patrimonial ou Balancete. Verifique os arquivos.
               </p>
             )}
 
