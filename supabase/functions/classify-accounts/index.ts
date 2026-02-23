@@ -11,7 +11,8 @@ interface AccountEntry {
   descricao: string;
   valor: number;
   valor_anterior?: number | null;
-  posicao_relativa?: number; // position in the file (for context)
+  posicao_relativa?: number;
+  isCMV?: boolean; // flag from parser: account is inside CMV block
 }
 
 interface ClassificationResult {
@@ -129,6 +130,7 @@ serve(async (req) => {
     const normalizedEntries = entries.map((e) => ({
       ...e,
       descricao_normalized: normalize(e.descricao),
+      isCMV: e.isCMV || false,
     }));
 
     // Step 1: Check cache for existing classifications
@@ -153,7 +155,7 @@ serve(async (req) => {
 
     // Step 2: Identify uncached entries
     const uncachedEntries = normalizedEntries.filter(
-      (e) => !cacheMap.has(e.descricao_normalized)
+      (e) => !cacheMap.has(e.descricao_normalized) || e.isCMV
     );
 
     // Step 3: Call AI for uncached entries (if any)
@@ -167,6 +169,7 @@ serve(async (req) => {
         valor: e.valor,
         valor_anterior: e.valor_anterior,
         sinal: e.valor >= 0 ? "positivo" : "negativo",
+        dentro_do_bloco_CMV: e.isCMV || false,
       }));
 
       const validGrupos = contexto_tipo === "balancete" ? VALID_GRUPOS_BALANCETE : VALID_GRUPOS_DRE;
@@ -237,12 +240,13 @@ Sua tarefa: classificar cada conta contábil em um dos grupos abaixo.
 - OUTROS: Contas que não se encaixam em nenhum grupo acima
 
 ## Regras CRÍTICAS:
-1. Se a conta COMEÇA com "Resultado" (ex: "Resultado antes da contribuição social"), classifique como CONTAS_RESULTADO, NÃO como CONTRIBUICAO_SOCIAL ou IR
-2. Considere o SINAL do valor: receitas são positivas, despesas/custos são negativos
-3. Considere a POSIÇÃO da conta na demonstração: contas no topo são receita, no meio são custos/despesas, no final são impostos/resultado
-4. Subtotais (Receita Líquida, Lucro Bruto, etc.) devem ser classificados em seu grupo específico
-5. Retorne um JSON array com objetos {index, grupo, motivo}
-6. O campo "motivo" deve ser uma explicação BREVE (1 frase) de por que aquela classificação foi escolhida
+1. **REGRA MAIS IMPORTANTE**: Se o campo "dentro_do_bloco_CMV" for true, a conta DEVE ser classificada como CMV, independentemente do nome. Isso significa que o parser detectou que a conta está posicionada entre a Receita Líquida e o Lucro Bruto no arquivo original, portanto faz parte do bloco de Custo da Mercadoria Vendida.
+2. Se a conta COMEÇA com "Resultado" (ex: "Resultado antes da contribuição social"), classifique como CONTAS_RESULTADO, NÃO como CONTRIBUICAO_SOCIAL ou IR
+3. Considere o SINAL do valor: receitas são positivas, despesas/custos são negativos
+4. Considere a POSIÇÃO da conta na demonstração: contas no topo são receita, no meio são custos/despesas, no final são impostos/resultado
+5. Subtotais (Receita Líquida, Lucro Bruto, etc.) devem ser classificados em seu grupo específico
+6. Retorne um JSON array com objetos {index, grupo, motivo}
+7. O campo "motivo" deve ser uma explicação BREVE (1 frase) de por que aquela classificação foi escolhida
 
 Responda APENAS com o JSON array, sem markdown, sem explicações adicionais.`;
 
