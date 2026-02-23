@@ -240,7 +240,7 @@ Sua tarefa: classificar cada conta contábil em um dos grupos abaixo.
 - OUTROS: Contas que não se encaixam em nenhum grupo acima
 
 ## Regras CRÍTICAS:
-1. **REGRA MAIS IMPORTANTE**: Se o campo "dentro_do_bloco_CMV" for true, a conta DEVE ser classificada como CMV, independentemente do nome. Isso significa que o parser detectou que a conta está posicionada entre a Receita Líquida e o Lucro Bruto no arquivo original, portanto faz parte do bloco de Custo da Mercadoria Vendida.
+1. **REGRA MAIS IMPORTANTE**: Se o campo "dentro_do_bloco_CMV" for true, a conta DEVE ser classificada como CMV, independentemente do nome. Contas como "Material de Consumo", "Frete sobre Vendas", "Embalagens", etc., podem aparecer tanto como CMV quanto como Despesa Operacional dependendo de onde estão posicionadas na DRE. Se "dentro_do_bloco_CMV" for true, significa que o parser detectou que a conta está entre a Receita Líquida e o Lucro Bruto, portanto faz parte do CMV. Se "dentro_do_bloco_CMV" for false, classifique normalmente pelo nome e contexto (provavelmente DESPESAS_OPERACIONAIS).
 2. Se a conta COMEÇA com "Resultado" (ex: "Resultado antes da contribuição social"), classifique como CONTAS_RESULTADO, NÃO como CONTRIBUICAO_SOCIAL ou IR
 3. Considere o SINAL do valor: receitas são positivas, despesas/custos são negativos
 4. Considere a POSIÇÃO da conta na demonstração: contas no topo são receita, no meio são custos/despesas, no final são impostos/resultado
