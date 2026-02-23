@@ -263,7 +263,15 @@ export async function uploadAndProcessFiles(
         for (let i = 0; i < dreResult.entries.length; i++) {
           const classification = aiResult.classifications[i];
           if (classification) {
-            dreResult.entries[i].grupo = classification.grupo;
+            // REGRA CRÍTICA: Se o parser detectou que a conta está dentro do bloco CMV
+            // (entre Receita Líquida e Lucro Bruto), a classificação por posição tem
+            // prioridade absoluta sobre a IA. A IA não tem contexto de posição no arquivo.
+            if (dreResult.entries[i].isCMV) {
+              dreResult.entries[i].grupo = "CMV";
+              console.log(`[CMV OVERRIDE] "${dreResult.entries[i].descricao}" forçado para CMV (bloco posicional)`);
+            } else {
+              dreResult.entries[i].grupo = classification.grupo;
+            }
           }
         }
         aiStats = aiResult.stats;
