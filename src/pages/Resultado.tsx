@@ -10,6 +10,7 @@ import { AIAnalysisDialog } from "@/components/AIAnalysisDialog";
 import { AIPresentationDialog } from "@/components/AIPresentationDialog";
 import { FinancialChatBox } from "@/components/FinancialChatBox";
 import { DashboardIndicadores } from "@/components/DashboardIndicadores";
+import { DashboardBalancete, type BalanceteClassifiedEntry } from "@/components/DashboardBalancete";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import html2pdf from "html2pdf.js";
@@ -156,6 +157,9 @@ const Resultado = () => {
   // AI Presentation state
   const [showAIPresentation, setShowAIPresentation] = useState(false);
 
+  // Balancete state
+  const [balanceteEntries, setBalanceteEntries] = useState<BalanceteClassifiedEntry[]>([]);
+
   // Empresa context
   const [selectedEmpresa, setSelectedEmpresa] = useState<EmpresaData | null>(null);
   
@@ -180,10 +184,12 @@ const Resultado = () => {
       // Build query filters
       let dreQuery = supabase.from('dre_entries').select('*').eq('user_id', user.id);
       let balancoQuery = supabase.from('balanco_entries').select('*').eq('user_id', user.id);
+      let balanceteQuery = supabase.from('balancete_entries').select('*').eq('user_id', user.id);
 
       if (empresaIdParam) {
         dreQuery = dreQuery.eq('empresa_id', empresaIdParam);
         balancoQuery = balancoQuery.eq('empresa_id', empresaIdParam);
+        balanceteQuery = balanceteQuery.eq('empresa_id', empresaIdParam);
       }
 
       // Load DRE entries
@@ -194,7 +200,23 @@ const Resultado = () => {
       const { data: balancoEntries, error: balancoError } = await balancoQuery;
       if (balancoError) throw balancoError;
 
-      if (!dreEntries?.length && !balancoEntries?.length) {
+      // Load Balancete entries
+      const { data: balanceteData, error: balanceteError } = await balanceteQuery;
+      if (balanceteError) throw balanceteError;
+
+      if (balanceteData && balanceteData.length > 0) {
+        setBalanceteEntries(balanceteData.map((e: any) => ({
+          conta: e.conta,
+          grupo: e.grupo || 'OUTROS',
+          saldo_anterior: Number(e.saldo_anterior) || 0,
+          debitos: Number(e.debitos) || 0,
+          creditos: Number(e.creditos) || 0,
+          saldo_atual: Number(e.saldo_atual) || 0,
+          natureza: e.natureza || 'devedora',
+        })));
+      }
+
+      if (!dreEntries?.length && !balancoEntries?.length && !balanceteData?.length) {
         navigate("/upload");
         return;
       }
@@ -1502,6 +1524,12 @@ const Resultado = () => {
           showDreDebug={showDreDebug}
           setShowDreDebug={setShowDreDebug}
         />
+
+
+        {/* ===== DASHBOARD BALANCETE ===== */}
+        {balanceteEntries.length > 0 && (
+          <DashboardBalancete entries={balanceteEntries} />
+        )}
 
         {/* Diagnóstico de Importação Section */}
         {diagnosticLines.length > 0 && (

@@ -2137,6 +2137,187 @@ export function calculateDREMetrics(entries: ParsedDREEntry[]): DREMetrics {
   return metrics;
 }
 
+// ============= BALANCETE (TRIAL BALANCE) PARSING =============
+
+export interface ParsedBalanceteEntry {
+  conta: string;
+  grupo: string;
+  saldo_anterior: number;
+  debitos: number;
+  creditos: number;
+  saldo_atual: number;
+  natureza: 'devedora' | 'credora';
+  raw_row: string[];
+}
+
+export interface BalanceteParseResult {
+  entries: ParsedBalanceteEntry[];
+  periodo: string;
+  errors: string[];
+  parsed: boolean;
+}
+
+/**
+ * Detect if a file has balancete structure (4 numeric columns: Saldo Anterior, Débitos, Créditos, Saldo Atual)
+ */
+function isBalanceteStructure(rows: XLSRow[]): boolean {
+  // Check header row for balancete-specific keywords
+  for (let i = 0; i < Math.min(10, rows.length); i++) {
+    const rowText = rows[i].cells.join(' ').toUpperCase();
+    const norm = normalizeText(rowText);
+    if (
+      (norm.includes('SALDO ANTERIOR') || norm.includes('SALDO INICIAL')) &&
+      (norm.includes('DEBITO') || norm.includes('DEBITOS')) &&
+      (norm.includes('CREDITO') || norm.includes('CREDITOS'))
+    ) {
+      return true;
+    }
+    if (norm.includes('BALANCETE')) return true;
+  }
+  
+  // Check if majority of data rows have 4+ numeric columns
+  let fourColCount = 0;
+  const dataRows = rows.slice(Math.min(5, rows.length));
+  for (const row of dataRows.slice(0, 20)) {
+    if (row.numericValues.length >= 4) fourColCount++;
+  }
+  return fourColCount >= 5;
+}
+
+/**
+ * Detect column positions for balancete
+ * Returns indices for: [saldoAnterior, debitos, creditos, saldoAtual]
+ */
+function detectBalanceteColumns(rows: XLSRow[]): { saldoAnteriorIdx: number; debitosIdx: number; creditosIdx: number; saldoAtualIdx: number } | null {
+  // Default: assume last 4 numeric columns are SA, D, C, SA
+  // Try to detect from headers first
+  for (let i = 0; i < Math.min(10, rows.length); i++) {
+    const cells = rows[i].cells.map(c => normalizeText(String(c)));
+    const saIdx = cells.findIndex(c => c.includes('SALDO ANTERIOR') || c.includes('SALDO INICIAL'));
+    const debIdx = cells.findIndex(c => c.includes('DEBITO') && !c.includes('CREDITO'));
+    const credIdx = cells.findIndex(c => c.includes('CREDITO'));
+    const sfIdx = cells.findIndex(c => c.includes('SALDO ATUAL') || c.includes('SALDO FINAL'));
+    
+    if (saIdx >= 0 && debIdx >= 0 && credIdx >= 0) {
+      return {
+        saldoAnteriorIdx: 0,
+        debitosIdx: 1,
+        creditosIdx: 2,
+        saldoAtualIdx: sfIdx >= 0 ? 3 : 3,
+      };
+    }
+  }
+  
+  // Default ordering
+  return { saldoAnteriorIdx: 0, debitosIdx: 1, creditosIdx: 2, saldoAtualIdx: 3 };
+}
+
+function parseBalanceteFromXLS(rows: XLSRow[], filename: string): BalanceteParseResult {
+  debugLog("=== Iniciando parseBalanceteFromXLS ===");
+  
+  const entries: ParsedBalanceteEntry[] = [];
+  const errors: string[] = [];
+  const periodo = extractPeriodFromRows(rows.map(r => r.cells), filename);
+  
+  // Find data start (skip headers)
+  let startRow = 0;
+  for (let i = 0; i < Math.min(15, rows.length); i++) {
+    const rowText = normalizeText(rows[i].cells.join(' '));
+    if (
+      (rowText.includes('SALDO ANTERIOR') || rowText.includes('SALDO INICIAL')) &&
+      (rowText.includes('DEBITO') || rowText.includes('DEBITOS'))
+    ) {
+      startRow = i + 1;
+      break;
+    }
+    if (rowText.includes('BALANCETE') && !rowText.includes('SALDO')) {
+      // Title row, keep looking
+      continue;
+    }
+  }
+  
+  // If no header found, try to start after first 5 rows
+  if (startRow === 0) startRow = Math.min(5, rows.length);
+  
+  for (let i = startRow; i < rows.length; i++) {
+    const row = rows[i];
+    const { text: conta } = safeGetFirstText(row);
+    if (!conta || conta.length < 2) continue;
+    
+    const normalConta = normalizeText(conta);
+    
+    // Skip total/summary lines
+    if (normalConta === 'TOTAL' || normalConta === 'TOTAIS' || normalConta.includes('TOTAL GERAL')) continue;
+    
+    const numericVals = row.numericValues;
+    if (numericVals.length < 2) continue; // Need at least 2 numeric values
+    
+    let saldoAnterior = 0;
+    let debitos = 0;
+    let creditos = 0;
+    let saldoAtual = 0;
+    
+    if (numericVals.length >= 4) {
+      // Full 4-column structure
+      saldoAnterior = numericVals[0].value;
+      debitos = Math.abs(numericVals[1].value);
+      creditos = Math.abs(numericVals[2].value);
+      saldoAtual = numericVals[3].value;
+    } else if (numericVals.length === 3) {
+      // 3 columns: Débitos, Créditos, Saldo
+      debitos = Math.abs(numericVals[0].value);
+      creditos = Math.abs(numericVals[1].value);
+      saldoAtual = numericVals[2].value;
+    } else if (numericVals.length === 2) {
+      // 2 columns: Débitos/Créditos combined, Saldo
+      saldoAtual = numericVals[numericVals.length - 1].value;
+    }
+    
+    // Determine nature based on account description or saldo sign
+    const isCredora = normalConta.includes('RECEITA') || normalConta.includes('PASSIVO') || 
+                      normalConta.includes('PATRIMONIO') || normalConta.includes('CAPITAL') ||
+                      normalConta.includes('FORNECEDOR') || normalConta.includes('OBRIGAC');
+    const natureza: 'devedora' | 'credora' = isCredora ? 'credora' : 'devedora';
+    
+    // Initial grupo = OUTROS, will be classified by AI
+    entries.push({
+      conta,
+      grupo: 'OUTROS',
+      saldo_anterior: saldoAnterior,
+      debitos,
+      creditos,
+      saldo_atual: saldoAtual,
+      natureza,
+      raw_row: row.cells,
+    });
+  }
+  
+  debugLog(`Balancete parsed: ${entries.length} entries`);
+  
+  return {
+    entries,
+    periodo,
+    errors,
+    parsed: entries.length > 0,
+  };
+}
+
+export async function parseBalanceteFileAuto(file: File): Promise<BalanceteParseResult> {
+  const extension = getFileExtension(file.name);
+  debugLog("Balancete - Tipo de arquivo:", extension);
+  
+  if (extension === "csv") {
+    const rows = await parseCSVFile(file);
+    const xlsRows = processXLSRawRows(rows);
+    return parseBalanceteFromXLS(xlsRows, file.name);
+  } else if (extension === "xls" || extension === "xlsx") {
+    const xlsRows = await parseXLSFile(file);
+    return parseBalanceteFromXLS(xlsRows, file.name);
+  }
+  
+  throw new Error("Formato não suportado. Use CSV, XLS ou XLSX.");
+}
+
 export function extractPeriod(filename: string, rows: string[][]): string {
   return extractPeriodFromRows(rows, filename);
 }
