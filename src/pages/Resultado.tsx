@@ -453,7 +453,7 @@ const Resultado = () => {
       if (entry.grupo && entry.grupo !== 'OUTROS') {
         grupo = mapGrupo(entry.grupo);
         isExplicit = false;
-        motivo = `Classificado pelo parser: ${entry.grupo}`;
+        motivo = `Classificado pela IA: ${entry.grupo}`;
       } else {
         const classification = classifyDREEntry(desc, entry.descricao, valor);
         grupo = classification.grupo;

@@ -64,6 +64,36 @@ export type Database = {
           },
         ]
       }
+      classification_cache: {
+        Row: {
+          contexto_tipo: string
+          created_at: string
+          descricao_normalized: string
+          grupo: string
+          id: string
+          motivo: string
+          user_id: string
+        }
+        Insert: {
+          contexto_tipo?: string
+          created_at?: string
+          descricao_normalized: string
+          grupo: string
+          id?: string
+          motivo: string
+          user_id: string
+        }
+        Update: {
+          contexto_tipo?: string
+          created_at?: string
+          descricao_normalized?: string
+          grupo?: string
+          id?: string
+          motivo?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       dre_entries: {
         Row: {
           created_at: string

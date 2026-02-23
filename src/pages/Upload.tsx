@@ -22,6 +22,7 @@ const Upload = () => {
   const [dreFile, setDreFile] = useState<File | null>(null);
   const [balancoFile, setBalancoFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingStage, setProcessingStage] = useState("");
   const [showValidation, setShowValidation] = useState(false);
   const [validationRows, setValidationRows] = useState<ValidationRow[]>([]);
   const [lastResult, setLastResult] = useState<any>(null);
@@ -67,9 +68,12 @@ const Upload = () => {
     if (!dreFile || !balancoFile || !user || !selectedEmpresa) return;
 
     setIsProcessing(true);
+    setProcessingStage("Iniciando processamento...");
 
     try {
-      const result = await uploadAndProcessFiles(dreFile, balancoFile, user.id, selectedEmpresa);
+      const result = await uploadAndProcessFiles(dreFile, balancoFile, user.id, selectedEmpresa, (stage) => {
+        setProcessingStage(stage);
+      });
 
       if (result.balanco_validation?.length) {
         setValidationRows(result.balanco_validation);
@@ -101,6 +105,7 @@ const Upload = () => {
       });
     } finally {
       setIsProcessing(false);
+      setProcessingStage("");
     }
   };
 
@@ -196,8 +201,15 @@ const Upload = () => {
             <FileUpload label="DRE" description="Demonstração do Resultado do Exercício" onFileSelect={setDreFile} />
             <FileUpload label="Balanço Patrimonial" description="Balanço Patrimonial da empresa" onFileSelect={setBalancoFile} />
 
-            <Button className="mt-6 w-full" onClick={handleProcess} disabled={isProcessing}>
-              {isProcessing ? <Loader2 className="animate-spin" /> : "Processar"}
+            <Button className="mt-6 w-full" onClick={handleProcess} disabled={isProcessing || !dreFile || !balancoFile}>
+              {isProcessing ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="animate-spin w-4 h-4" />
+                  {processingStage || "Processando..."}
+                </span>
+              ) : (
+                "Processar"
+              )}
             </Button>
 
             {showValidation && (
