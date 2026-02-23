@@ -7,6 +7,7 @@ import {
   BalancoMetrics,
   ValidationRow,
 } from "./brazilianParser";
+import type { UploadedFile } from "@/components/MultiFileUpload";
 
 export interface UploadResult {
   success: boolean;
@@ -18,6 +19,7 @@ export interface UploadResult {
   balanco_metrics?: BalancoMetrics;
   balanco_validation?: ValidationRow[];
   ai_stats?: { total: number; from_cache: number; from_ai: number };
+  fileTypes?: Array<{ filename: string; tipo: string; confianca: string }>;
 }
 
 interface ClassificationResult {
@@ -26,9 +28,67 @@ interface ClassificationResult {
   motivo: string;
 }
 
-/**
- * Call the AI classification edge function
- */
+// ============= AI: Identify file types =============
+
+async function extractFileHeaders(file: File): Promise<string[]> {
+  try {
+    const XLSX = await import("xlsx");
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: "array" });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }) as string[][];
+    return data.slice(0, 15).map((row) => row.filter(Boolean).join(" | "));
+  } catch {
+    return [file.name];
+  }
+}
+
+export async function identifyFileTypes(
+  files: UploadedFile[],
+  onProgress?: (stage: string) => void
+): Promise<Array<{ filename: string; tipo: string; confianca: string }>> {
+  onProgress?.("IA identificando tipos de demonstração...");
+
+  try {
+    const fileData = await Promise.all(
+      files.map(async (f) => ({
+        filename: f.file.name,
+        headers: await extractFileHeaders(f.file),
+      }))
+    );
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData?.session?.access_token;
+    if (!token) throw new Error("No session");
+
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/identify-file-type`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({ files: fileData }),
+      }
+    );
+
+    if (!response.ok) {
+      console.error("identify-file-type error:", response.status);
+      return files.map((f) => ({ filename: f.file.name, tipo: "DESCONHECIDO", confianca: "baixa" }));
+    }
+
+    const result = await response.json();
+    return result.results || [];
+  } catch (error) {
+    console.error("identifyFileTypes failed:", error);
+    return files.map((f) => ({ filename: f.file.name, tipo: "DESCONHECIDO", confianca: "baixa" }));
+  }
+}
+
+// ============= AI: Classify accounts =============
+
 async function classifyWithAI(
   entries: { descricao: string; valor: number; valor_anterior?: number | null }[],
   contextoTipo: string
@@ -72,9 +132,46 @@ async function classifyWithAI(
   }
 }
 
+// ============= Multi-file upload & process =============
+
+export async function uploadAndProcessMultipleFiles(
+  files: UploadedFile[],
+  fileTypes: Array<{ filename: string; tipo: string }>,
+  userId: string,
+  empresaId: string,
+  onProgress?: (stage: string) => void
+): Promise<UploadResult> {
+  const errors: string[] = [];
+
+  // Find DRE and Balanço files
+  const dreType = fileTypes.find((ft) => ft.tipo === "DRE");
+  const balancoType = fileTypes.find((ft) => ft.tipo === "BALANCO_PATRIMONIAL");
+
+  const dreFile = dreType ? files.find((f) => f.file.name === dreType.filename) : undefined;
+  const balancoFile = balancoType ? files.find((f) => f.file.name === balancoType.filename) : undefined;
+
+  if (!dreFile && !balancoFile) {
+    return {
+      success: false,
+      inserted_dre: 0,
+      inserted_balanco: 0,
+      errors: ["Nenhum arquivo foi identificado como DRE ou Balanço Patrimonial. Verifique os arquivos enviados."],
+      fileTypes: fileTypes as any,
+    };
+  }
+
+  return uploadAndProcessFiles(
+    dreFile?.file || null,
+    balancoFile?.file || null,
+    userId,
+    empresaId,
+    onProgress
+  );
+}
+
 export async function uploadAndProcessFiles(
-  dreFile: File,
-  balancoFile: File,
+  dreFile: File | null,
+  balancoFile: File | null,
   userId: string,
   empresaId?: string,
   onProgress?: (stage: string) => void
@@ -92,29 +189,29 @@ export async function uploadAndProcessFiles(
       await supabase.from("balanco_entries").delete().eq("user_id", userId);
     }
 
+    let dreResult: Awaited<ReturnType<typeof parseDREFileAuto>> | null = null;
+    let balancoResult: Awaited<ReturnType<typeof parseBalancoFileAuto>> | null = null;
+
     // Step 2: Parse files
     onProgress?.("Lendo arquivos contábeis...");
-    const dreResult = await parseDREFileAuto(dreFile);
-    errors.push(...dreResult.errors);
 
-    const balancoResult = await parseBalancoFileAuto(balancoFile);
-    errors.push(...balancoResult.errors);
+    if (dreFile) {
+      dreResult = await parseDREFileAuto(dreFile);
+      errors.push(...dreResult.errors);
+    }
+    if (balancoFile) {
+      balancoResult = await parseBalancoFileAuto(balancoFile);
+      errors.push(...balancoResult.errors);
+    }
 
-    const dreParsed = !!dreResult.parsed;
-    const balancoParsed = !!balancoResult.parsed;
-    const dreHasNumeric = dreParsed === true;
-    const balancoHasNumeric = balancoParsed === true || balancoResult.metrics?.ativoTotal !== 0;
-
-    console.log("Resumo XLS:", {
-      dre_entries: dreResult.entries.length,
-      balanco_entries: balancoResult.entries.length,
-      ativoTotal: balancoResult.metrics.ativoTotal,
-      dreParsed,
-      balancoParsed,
-    });
+    const dreParsed = !!dreResult?.parsed;
+    const balancoParsed = !!balancoResult?.parsed || (balancoResult?.metrics?.ativoTotal ?? 0) !== 0;
 
     const hasAnyValidData =
-      dreHasNumeric || balancoHasNumeric || dreResult.entries.length > 0 || balancoResult.entries.length > 0;
+      dreParsed ||
+      balancoParsed ||
+      (dreResult?.entries?.length ?? 0) > 0 ||
+      (balancoResult?.entries?.length ?? 0) > 0;
 
     if (!hasAnyValidData) {
       return {
@@ -130,7 +227,7 @@ export async function uploadAndProcessFiles(
     // Step 3: AI Classification for DRE entries
     let aiStats: { total: number; from_cache: number; from_ai: number } | undefined;
 
-    if (dreResult.entries.length > 0) {
+    if (dreResult && dreResult.entries.length > 0) {
       onProgress?.("IA analisando estrutura contábil...");
 
       const aiResult = await classifyWithAI(
@@ -143,7 +240,6 @@ export async function uploadAndProcessFiles(
       );
 
       if (aiResult && aiResult.classifications.length > 0) {
-        // Apply AI classifications to entries
         for (let i = 0; i < dreResult.entries.length; i++) {
           const classification = aiResult.classifications[i];
           if (classification) {
@@ -153,58 +249,61 @@ export async function uploadAndProcessFiles(
         aiStats = aiResult.stats;
         console.log("IA classificou:", aiStats);
       } else {
-        // Fallback: keep parser classifications (regex-based)
         console.warn("AI classification failed, using parser fallback");
         errors.push("Classificação via IA falhou. Usando classificação local como fallback.");
       }
     }
 
     // Step 4: Insert DRE entries
-    onProgress?.("Salvando dados da DRE...");
     let insertedDre = 0;
-    const dreBatches = chunkArray(dreResult.entries, 500);
-    for (const batch of dreBatches) {
-      const { error } = await supabase.from("dre_entries").insert(
-        batch.map((entry) => ({
-          user_id: userId,
-          empresa_id: empresaId || null,
-          periodo: dreResult.periodo,
-          descricao: entry.descricao,
-          valor: entry.valor,
-          valor_anterior: entry.valor_anterior,
-          raw_row: entry.raw_row,
-          grupo: entry.grupo,
-        })),
-      );
-      if (error) {
-        errors.push(`Erro ao inserir DRE: ${error.message}`);
-      } else {
-        insertedDre += batch.length;
+    if (dreResult && dreResult.entries.length > 0) {
+      onProgress?.("Salvando dados da DRE...");
+      const dreBatches = chunkArray(dreResult.entries, 500);
+      for (const batch of dreBatches) {
+        const { error } = await supabase.from("dre_entries").insert(
+          batch.map((entry) => ({
+            user_id: userId,
+            empresa_id: empresaId || null,
+            periodo: dreResult!.periodo,
+            descricao: entry.descricao,
+            valor: entry.valor,
+            valor_anterior: entry.valor_anterior,
+            raw_row: entry.raw_row,
+            grupo: entry.grupo,
+          }))
+        );
+        if (error) {
+          errors.push(`Erro ao inserir DRE: ${error.message}`);
+        } else {
+          insertedDre += batch.length;
+        }
       }
     }
 
     // Step 5: Insert Balanço entries
-    onProgress?.("Salvando dados do Balanço...");
     let insertedBalanco = 0;
-    const balancoBatches = chunkArray(balancoResult.entries, 500);
-    for (const batch of balancoBatches) {
-      const { error } = await supabase.from("balanco_entries").insert(
-        batch.map((entry) => ({
-          user_id: userId,
-          empresa_id: empresaId || null,
-          periodo: balancoResult.periodo,
-          conta: entry.conta,
-          tipo: entry.tipo,
-          valor: entry.valor,
-          valor_anterior: entry.valor_anterior,
-          hierarchy: entry.hierarchy,
-          raw_row: entry.raw_row,
-        })),
-      );
-      if (error) {
-        errors.push(`Erro ao inserir Balanço: ${error.message}`);
-      } else {
-        insertedBalanco += batch.length;
+    if (balancoResult && balancoResult.entries.length > 0) {
+      onProgress?.("Salvando dados do Balanço...");
+      const balancoBatches = chunkArray(balancoResult.entries, 500);
+      for (const batch of balancoBatches) {
+        const { error } = await supabase.from("balanco_entries").insert(
+          batch.map((entry) => ({
+            user_id: userId,
+            empresa_id: empresaId || null,
+            periodo: balancoResult!.periodo,
+            conta: entry.conta,
+            tipo: entry.tipo,
+            valor: entry.valor,
+            valor_anterior: entry.valor_anterior,
+            hierarchy: entry.hierarchy,
+            raw_row: entry.raw_row,
+          }))
+        );
+        if (error) {
+          errors.push(`Erro ao inserir Balanço: ${error.message}`);
+        } else {
+          insertedBalanco += batch.length;
+        }
       }
     }
 
@@ -216,7 +315,7 @@ export async function uploadAndProcessFiles(
     }
 
     // Save validation logs
-    if (balancoResult.validationRows && balancoResult.validationRows.length > 0) {
+    if (balancoFile && balancoResult?.validationRows && balancoResult.validationRows.length > 0) {
       await supabase.from("xls_validation_logs").delete().eq("user_id", userId).eq("tipo", "balanco");
       await supabase.from("xls_validation_logs").insert([{
         user_id: userId,
@@ -233,10 +332,10 @@ export async function uploadAndProcessFiles(
       inserted_dre: insertedDre,
       inserted_balanco: insertedBalanco,
       errors,
-      dre_entries: dreResult.entries,
-      balanco_entries: balancoResult.entries,
-      balanco_metrics: balancoResult.metrics,
-      balanco_validation: balancoResult.validationRows,
+      dre_entries: dreResult?.entries,
+      balanco_entries: balancoResult?.entries,
+      balanco_metrics: balancoResult?.metrics,
+      balanco_validation: balancoResult?.validationRows,
       ai_stats: aiStats,
     };
   } catch (error) {
