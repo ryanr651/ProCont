@@ -1,15 +1,16 @@
 import { useState, useEffect } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { FileUpload } from "@/components/FileUpload";
-import { ArrowLeft, Loader2, ArrowRight, Download, LogOut, FileSearch, Building2, Plus, Check } from "lucide-react";
-import { uploadAndProcessFiles, generateDownloadableJSON } from "@/lib/supabaseUpload";
+import { MultiFileUpload, type UploadedFile } from "@/components/MultiFileUpload";
+import { ArrowLeft, Loader2, Download, LogOut, Building2, Plus, Check, Sparkles } from "lucide-react";
+import { uploadAndProcessMultipleFiles, identifyFileTypes, generateDownloadableJSON } from "@/lib/supabaseUpload";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { XLSValidationMode } from "@/components/XLSValidationMode";
+import { Badge } from "@/components/ui/badge";
 import type { ValidationRow } from "@/lib/brazilianParser";
 
 interface Empresa {
@@ -18,10 +19,21 @@ interface Empresa {
   cnpj: string;
 }
 
+const TYPE_LABELS: Record<string, string> = {
+  DRE: "DRE",
+  BALANCO_PATRIMONIAL: "Balanço Patrimonial",
+  DMPL: "DMPL",
+  FLUXO_CAIXA: "Fluxo de Caixa",
+  BALANCETE: "Balancete",
+  DRA: "DRA",
+  DESCONHECIDO: "Não identificado",
+};
+
 const Upload = () => {
-  const [dreFile, setDreFile] = useState<File | null>(null);
-  const [balancoFile, setBalancoFile] = useState<File | null>(null);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [fileTypes, setFileTypes] = useState<Array<{ filename: string; tipo: string; confianca: string }>>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isIdentifying, setIsIdentifying] = useState(false);
   const [processingStage, setProcessingStage] = useState("");
   const [showValidation, setShowValidation] = useState(false);
   const [validationRows, setValidationRows] = useState<ValidationRow[]>([]);
@@ -64,16 +76,47 @@ const Upload = () => {
     }
   };
 
+  // Identify file types when files change
+  const handleFilesChange = async (files: UploadedFile[]) => {
+    setUploadedFiles(files);
+    setFileTypes([]);
+    setLastResult(null);
+
+    if (files.length === 0) return;
+
+    setIsIdentifying(true);
+    try {
+      const types = await identifyFileTypes(files, setProcessingStage);
+      setFileTypes(types);
+
+      // Update files with detected types
+      const updatedFiles = files.map((f) => {
+        const match = types.find((t) => t.filename === f.file.name);
+        return { ...f, detectedType: match ? TYPE_LABELS[match.tipo] || match.tipo : undefined };
+      });
+      setUploadedFiles(updatedFiles);
+    } catch {
+      toast({ title: "Aviso", description: "Não foi possível identificar os tipos de arquivo automaticamente.", variant: "default" });
+    } finally {
+      setIsIdentifying(false);
+      setProcessingStage("");
+    }
+  };
+
   const handleProcess = async () => {
-    if (!dreFile || !balancoFile || !user || !selectedEmpresa) return;
+    if (uploadedFiles.length === 0 || !user || !selectedEmpresa) return;
 
     setIsProcessing(true);
     setProcessingStage("Iniciando processamento...");
 
     try {
-      const result = await uploadAndProcessFiles(dreFile, balancoFile, user.id, selectedEmpresa, (stage) => {
-        setProcessingStage(stage);
-      });
+      const result = await uploadAndProcessMultipleFiles(
+        uploadedFiles,
+        fileTypes,
+        user.id,
+        selectedEmpresa,
+        setProcessingStage
+      );
 
       if (result.balanco_validation?.length) {
         setValidationRows(result.balanco_validation);
@@ -93,11 +136,11 @@ const Upload = () => {
 
       toast({
         title: "Processamento concluído",
-        description: "Arquivos processados com sucesso",
+        description: `DRE: ${result.inserted_dre} linhas · Balanço: ${result.inserted_balanco} linhas`,
       });
 
       navigate(`/resultado?empresa_id=${selectedEmpresa}`);
-    } catch (err) {
+    } catch {
       toast({
         title: "Erro inesperado",
         description: "Falha ao processar arquivos",
@@ -109,7 +152,9 @@ const Upload = () => {
     }
   };
 
-  const empresaSelecionada = empresas.find(e => e.id === selectedEmpresa);
+  const hasDre = fileTypes.some((ft) => ft.tipo === "DRE");
+  const hasBalanco = fileTypes.some((ft) => ft.tipo === "BALANCO_PATRIMONIAL");
+  const canProcess = uploadedFiles.length > 0 && (hasDre || hasBalanco) && !isIdentifying;
 
   return (
     <div className="min-h-screen bg-background">
@@ -188,7 +233,7 @@ const Upload = () => {
           )}
         </div>
 
-        {/* Step 2: File Upload (only if company selected) */}
+        {/* Step 2: File Upload */}
         {selectedEmpresa && (
           <div className="animate-fade-in">
             <div className="flex items-center gap-3 mb-4">
@@ -198,24 +243,64 @@ const Upload = () => {
               <h2 className="font-display text-lg font-semibold">Importar Arquivos</h2>
             </div>
 
-            <FileUpload label="DRE" description="Demonstração do Resultado do Exercício" onFileSelect={setDreFile} />
-            <FileUpload label="Balanço Patrimonial" description="Balanço Patrimonial da empresa" onFileSelect={setBalancoFile} />
+            <MultiFileUpload
+              files={uploadedFiles}
+              onFilesChange={handleFilesChange}
+              maxFiles={6}
+            />
 
-            <Button className="mt-6 w-full" onClick={handleProcess} disabled={isProcessing || !dreFile || !balancoFile}>
+            {/* AI identification status */}
+            {isIdentifying && (
+              <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+                <Sparkles className="w-4 h-4 animate-pulse text-primary" />
+                <span>IA identificando tipos de demonstração...</span>
+              </div>
+            )}
+
+            {/* Detected types summary */}
+            {fileTypes.length > 0 && !isIdentifying && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {fileTypes.map((ft, i) => (
+                  <Badge
+                    key={i}
+                    variant={ft.tipo === "DESCONHECIDO" ? "outline" : "secondary"}
+                    className="text-xs"
+                  >
+                    {TYPE_LABELS[ft.tipo] || ft.tipo}
+                  </Badge>
+                ))}
+              </div>
+            )}
+
+            {/* Warning if no DRE/Balanço identified */}
+            {fileTypes.length > 0 && !hasDre && !hasBalanco && !isIdentifying && (
+              <p className="mt-2 text-sm text-destructive">
+                Nenhum arquivo foi identificado como DRE ou Balanço Patrimonial. Verifique os arquivos.
+              </p>
+            )}
+
+            <Button
+              className="mt-6 w-full"
+              onClick={handleProcess}
+              disabled={isProcessing || !canProcess}
+            >
               {isProcessing ? (
                 <span className="flex items-center gap-2">
                   <Loader2 className="animate-spin w-4 h-4" />
                   {processingStage || "Processando..."}
                 </span>
               ) : (
-                "Processar"
+                <span className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4" />
+                  Processar com IA
+                </span>
               )}
             </Button>
 
             {showValidation && (
               <XLSValidationMode
                 rows={validationRows}
-                filename={balancoFile?.name ?? "balanco.xls"}
+                filename="balanco.xls"
                 onClose={() => setShowValidation(false)}
               />
             )}
