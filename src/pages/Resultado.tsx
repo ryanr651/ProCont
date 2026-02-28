@@ -1521,7 +1521,12 @@ const Resultado = () => {
         {/* ===== DASHBOARD BALANCETE ===== */}
         {balanceteEntries.length > 0 && (
           <>
-            <DashboardBalancete entries={balanceteEntries} />
+            <DashboardBalancete
+              entries={balanceteEntries}
+              previousPeriods={previousPeriods.map(p => ({ ano: p.ano, entries: p.entries }))}
+              dreReceitaBruta={dreData?.receitaBruta}
+              dreCMV={dreData?.cmv}
+            />
             
             {/* Análise Vertical e Horizontal */}
             <section className="mb-12">
