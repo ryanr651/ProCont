@@ -10,6 +10,8 @@ import { AIPresentationDialog } from "@/components/AIPresentationDialog";
 import { FinancialChatBox } from "@/components/FinancialChatBox";
 import { DashboardIndicadores } from "@/components/DashboardIndicadores";
 import { DashboardBalancete, type BalanceteClassifiedEntry } from "@/components/DashboardBalancete";
+import { BalanceteHistoricoModal, type PreviousPeriodBalancete } from "@/components/BalanceteHistoricoModal";
+import { BalanceteComparativo } from "@/components/BalanceteComparativo";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranding } from "@/contexts/BrandingContext";
@@ -39,6 +41,7 @@ import {
   ShieldCheck,
   Activity,
   Target,
+  CalendarDays,
 } from "lucide-react";
 
 interface DREEntry {
@@ -159,6 +162,9 @@ const Resultado = () => {
 
   // Balancete state
   const [balanceteEntries, setBalanceteEntries] = useState<BalanceteClassifiedEntry[]>([]);
+  const [balancetePeriodo, setBalancetePeriodo] = useState<string>("");
+  const [previousPeriods, setPreviousPeriods] = useState<PreviousPeriodBalancete[]>([]);
+  const [showHistoricoModal, setShowHistoricoModal] = useState(false);
 
   // Empresa context
   const [selectedEmpresa, setSelectedEmpresa] = useState<EmpresaData | null>(null);
@@ -206,6 +212,8 @@ const Resultado = () => {
       if (balanceteError) throw balanceteError;
 
       if (balanceteData && balanceteData.length > 0) {
+        // Store the periodo from the first entry
+        setBalancetePeriodo(balanceteData[0].periodo || "");
         setBalanceteEntries(balanceteData.map((e: any) => ({
           conta: e.conta,
           grupo: e.grupo || 'OUTROS',
@@ -1512,10 +1520,69 @@ const Resultado = () => {
 
         {/* ===== DASHBOARD BALANCETE ===== */}
         {balanceteEntries.length > 0 && (
-          <DashboardBalancete entries={balanceteEntries} />
-        )}
+          <>
+            <DashboardBalancete entries={balanceteEntries} />
+            
+            {/* Análise Vertical e Horizontal */}
+            <section className="mb-12">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="font-display text-2xl font-bold flex items-center gap-3">
+                  <BarChart3 className="w-6 h-6 text-primary" />
+                  Análise Comparativa (AV / AH)
+                </h2>
+                <Button
+                  variant="neon-outline"
+                  onClick={() => setShowHistoricoModal(true)}
+                >
+                  <CalendarDays className="w-4 h-4 mr-2" />
+                  Adicionar Exercício Anterior
+                </Button>
+              </div>
 
-        {/* Diagnóstico de Importação Section */}
+              {previousPeriods.length > 0 ? (
+                <>
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {previousPeriods.map((p, i) => (
+                      <span
+                        key={i}
+                        className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-sm text-primary font-medium"
+                      >
+                        {p.ano} ({p.entries.length} contas)
+                        <button
+                          onClick={() => setPreviousPeriods(prev => prev.filter((_, idx) => idx !== i))}
+                          className="ml-1 text-primary/60 hover:text-primary"
+                          title="Remover"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <BalanceteComparativo
+                    currentEntries={balanceteEntries}
+                    currentPeriodo={balancetePeriodo}
+                    previousPeriods={previousPeriods}
+                  />
+                </>
+              ) : (
+                <div className="glass-card p-8 text-center border-2 border-dashed border-border/50">
+                  <BarChart3 className="w-12 h-12 text-muted-foreground/40 mx-auto mb-3" />
+                  <p className="text-muted-foreground mb-2">
+                    Importe balancetes de exercícios anteriores para gerar a tabela comparativa com Análise Vertical e Horizontal.
+                  </p>
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowHistoricoModal(true)}
+                    className="mt-2"
+                  >
+                    <CalendarDays className="w-4 h-4 mr-2" />
+                    Adicionar Exercício Anterior
+                  </Button>
+                </div>
+              )}
+            </section>
+          </>
+        )}
         {diagnosticLines.length > 0 && (
           <section className="mb-12">
             <h2 className="font-display text-2xl font-bold mb-6 flex items-center gap-3">
@@ -1794,6 +1861,15 @@ const Resultado = () => {
         balancoData={balancoData}
         empresaNome={selectedEmpresa?.nome || "Empresa"}
         branding={branding}
+      />
+
+      {/* Balancete Historico Modal */}
+      <BalanceteHistoricoModal
+        open={showHistoricoModal}
+        onOpenChange={setShowHistoricoModal}
+        currentPeriodo={balancetePeriodo}
+        existingPeriods={previousPeriods.map(p => p.ano)}
+        onPeriodAdded={(period) => setPreviousPeriods(prev => [...prev, period])}
       />
     </div>
   );
