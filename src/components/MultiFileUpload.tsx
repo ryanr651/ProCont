@@ -21,7 +21,7 @@ export function MultiFileUpload({
   files,
   onFilesChange,
   maxFiles = 6,
-  accept = ".csv,.xls,.xlsx",
+  accept = ".csv,.xls,.xlsx,.pdf",
   className,
 }: MultiFileUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
@@ -170,7 +170,7 @@ export function MultiFileUpload({
                   DRE, Balanço Patrimonial, DMPL, Fluxo de Caixa e outros
                 </p>
                 <p className="text-xs text-muted-foreground mt-2">
-                  Até {maxFiles} arquivos · CSV, XLS, XLSX
+                  Até {maxFiles} arquivos · CSV, XLS, XLSX, PDF
                 </p>
               </>
             )}

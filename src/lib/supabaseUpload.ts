@@ -9,6 +9,7 @@ import {
   BalancoMetrics,
   ValidationRow,
 } from "./brazilianParser";
+import { extractTextFromPDF } from "./pdfParser";
 import type { UploadedFile } from "@/components/MultiFileUpload";
 
 export interface UploadResult {
@@ -35,6 +36,20 @@ interface ClassificationResult {
 // ============= AI: Identify file types =============
 
 async function extractFileHeaders(file: File): Promise<string[]> {
+  const ext = file.name.split(".").pop()?.toLowerCase();
+  
+  if (ext === "pdf") {
+    // Extract first page text for identification
+    try {
+      const { extractTextFromPDF } = await import("./pdfParser");
+      const result = await extractTextFromPDF(file);
+      const firstLines = result.text.split("\n").filter(l => l.trim()).slice(0, 15);
+      return firstLines.length > 0 ? firstLines : [`[PDF] ${file.name}`];
+    } catch {
+      return [`[PDF] ${file.name}`];
+    }
+  }
+
   try {
     const XLSX = await import("xlsx");
     const buffer = await file.arrayBuffer();
@@ -137,6 +152,77 @@ async function classifyWithAI(
   }
 }
 
+// ============= PDF Processing =============
+
+function isPDF(file: File): boolean {
+  return file.name.toLowerCase().endsWith(".pdf");
+}
+
+async function processPDFFile(
+  file: File,
+  fileType: "DRE" | "BALANCETE" | "BALANCO_PATRIMONIAL",
+  onProgress?: (stage: string) => void
+): Promise<{ entries: any[]; errors: string[] }> {
+  const errors: string[] = [];
+
+  // Step 1: Extract text from PDF
+  const extraction = await extractTextFromPDF(file, (stage, pct) => {
+    onProgress?.(stage);
+  });
+
+  if (extraction.errors.length > 0) {
+    errors.push(...extraction.errors);
+  }
+
+  if (!extraction.text || extraction.text.trim().length < 20) {
+    return {
+      entries: [],
+      errors: [
+        ...errors,
+        "Não foi possível extrair texto suficiente do PDF. Tente exportar em Excel a partir do seu sistema contabilístico.",
+      ],
+    };
+  }
+
+  // Step 2: Send to AI edge function for structuring
+  onProgress?.("IA a estruturar dados do PDF...");
+
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData?.session?.access_token;
+    if (!token) throw new Error("No session");
+
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/parse-pdf-table`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({ rawText: extraction.text, fileType }),
+      }
+    );
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({ error: "Erro desconhecido" }));
+      return {
+        entries: [],
+        errors: [...errors, errData.error || `Erro ao processar PDF: ${response.status}`],
+      };
+    }
+
+    const result = await response.json();
+    return { entries: result.entries || [], errors };
+  } catch (err) {
+    return {
+      entries: [],
+      errors: [...errors, `Erro ao enviar PDF para processamento: ${err instanceof Error ? err.message : "desconhecido"}`],
+    };
+  }
+}
+
 // ============= Multi-file upload & process =============
 
 export async function uploadAndProcessMultipleFiles(
@@ -205,20 +291,86 @@ export async function uploadAndProcessFiles(
     let balancoResult: Awaited<ReturnType<typeof parseBalancoFileAuto>> | null = null;
     let balanceteResult: Awaited<ReturnType<typeof parseBalanceteFileAuto>> | null = null;
 
-    // Step 2: Parse files
+    // Step 2: Parse files (PDF or XLS/CSV)
     onProgress?.("Lendo arquivos contábeis...");
 
     if (dreFile) {
-      dreResult = await parseDREFileAuto(dreFile);
-      errors.push(...dreResult.errors);
+      if (isPDF(dreFile)) {
+        onProgress?.("A ler PDF da DRE...");
+        const pdfResult = await processPDFFile(dreFile, "DRE", onProgress);
+        errors.push(...pdfResult.errors);
+        if (pdfResult.entries.length > 0) {
+          dreResult = {
+            entries: pdfResult.entries.map((e: any) => ({
+              descricao: e.descricao || "",
+              grupo: "OUTROS",
+              valor: e.valor || 0,
+              valor_anterior: e.valor_anterior ?? null,
+              raw_row: [],
+              isCMV: false,
+            })),
+            periodo: new Date().getFullYear().toString(),
+            errors: [],
+            parsed: true,
+          };
+        }
+      } else {
+        dreResult = await parseDREFileAuto(dreFile);
+        errors.push(...dreResult.errors);
+      }
     }
     if (balancoFile) {
-      balancoResult = await parseBalancoFileAuto(balancoFile);
-      errors.push(...balancoResult.errors);
+      if (isPDF(balancoFile)) {
+        onProgress?.("A ler PDF do Balanço...");
+        const pdfResult = await processPDFFile(balancoFile, "BALANCO_PATRIMONIAL", onProgress);
+        errors.push(...pdfResult.errors);
+        if (pdfResult.entries.length > 0) {
+          balancoResult = {
+            entries: pdfResult.entries.map((e: any) => ({
+              conta: e.conta || "",
+              tipo: e.tipo || "ATIVO_CIRCULANTE",
+              valor: e.valor || 0,
+              valor_anterior: e.valor_anterior ?? null,
+              hierarchy: e.hierarchy || "",
+              raw_row: [],
+            })),
+            metrics: { ativoTotal: 0, ativoCirculante: 0, ativoNaoCirculante: 0, passivoTotal: 0, passivoCirculante: 0, passivoNaoCirculante: 0, patrimonioLiquido: 0 },
+            periodo: new Date().getFullYear().toString(),
+            errors: [],
+            parsed: true,
+          };
+        }
+      } else {
+        balancoResult = await parseBalancoFileAuto(balancoFile);
+        errors.push(...balancoResult.errors);
+      }
     }
     if (balanceteFile) {
-      balanceteResult = await parseBalanceteFileAuto(balanceteFile);
-      errors.push(...balanceteResult.errors);
+      if (isPDF(balanceteFile)) {
+        onProgress?.("A ler PDF do Balancete...");
+        const pdfResult = await processPDFFile(balanceteFile, "BALANCETE", onProgress);
+        errors.push(...pdfResult.errors);
+        if (pdfResult.entries.length > 0) {
+          balanceteResult = {
+            entries: pdfResult.entries.map((e: any) => ({
+              conta: e.conta || "",
+              grupo: "OUTROS",
+              saldo_anterior: e.saldo_anterior || 0,
+              debitos: e.debitos || 0,
+              creditos: e.creditos || 0,
+              saldo_atual: e.saldo_atual || 0,
+              natureza: e.natureza || "D",
+              raw_row: [],
+            })),
+            periodo: new Date().getFullYear().toString(),
+            errors: [],
+            parsed: true,
+          };
+        }
+      } else {
+        balanceteResult = await parseBalanceteFileAuto(balanceteFile);
+        errors.push(...balanceteResult.errors);
+      }
     }
 
     const dreParsed = !!dreResult?.parsed;

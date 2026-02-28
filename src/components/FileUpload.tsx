@@ -13,7 +13,7 @@ interface FileUploadProps {
 export function FileUpload({
   label,
   description,
-  accept = ".csv,.xls,.xlsx",
+  accept = ".csv,.xls,.xlsx,.pdf",
   onFileSelect,
   className
 }: FileUploadProps) {
@@ -119,7 +119,7 @@ export function FileUpload({
               </p>
               <p className="text-sm text-muted-foreground">{description}</p>
               <p className="text-xs text-muted-foreground mt-2">
-                Formatos aceitos: CSV, XLS, XLSX
+                Formatos aceitos: CSV, XLS, XLSX, PDF
               </p>
             </>
           )}
