@@ -226,7 +226,7 @@ Sua tarefa: classificar cada conta contábil em um dos grupos abaixo.
 - RECEITA_BRUTA: Receita operacional bruta, vendas, faturamento, prestação de serviços
 - DEDUCOES: Impostos sobre vendas, devoluções, abatimentos, simples nacional, deduções da receita bruta
 - RECEITA_LIQUIDA: Linha explícita de receita líquida (subtotal)
-- CMV: Custo da mercadoria vendida, CPV, custo dos produtos vendidos, custo dos serviços prestados, custo de produção, compras de mercadorias, compras de materiais, material de consumo, material de embalagem, material de limpeza, insumos, matéria-prima, fretes sobre compras, ICMS sobre compras, IPI sobre compras, devoluções de compras, abatimentos sobre compras, custo das vendas. IMPORTANTE: contas como "Material de Consumo", "Compras", "Fretes sobre Compras" fazem parte do CMV mesmo que não tenham a palavra "custo" no nome
+- CMV: Custo da mercadoria vendida, CPV, custo dos produtos vendidos, custo dos serviços prestados, custo de produção. SOMENTE classifique como CMV se: (a) o nome contém explicitamente "Custo", "CMV", "CPV", ou (b) o campo "dentro_do_bloco_CMV" for true. Contas ambíguas como "Material de Consumo", "Material de Embalagem", "Fretes" NÃO devem ser classificadas como CMV apenas pelo nome — use SEMPRE a flag "dentro_do_bloco_CMV" para decidir. Se "dentro_do_bloco_CMV" for false, classifique como DESPESAS_OPERACIONAIS.
 - LUCRO_BRUTO: Linha explícita de lucro bruto ou resultado bruto (subtotal)
 - DESPESAS_OPERACIONAIS: Despesas administrativas, trabalhistas, salários, aluguel, honorários, depreciação, despesas gerais
 - LUCRO_OPERACIONAL: Linha explícita de lucro operacional ou resultado operacional (subtotal)
