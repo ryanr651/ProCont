@@ -127,11 +127,15 @@ serve(async (req) => {
         .replace(/[\u0300-\u036f]/g, "")
         .trim();
 
-    const normalizedEntries = entries.map((e) => ({
+    const normalizedEntries = entries.map((e, index) => ({
       ...e,
+      originalIndex: index,
       descricao_normalized: normalize(e.descricao),
       isCMV: e.isCMV || false,
     }));
+
+    const isMaterialConsumo = (descricaoNormalized: string) =>
+      descricaoNormalized.includes("MATERIAL DE CONSUMO");
 
     // Step 1: Check cache for existing classifications
     const normalizedDescs = [...new Set(normalizedEntries.map((e) => e.descricao_normalized))];
@@ -153,13 +157,21 @@ serve(async (req) => {
       }
     }
 
+    const descFrequency = new Map<string, number>();
+    for (const entry of normalizedEntries) {
+      descFrequency.set(
+        entry.descricao_normalized,
+        (descFrequency.get(entry.descricao_normalized) || 0) + 1
+      );
+    }
+
     // Step 2: Identify uncached entries
     const uncachedEntries = normalizedEntries.filter(
       (e) => !cacheMap.has(e.descricao_normalized) || e.isCMV
     );
 
     // Step 3: Call AI for uncached entries (if any)
-    const aiResults = new Map<string, { grupo: string; motivo: string }>();
+    const aiResults = new Map<number, { grupo: string; motivo: string }>();
 
     if (uncachedEntries.length > 0) {
       // Build context with position info for AI
@@ -313,7 +325,7 @@ ${JSON.stringify(accountList, null, 2)}`;
         const entry = uncachedEntries[item.index];
         if (entry) {
           const grupo = validGrupos.includes(item.grupo) ? item.grupo : "OUTROS";
-          aiResults.set(entry.descricao_normalized, {
+          aiResults.set(entry.originalIndex, {
             grupo,
             motivo: item.motivo || "Classificado pela IA",
           });
@@ -322,24 +334,34 @@ ${JSON.stringify(accountList, null, 2)}`;
 
       // Handle entries that AI didn't return (fallback)
       for (const entry of uncachedEntries) {
-        if (!aiResults.has(entry.descricao_normalized)) {
-          aiResults.set(entry.descricao_normalized, {
+        if (!aiResults.has(entry.originalIndex)) {
+          aiResults.set(entry.originalIndex, {
             grupo: "OUTROS",
             motivo: "Classificação não retornada pela IA (fallback)",
           });
         }
       }
 
-      // Step 4: Save AI results to cache
-      const cacheInserts = Array.from(aiResults.entries()).map(
-        ([desc, result]) => ({
-          user_id: user.id,
-          descricao_normalized: desc,
-          grupo: result.grupo,
-          motivo: result.motivo,
-          contexto_tipo,
+      // Step 4: Save AI results to cache (skip ambiguous/repeated descriptions)
+      const cacheInserts = uncachedEntries
+        .filter((entry) => {
+          const count = descFrequency.get(entry.descricao_normalized) || 0;
+          return count === 1 && !isMaterialConsumo(entry.descricao_normalized);
         })
-      );
+        .map((entry) => {
+          const result = aiResults.get(entry.originalIndex) || {
+            grupo: "OUTROS",
+            motivo: "Classificação não retornada pela IA (fallback)",
+          };
+
+          return {
+            user_id: user.id,
+            descricao_normalized: entry.descricao_normalized,
+            grupo: result.grupo,
+            motivo: result.motivo,
+            contexto_tipo,
+          };
+        });
 
       if (cacheInserts.length > 0) {
         const { error: cacheError } = await supabase
@@ -355,9 +377,9 @@ ${JSON.stringify(accountList, null, 2)}`;
 
     // Step 5: Build final classifications
     const classifications: ClassificationResult[] = normalizedEntries.map((e) => {
+      const ai = aiResults.get(e.originalIndex);
       const cached = cacheMap.get(e.descricao_normalized);
-      const ai = aiResults.get(e.descricao_normalized);
-      const result = cached || ai || { grupo: "OUTROS", motivo: "Sem classificação" };
+      const result = ai || cached || { grupo: "OUTROS", motivo: "Sem classificação" };
 
       return {
         descricao: e.descricao,
@@ -365,6 +387,33 @@ ${JSON.stringify(accountList, null, 2)}`;
         motivo: result.motivo,
       };
     });
+
+    // Regra específica solicitada: "Material de Consumo"
+    // 1ª ocorrência => CMV | 2ª+ ocorrência => DESPESAS_OPERACIONAIS
+    if (contexto_tipo === "dre") {
+      let materialConsumoCount = 0;
+
+      for (let i = 0; i < normalizedEntries.length; i++) {
+        const entry = normalizedEntries[i];
+        if (!isMaterialConsumo(entry.descricao_normalized)) continue;
+
+        materialConsumoCount += 1;
+
+        if (materialConsumoCount === 1) {
+          classifications[i] = {
+            descricao: classifications[i].descricao,
+            grupo: "CMV",
+            motivo: "1ª ocorrência de Material de Consumo classificada como CMV por regra de negócio.",
+          };
+        } else {
+          classifications[i] = {
+            descricao: classifications[i].descricao,
+            grupo: "DESPESAS_OPERACIONAIS",
+            motivo: "2ª+ ocorrência de Material de Consumo classificada como Despesa Operacional por regra de negócio.",
+          };
+        }
+      }
+    }
 
     return new Response(
       JSON.stringify({
