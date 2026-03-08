@@ -325,7 +325,7 @@ ${JSON.stringify(accountList, null, 2)}`;
         const entry = uncachedEntries[item.index];
         if (entry) {
           const grupo = validGrupos.includes(item.grupo) ? item.grupo : "OUTROS";
-          aiResults.set(entry.descricao_normalized, {
+          aiResults.set(entry.originalIndex, {
             grupo,
             motivo: item.motivo || "Classificado pela IA",
           });
@@ -334,24 +334,34 @@ ${JSON.stringify(accountList, null, 2)}`;
 
       // Handle entries that AI didn't return (fallback)
       for (const entry of uncachedEntries) {
-        if (!aiResults.has(entry.descricao_normalized)) {
-          aiResults.set(entry.descricao_normalized, {
+        if (!aiResults.has(entry.originalIndex)) {
+          aiResults.set(entry.originalIndex, {
             grupo: "OUTROS",
             motivo: "Classificação não retornada pela IA (fallback)",
           });
         }
       }
 
-      // Step 4: Save AI results to cache
-      const cacheInserts = Array.from(aiResults.entries()).map(
-        ([desc, result]) => ({
-          user_id: user.id,
-          descricao_normalized: desc,
-          grupo: result.grupo,
-          motivo: result.motivo,
-          contexto_tipo,
+      // Step 4: Save AI results to cache (skip ambiguous/repeated descriptions)
+      const cacheInserts = uncachedEntries
+        .filter((entry) => {
+          const count = descFrequency.get(entry.descricao_normalized) || 0;
+          return count === 1 && !isMaterialConsumo(entry.descricao_normalized);
         })
-      );
+        .map((entry) => {
+          const result = aiResults.get(entry.originalIndex) || {
+            grupo: "OUTROS",
+            motivo: "Classificação não retornada pela IA (fallback)",
+          };
+
+          return {
+            user_id: user.id,
+            descricao_normalized: entry.descricao_normalized,
+            grupo: result.grupo,
+            motivo: result.motivo,
+            contexto_tipo,
+          };
+        });
 
       if (cacheInserts.length > 0) {
         const { error: cacheError } = await supabase
