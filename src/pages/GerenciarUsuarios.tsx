@@ -18,6 +18,7 @@ import {
   Mail,
   Lock,
   User,
+  Trash2,
 } from "lucide-react";
 import {
   Dialog,
@@ -26,6 +27,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface Funcionario {
   user_id: string;
@@ -142,6 +154,31 @@ const GerenciarUsuarios = () => {
     } catch (err: any) {
       toast({
         title: "Erro",
+        description: err.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDelete = async (userId: string, name: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "manage-funcionario",
+        {
+          body: { action: "delete", user_id: userId },
+        }
+      );
+      if (error) throw error;
+      if (data.error) throw new Error(data.error);
+
+      toast({
+        title: "Excluído",
+        description: `Funcionário "${name}" foi removido permanentemente.`,
+      });
+      fetchFuncionarios();
+    } catch (err: any) {
+      toast({
+        title: "Erro ao excluir",
         description: err.message,
         variant: "destructive",
       });
@@ -265,6 +302,7 @@ const GerenciarUsuarios = () => {
                     variant="ghost"
                     size="sm"
                     onClick={() => toggleStatus(f.user_id, f.status)}
+                    title={f.status === "active" ? "Desativar" : "Ativar"}
                   >
                     {f.status === "active" ? (
                       <UserX className="w-4 h-4 text-destructive" />
@@ -272,6 +310,40 @@ const GerenciarUsuarios = () => {
                       <UserCheck className="w-4 h-4 text-green-500" />
                     )}
                   </Button>
+
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        title="Excluir permanentemente"
+                      >
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Excluir funcionário?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Esta ação é irreversível. O usuário{" "}
+                          <strong>{f.display_name || f.email}</strong> será
+                          removido permanentemente do sistema, incluindo todos os
+                          seus dados de acesso.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          onClick={() =>
+                            handleDelete(f.user_id, f.display_name || f.email)
+                          }
+                        >
+                          Excluir
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
               </div>
             ))}
