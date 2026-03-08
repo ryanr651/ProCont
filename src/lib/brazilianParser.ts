@@ -2185,31 +2185,88 @@ function isBalanceteStructure(rows: XLSRow[]): boolean {
 }
 
 /**
- * Detect column positions for balancete
- * Returns indices for: [saldoAnterior, debitos, creditos, saldoAtual]
+ * Normalize column header for matching
  */
-function detectBalanceteColumns(rows: XLSRow[]): { saldoAnteriorIdx: number; debitosIdx: number; creditosIdx: number; saldoAtualIdx: number } | null {
-  // Default: assume last 4 numeric columns are SA, D, C, SA
-  // Try to detect from headers first
-  for (let i = 0; i < Math.min(10, rows.length); i++) {
-    const cells = rows[i].cells.map(c => normalizeText(String(c)));
-    const saIdx = cells.findIndex(c => c.includes('SALDO ANTERIOR') || c.includes('SALDO INICIAL'));
-    const debIdx = cells.findIndex(c => c.includes('DEBITO') && !c.includes('CREDITO'));
-    const credIdx = cells.findIndex(c => c.includes('CREDITO'));
-    const sfIdx = cells.findIndex(c => c.includes('SALDO ATUAL') || c.includes('SALDO FINAL'));
-    
-    if (saIdx >= 0 && debIdx >= 0 && credIdx >= 0) {
+function normalizeColumnName(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[_\s]+/g, " ")
+    .trim();
+}
+
+/**
+ * Find column index by possible names with multi-tier matching
+ */
+function findColumnIndex(headers: string[], possibleNames: string[]): number {
+  const normalizedHeaders = headers.map(h => h ? normalizeColumnName(String(h)) : "");
+  const normalizedNames = possibleNames.map(normalizeColumnName);
+
+  // Priority 1: Exact match
+  for (const name of normalizedNames) {
+    const idx = normalizedHeaders.indexOf(name);
+    if (idx !== -1) return idx;
+  }
+  // Priority 2: Starts with
+  for (const name of normalizedNames) {
+    const idx = normalizedHeaders.findIndex(h => h.startsWith(name));
+    if (idx !== -1) return idx;
+  }
+  // Priority 3: Contains
+  for (const name of normalizedNames) {
+    const idx = normalizedHeaders.findIndex(h => h.includes(name));
+    if (idx !== -1) return idx;
+  }
+  return -1;
+}
+
+/**
+ * Detect column positions for balancete using dynamic header detection.
+ * Returns actual cell indices (column positions in the spreadsheet row).
+ */
+function detectBalanceteColumns(rows: XLSRow[]): { 
+  saldoAnteriorCol: number; debitosCol: number; creditosCol: number; saldoAtualCol: number; headerRow: number;
+} | null {
+  for (let i = 0; i < Math.min(15, rows.length); i++) {
+    const cells = rows[i].cells;
+
+    const saCol = findColumnIndex(cells, ["saldo anterior", "saldo inicial"]);
+    const debCol = findColumnIndex(cells, ["debitos", "debito"]);
+    const credCol = findColumnIndex(cells, ["creditos", "credito"]);
+    const sfCol = findColumnIndex(cells, ["saldo atual", "saldo final", "saldo"]);
+
+    if (debCol >= 0 && credCol >= 0) {
+      // We found at least débitos and créditos columns — good enough
+      // If saldo atual not found explicitly, assume it's the LAST numeric column (rightmost)
+      let actualSfCol = sfCol;
+      if (actualSfCol < 0) {
+        // Find the rightmost column that has a header or is after credCol
+        actualSfCol = credCol + 1; // best guess: next column after créditos
+        // Or look for the last column in the header row that has content
+        for (let c = cells.length - 1; c > credCol; c--) {
+          if (cells[c] && cells[c].trim().length > 0) {
+            actualSfCol = c;
+            break;
+          }
+        }
+      }
+
+      debugLog("Balancete columns detected:", {
+        saldoAnterior: saCol, debitos: debCol, creditos: credCol, saldoAtual: actualSfCol, headerRow: i
+      });
+
       return {
-        saldoAnteriorIdx: 0,
-        debitosIdx: 1,
-        creditosIdx: 2,
-        saldoAtualIdx: sfIdx >= 0 ? 3 : 3,
+        saldoAnteriorCol: saCol >= 0 ? saCol : -1,
+        debitosCol: debCol,
+        creditosCol: credCol,
+        saldoAtualCol: actualSfCol,
+        headerRow: i,
       };
     }
   }
   
-  // Default ordering
-  return { saldoAnteriorIdx: 0, debitosIdx: 1, creditosIdx: 2, saldoAtualIdx: 3 };
+  return null;
 }
 
 function parseBalanceteFromXLS(rows: XLSRow[], filename: string): BalanceteParseResult {
@@ -2219,26 +2276,48 @@ function parseBalanceteFromXLS(rows: XLSRow[], filename: string): BalanceteParse
   const errors: string[] = [];
   const periodo = extractPeriodFromRows(rows.map(r => r.cells), filename);
   
-  // Find data start (skip headers)
+  // Detect column positions dynamically from headers
+  const colInfo = detectBalanceteColumns(rows);
+  
   let startRow = 0;
-  for (let i = 0; i < Math.min(15, rows.length); i++) {
-    const rowText = normalizeText(rows[i].cells.join(' '));
-    if (
-      (rowText.includes('SALDO ANTERIOR') || rowText.includes('SALDO INICIAL')) &&
-      (rowText.includes('DEBITO') || rowText.includes('DEBITOS'))
-    ) {
-      startRow = i + 1;
-      break;
+  
+  if (colInfo) {
+    startRow = colInfo.headerRow + 1;
+    debugLog("Using dynamic column detection. Start row:", startRow);
+  } else {
+    // Fallback: find header row manually
+    for (let i = 0; i < Math.min(15, rows.length); i++) {
+      const rowText = normalizeText(rows[i].cells.join(' '));
+      if (
+        (rowText.includes('SALDO ANTERIOR') || rowText.includes('SALDO INICIAL')) &&
+        (rowText.includes('DEBITO') || rowText.includes('DEBITOS'))
+      ) {
+        startRow = i + 1;
+        break;
+      }
+      if (rowText.includes('BALANCETE') && !rowText.includes('SALDO')) {
+        continue;
+      }
     }
-    if (rowText.includes('BALANCETE') && !rowText.includes('SALDO')) {
-      // Title row, keep looking
-      continue;
-    }
+    if (startRow === 0) startRow = Math.min(5, rows.length);
   }
-  
-  // If no header found, try to start after first 5 rows
-  if (startRow === 0) startRow = Math.min(5, rows.length);
-  
+
+  /**
+   * Extract numeric value from a specific cell column index.
+   * Parses Brazilian number format from the raw cell string.
+   */
+  function getCellNumericValue(row: XLSRow, colIdx: number): number {
+    if (colIdx < 0 || colIdx >= row.cells.length) return 0;
+    const cellStr = row.cells[colIdx];
+    if (!cellStr || cellStr.trim() === '') return 0;
+    
+    // Try direct number first
+    if (typeof cellStr === 'number') return cellStr as unknown as number;
+    
+    const parsed = parseSimpleBrazilianNumber(cellStr);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
   for (let i = startRow; i < rows.length; i++) {
     const row = rows[i];
     const { text: conta } = safeGetFirstText(row);
@@ -2249,28 +2328,37 @@ function parseBalanceteFromXLS(rows: XLSRow[], filename: string): BalanceteParse
     // Skip total/summary lines
     if (normalConta === 'TOTAL' || normalConta === 'TOTAIS' || normalConta.includes('TOTAL GERAL')) continue;
     
-    const numericVals = row.numericValues;
-    if (numericVals.length < 2) continue; // Need at least 2 numeric values
-    
     let saldoAnterior = 0;
     let debitos = 0;
     let creditos = 0;
     let saldoAtual = 0;
     
-    if (numericVals.length >= 4) {
-      // Full 4-column structure
-      saldoAnterior = numericVals[0].value;
-      debitos = Math.abs(numericVals[1].value);
-      creditos = Math.abs(numericVals[2].value);
-      saldoAtual = numericVals[3].value;
-    } else if (numericVals.length === 3) {
-      // 3 columns: Débitos, Créditos, Saldo
-      debitos = Math.abs(numericVals[0].value);
-      creditos = Math.abs(numericVals[1].value);
-      saldoAtual = numericVals[2].value;
-    } else if (numericVals.length === 2) {
-      // 2 columns: Débitos/Créditos combined, Saldo
-      saldoAtual = numericVals[numericVals.length - 1].value;
+    if (colInfo) {
+      // === USE ACTUAL COLUMN POSITIONS from header detection ===
+      saldoAnterior = colInfo.saldoAnteriorCol >= 0 ? getCellNumericValue(row, colInfo.saldoAnteriorCol) : 0;
+      debitos = Math.abs(getCellNumericValue(row, colInfo.debitosCol));
+      creditos = Math.abs(getCellNumericValue(row, colInfo.creditosCol));
+      saldoAtual = getCellNumericValue(row, colInfo.saldoAtualCol);
+      
+      // If saldoAtual is 0 but we have other values, it might genuinely be 0
+      // Don't fallback to numericValues — trust the column position
+    } else {
+      // Fallback: use numericValues array (old behavior) 
+      const numericVals = row.numericValues;
+      if (numericVals.length < 2) continue;
+      
+      if (numericVals.length >= 4) {
+        saldoAnterior = numericVals[0].value;
+        debitos = Math.abs(numericVals[1].value);
+        creditos = Math.abs(numericVals[2].value);
+        saldoAtual = numericVals[3].value;
+      } else if (numericVals.length === 3) {
+        debitos = Math.abs(numericVals[0].value);
+        creditos = Math.abs(numericVals[1].value);
+        saldoAtual = numericVals[2].value;
+      } else if (numericVals.length === 2) {
+        saldoAtual = numericVals[numericVals.length - 1].value;
+      }
     }
     
     // Determine nature based on account description or saldo sign
@@ -2279,7 +2367,6 @@ function parseBalanceteFromXLS(rows: XLSRow[], filename: string): BalanceteParse
                       normalConta.includes('FORNECEDOR') || normalConta.includes('OBRIGAC');
     const natureza: 'devedora' | 'credora' = isCredora ? 'credora' : 'devedora';
     
-    // Initial grupo = OUTROS, will be classified by AI
     entries.push({
       conta,
       grupo: 'OUTROS',
