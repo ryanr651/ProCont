@@ -127,11 +127,15 @@ serve(async (req) => {
         .replace(/[\u0300-\u036f]/g, "")
         .trim();
 
-    const normalizedEntries = entries.map((e) => ({
+    const normalizedEntries = entries.map((e, index) => ({
       ...e,
+      originalIndex: index,
       descricao_normalized: normalize(e.descricao),
       isCMV: e.isCMV || false,
     }));
+
+    const isMaterialConsumo = (descricaoNormalized: string) =>
+      descricaoNormalized.includes("MATERIAL DE CONSUMO");
 
     // Step 1: Check cache for existing classifications
     const normalizedDescs = [...new Set(normalizedEntries.map((e) => e.descricao_normalized))];
@@ -153,13 +157,21 @@ serve(async (req) => {
       }
     }
 
+    const descFrequency = new Map<string, number>();
+    for (const entry of normalizedEntries) {
+      descFrequency.set(
+        entry.descricao_normalized,
+        (descFrequency.get(entry.descricao_normalized) || 0) + 1
+      );
+    }
+
     // Step 2: Identify uncached entries
     const uncachedEntries = normalizedEntries.filter(
       (e) => !cacheMap.has(e.descricao_normalized) || e.isCMV
     );
 
     // Step 3: Call AI for uncached entries (if any)
-    const aiResults = new Map<string, { grupo: string; motivo: string }>();
+    const aiResults = new Map<number, { grupo: string; motivo: string }>();
 
     if (uncachedEntries.length > 0) {
       // Build context with position info for AI
