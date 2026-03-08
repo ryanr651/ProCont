@@ -2185,31 +2185,88 @@ function isBalanceteStructure(rows: XLSRow[]): boolean {
 }
 
 /**
- * Detect column positions for balancete
- * Returns indices for: [saldoAnterior, debitos, creditos, saldoAtual]
+ * Normalize column header for matching
  */
-function detectBalanceteColumns(rows: XLSRow[]): { saldoAnteriorIdx: number; debitosIdx: number; creditosIdx: number; saldoAtualIdx: number } | null {
-  // Default: assume last 4 numeric columns are SA, D, C, SA
-  // Try to detect from headers first
-  for (let i = 0; i < Math.min(10, rows.length); i++) {
-    const cells = rows[i].cells.map(c => normalizeText(String(c)));
-    const saIdx = cells.findIndex(c => c.includes('SALDO ANTERIOR') || c.includes('SALDO INICIAL'));
-    const debIdx = cells.findIndex(c => c.includes('DEBITO') && !c.includes('CREDITO'));
-    const credIdx = cells.findIndex(c => c.includes('CREDITO'));
-    const sfIdx = cells.findIndex(c => c.includes('SALDO ATUAL') || c.includes('SALDO FINAL'));
-    
-    if (saIdx >= 0 && debIdx >= 0 && credIdx >= 0) {
+function normalizeColumnName(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[_\s]+/g, " ")
+    .trim();
+}
+
+/**
+ * Find column index by possible names with multi-tier matching
+ */
+function findColumnIndex(headers: string[], possibleNames: string[]): number {
+  const normalizedHeaders = headers.map(h => h ? normalizeColumnName(String(h)) : "");
+  const normalizedNames = possibleNames.map(normalizeColumnName);
+
+  // Priority 1: Exact match
+  for (const name of normalizedNames) {
+    const idx = normalizedHeaders.indexOf(name);
+    if (idx !== -1) return idx;
+  }
+  // Priority 2: Starts with
+  for (const name of normalizedNames) {
+    const idx = normalizedHeaders.findIndex(h => h.startsWith(name));
+    if (idx !== -1) return idx;
+  }
+  // Priority 3: Contains
+  for (const name of normalizedNames) {
+    const idx = normalizedHeaders.findIndex(h => h.includes(name));
+    if (idx !== -1) return idx;
+  }
+  return -1;
+}
+
+/**
+ * Detect column positions for balancete using dynamic header detection.
+ * Returns actual cell indices (column positions in the spreadsheet row).
+ */
+function detectBalanceteColumns(rows: XLSRow[]): { 
+  saldoAnteriorCol: number; debitosCol: number; creditosCol: number; saldoAtualCol: number; headerRow: number;
+} | null {
+  for (let i = 0; i < Math.min(15, rows.length); i++) {
+    const cells = rows[i].cells;
+
+    const saCol = findColumnIndex(cells, ["saldo anterior", "saldo inicial"]);
+    const debCol = findColumnIndex(cells, ["debitos", "debito"]);
+    const credCol = findColumnIndex(cells, ["creditos", "credito"]);
+    const sfCol = findColumnIndex(cells, ["saldo atual", "saldo final", "saldo"]);
+
+    if (debCol >= 0 && credCol >= 0) {
+      // We found at least débitos and créditos columns — good enough
+      // If saldo atual not found explicitly, assume it's the LAST numeric column (rightmost)
+      let actualSfCol = sfCol;
+      if (actualSfCol < 0) {
+        // Find the rightmost column that has a header or is after credCol
+        actualSfCol = credCol + 1; // best guess: next column after créditos
+        // Or look for the last column in the header row that has content
+        for (let c = cells.length - 1; c > credCol; c--) {
+          if (cells[c] && cells[c].trim().length > 0) {
+            actualSfCol = c;
+            break;
+          }
+        }
+      }
+
+      debugLog("Balancete columns detected:", {
+        saldoAnterior: saCol, debitos: debCol, creditos: credCol, saldoAtual: actualSfCol, headerRow: i
+      });
+
       return {
-        saldoAnteriorIdx: 0,
-        debitosIdx: 1,
-        creditosIdx: 2,
-        saldoAtualIdx: sfIdx >= 0 ? 3 : 3,
+        saldoAnteriorCol: saCol >= 0 ? saCol : -1,
+        debitosCol: debCol,
+        creditosCol: credCol,
+        saldoAtualCol: actualSfCol,
+        headerRow: i,
       };
     }
   }
   
-  // Default ordering
-  return { saldoAnteriorIdx: 0, debitosIdx: 1, creditosIdx: 2, saldoAtualIdx: 3 };
+  return null;
 }
 
 function parseBalanceteFromXLS(rows: XLSRow[], filename: string): BalanceteParseResult {
