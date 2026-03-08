@@ -377,9 +377,9 @@ ${JSON.stringify(accountList, null, 2)}`;
 
     // Step 5: Build final classifications
     const classifications: ClassificationResult[] = normalizedEntries.map((e) => {
+      const ai = aiResults.get(e.originalIndex);
       const cached = cacheMap.get(e.descricao_normalized);
-      const ai = aiResults.get(e.descricao_normalized);
-      const result = cached || ai || { grupo: "OUTROS", motivo: "Sem classificação" };
+      const result = ai || cached || { grupo: "OUTROS", motivo: "Sem classificação" };
 
       return {
         descricao: e.descricao,
@@ -387,6 +387,33 @@ ${JSON.stringify(accountList, null, 2)}`;
         motivo: result.motivo,
       };
     });
+
+    // Regra específica solicitada: "Material de Consumo"
+    // 1ª ocorrência => CMV | 2ª+ ocorrência => DESPESAS_OPERACIONAIS
+    if (contexto_tipo === "dre") {
+      let materialConsumoCount = 0;
+
+      for (let i = 0; i < normalizedEntries.length; i++) {
+        const entry = normalizedEntries[i];
+        if (!isMaterialConsumo(entry.descricao_normalized)) continue;
+
+        materialConsumoCount += 1;
+
+        if (materialConsumoCount === 1) {
+          classifications[i] = {
+            descricao: classifications[i].descricao,
+            grupo: "CMV",
+            motivo: "1ª ocorrência de Material de Consumo classificada como CMV por regra de negócio.",
+          };
+        } else {
+          classifications[i] = {
+            descricao: classifications[i].descricao,
+            grupo: "DESPESAS_OPERACIONAIS",
+            motivo: "2ª+ ocorrência de Material de Consumo classificada como Despesa Operacional por regra de negócio.",
+          };
+        }
+      }
+    }
 
     return new Response(
       JSON.stringify({
