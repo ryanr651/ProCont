@@ -152,6 +152,53 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (action === "delete") {
+      const { user_id } = body;
+      if (!user_id) {
+        return new Response(
+          JSON.stringify({ error: "user_id required" }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      // Verify user belongs to this master
+      const { data: profile } = await adminClient
+        .from("profiles")
+        .select("master_id")
+        .eq("user_id", user_id)
+        .single();
+
+      if (!profile || profile.master_id !== caller.id) {
+        return new Response(
+          JSON.stringify({ error: "User not found or not your funcionario" }),
+          {
+            status: 403,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      // Delete related data first
+      await adminClient.from("user_roles").delete().eq("user_id", user_id);
+      await adminClient.from("profiles").delete().eq("user_id", user_id);
+
+      // Delete auth user
+      const { error: deleteError } = await adminClient.auth.admin.deleteUser(user_id);
+      if (deleteError) {
+        return new Response(JSON.stringify({ error: deleteError.message }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     if (action === "list") {
       const { data: funcionarios } = await adminClient
         .from("profiles")
