@@ -12,13 +12,16 @@ interface AccountEntry {
   valor: number;
   valor_anterior?: number | null;
   posicao_relativa?: number;
-  isCMV?: boolean; // flag from parser: account is inside CMV block
+  isCMV?: boolean;
 }
 
 interface ClassificationResult {
   descricao: string;
   grupo: string;
   motivo: string;
+  confianca_contextual?: number;
+  ambiguo?: boolean;
+  id_original?: number;
 }
 
 const VALID_GRUPOS_DRE = [
@@ -89,7 +92,6 @@ serve(async (req) => {
       });
     }
 
-    // Get user from auth
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey, {
@@ -119,7 +121,6 @@ serve(async (req) => {
       });
     }
 
-    // Normalize descriptions
     const normalize = (text: string) =>
       text
         .toUpperCase()
@@ -165,35 +166,114 @@ serve(async (req) => {
       );
     }
 
-    // Step 2: Identify uncached entries
-    const uncachedEntries = normalizedEntries.filter(
-      (e) => !cacheMap.has(e.descricao_normalized) || e.isCMV
-    );
+    // For DRE: ALWAYS send all entries to AI for hierarchical context, even if cached
+    // For balancete: use cache as before
+    const isDRE = contexto_tipo === "dre";
 
-    // Step 3: Call AI for uncached entries (if any)
-    const aiResults = new Map<number, { grupo: string; motivo: string }>();
+    // Entries that need AI classification
+    const uncachedEntries = isDRE
+      ? normalizedEntries // DRE: send ALL for full context
+      : normalizedEntries.filter(
+          (e) => !cacheMap.has(e.descricao_normalized) || e.isCMV
+        );
+
+    // Step 3: Call AI for entries
+    const aiResults = new Map<number, { grupo: string; motivo: string; confianca: number; ambiguo: boolean }>();
 
     if (uncachedEntries.length > 0) {
-      // Build context with position info for AI
-      const accountList = uncachedEntries.map((e, i) => ({
-        index: i,
+      // Build FULL SEQUENCE context for AI (hierarchical)
+      // For DRE, we send the COMPLETE ordered list so AI sees the document structure
+      const fullSequence = normalizedEntries.map((e, i) => ({
+        id_original: i,
         descricao: e.descricao,
         valor: e.valor,
         valor_anterior: e.valor_anterior,
         sinal: e.valor >= 0 ? "positivo" : "negativo",
         dentro_do_bloco_CMV: e.isCMV || false,
+        posicao_no_documento: i + 1,
+        total_linhas: normalizedEntries.length,
       }));
 
-      const validGrupos = contexto_tipo === "balancete" ? VALID_GRUPOS_BALANCETE : VALID_GRUPOS_DRE;
+      // Detect duplicate descriptions for AI awareness
+      const duplicateDescs = new Set<string>();
+      for (const [desc, count] of descFrequency.entries()) {
+        if (count > 1) duplicateDescs.add(desc);
+      }
 
-      const systemPrompt = contexto_tipo === "balancete"
-        ? `Você é um contador brasileiro especialista em classificação de contas de Balancete Contábil.
+      const duplicateInfo = duplicateDescs.size > 0
+        ? `\n\n## ATENÇÃO - CONTAS DUPLICADAS DETECTADAS:\nAs seguintes descrições aparecem mais de uma vez no documento: ${[...duplicateDescs].map(d => `"${d}"`).join(", ")}.\nPara cada duplicata, use a POSIÇÃO no documento e o BLOCO/TOTALIZADOR ao qual pertence para decidir o grupo correto. NÃO classifique todas as ocorrências iguais no mesmo grupo.`
+        : "";
+
+      const validGrupos = isDRE ? VALID_GRUPOS_DRE : VALID_GRUPOS_BALANCETE;
+
+      const systemPrompt = isDRE
+        ? `Você é um contador brasileiro ESPECIALISTA em classificação de contas contábeis de DRE (Demonstração do Resultado do Exercício).
+
+## SUA MISSÃO
+Classifique CADA conta da DRE no grupo correto, usando CONTEXTO HIERÁRQUICO e POSIÇÃO no documento.
+
+## MÉTODO DE ANÁLISE (obrigatório)
+1. **PRIMEIRO**: Identifique a ESTRUTURA do documento. Detecte se é um relatório de sistema contábil específico (Domínio, Prosoft, Questor, Fortes, PROCONT, etc.) e aplique as regras de layout desse sistema.
+2. **SEGUNDO**: Identifique os "GRANDES GRUPOS" (âncoras/totalizadores) no documento: Receita Operacional, Receita Líquida, CMV/CPV, Lucro Bruto, Despesas Operacionais, Lucro Operacional, Resultado Financeiro, Lucro Líquido.
+3. **TERCEIRO**: Para CADA conta, determine a qual totalizador ela pertence baseado na sua POSIÇÃO entre as âncoras.
+
+## PESO DAS REGRAS
+- **Peso 2 (MAIS IMPORTANTE)**: Posição da linha no documento e bloco hierárquico ao qual pertence
+- **Peso 1 (SECUNDÁRIO)**: Nome/descrição da conta
+
+## GRUPOS VÁLIDOS PARA DRE:
+- RECEITA_BRUTA: Receita operacional bruta, vendas, faturamento, prestação de serviços
+- DEDUCOES: Impostos sobre vendas, devoluções, abatimentos, simples nacional, deduções da receita bruta
+- RECEITA_LIQUIDA: Linha explícita de receita líquida (subtotal)
+- CMV: Custo da mercadoria vendida, CPV, custo dos produtos/serviços. REGRA ESPECIAL: se "dentro_do_bloco_CMV" = true, OBRIGATÓRIO classificar como CMV
+- LUCRO_BRUTO: Linha explícita de lucro bruto ou resultado bruto (subtotal)
+- DESPESAS_OPERACIONAIS: Despesas administrativas, trabalhistas, salários, aluguel, honorários, depreciação
+- LUCRO_OPERACIONAL: Linha explícita de lucro/resultado operacional (subtotal)
+- RESULTADO_FINANCEIRO: Receitas e despesas financeiras, juros, variação cambial
+- NAO_OPERACIONAL: Receitas e despesas não operacionais, alienação de ativos
+- CONTRIBUICAO_SOCIAL: CSLL (NÃO confundir com contas que começam com "Resultado")
+- IR: IRPJ, imposto de renda pessoa jurídica
+- PROVISOES: Provisões (contas que começam com "Provisão")
+- CONTAS_RESULTADO: Contas que começam com "Resultado" e são subtotais intermediários
+- LUCRO_LIQUIDO: Lucro líquido do exercício, resultado final
+- OUTROS: Contas que não se encaixam
+
+## REGRAS CRÍTICAS DE HIERARQUIA:
+1. **BLOCO CMV**: Se "dentro_do_bloco_CMV" = true, a conta DEVE ser CMV, independentemente do nome.
+2. **DUPLICATAS**: Se encontrar contas com MESMO NOME (ex: "PIS", "COFINS", "Material de Consumo"):
+   - Analise a qual TOTALIZADOR cada ocorrência soma
+   - Contas entre Receita Bruta → Receita Líquida = DEDUCOES
+   - Contas entre Receita Líquida → Lucro Bruto = CMV
+   - Contas após Lucro Bruto = DESPESAS_OPERACIONAIS (ou outro grupo contextual)
+3. Se a conta COMEÇA com "Resultado" → CONTAS_RESULTADO (não CSLL/IR)
+4. Considere o SINAL: receitas positivas, despesas/custos negativos
+
+## CONFIANÇA
+Para CADA conta, retorne um campo "confianca" (0 a 100):
+- 95-100: Certeza total (nome inequívoco OU posição clara no documento)
+- 80-94: Alta confiança (posição clara mas nome ambíguo)
+- 60-79: Média confiança (alguma ambiguidade)
+- 0-59: Baixa confiança (conta ambígua, duplicata sem contexto claro)
+
+Se a confiança for < 80, marque "ambiguo": true.
+${duplicateInfo}
+
+## FORMATO DE RESPOSTA
+Retorne um JSON array com objetos: {index, grupo, motivo, confianca, ambiguo}
+- index: posição da conta na lista enviada
+- grupo: um dos grupos válidos acima
+- motivo: explicação BREVE (1 frase) incluindo qual bloco hierárquico determinou a classificação
+- confianca: número 0-100
+- ambiguo: boolean (true se confiança < 80)
+
+Responda APENAS com o JSON array, sem markdown, sem explicações adicionais.`
+        : `Você é um contador brasileiro especialista em classificação de contas de Balancete Contábil.
 
 Sua tarefa: classificar cada conta do balancete em um dos grupos abaixo.
 
 ## Grupos válidos para BALANCETE:
 - DISPONIBILIDADES: Caixa geral, fundo fixo, caixa pequena
-- CAIXA: Contas de caixa 
+- CAIXA: Contas de caixa
 - BANCO: Contas bancárias, banco conta movimento, aplicações bancárias de curto prazo
 - APLICACOES: Aplicações financeiras
 - CONTAS_A_RECEBER: Duplicatas a receber, clientes, títulos a receber
@@ -226,43 +306,29 @@ Sua tarefa: classificar cada conta do balancete em um dos grupos abaixo.
 ## Regras CRÍTICAS:
 1. Considere o NOME da conta para classificar corretamente
 2. Contas de ATIVO são tipicamente devedoras, PASSIVO/PL credoras
-3. Retorne um JSON array com objetos {index, grupo, motivo}
+3. Retorne um JSON array com objetos {index, grupo, motivo, confianca, ambiguo}
 4. O campo "motivo" deve ser BREVE (1 frase)
+5. "confianca": número 0-100 indicando certeza da classificação
+6. "ambiguo": true se confiança < 80
 
-Responda APENAS com o JSON array, sem markdown.`
-        : `Você é um contador brasileiro especialista em classificação de contas contábeis.
+Responda APENAS com o JSON array, sem markdown.`;
 
-Sua tarefa: classificar cada conta contábil em um dos grupos abaixo.
+      // For DRE: send full document sequence for hierarchical context
+      const accountList = isDRE ? fullSequence : uncachedEntries.map((e, i) => ({
+        index: i,
+        descricao: e.descricao,
+        valor: e.valor,
+        valor_anterior: e.valor_anterior,
+        sinal: e.valor >= 0 ? "positivo" : "negativo",
+        dentro_do_bloco_CMV: e.isCMV || false,
+      }));
 
-## Grupos válidos para DRE:
-- RECEITA_BRUTA: Receita operacional bruta, vendas, faturamento, prestação de serviços
-- DEDUCOES: Impostos sobre vendas, devoluções, abatimentos, simples nacional, deduções da receita bruta
-- RECEITA_LIQUIDA: Linha explícita de receita líquida (subtotal)
-- CMV: Custo da mercadoria vendida, CPV, custo dos produtos vendidos, custo dos serviços prestados, custo de produção. SOMENTE classifique como CMV se: (a) o nome contém explicitamente "Custo", "CMV", "CPV", ou (b) o campo "dentro_do_bloco_CMV" for true. Contas ambíguas como "Material de Consumo", "Material de Embalagem", "Fretes" NÃO devem ser classificadas como CMV apenas pelo nome — use SEMPRE a flag "dentro_do_bloco_CMV" para decidir. Se "dentro_do_bloco_CMV" for false, classifique como DESPESAS_OPERACIONAIS.
-- LUCRO_BRUTO: Linha explícita de lucro bruto ou resultado bruto (subtotal)
-- DESPESAS_OPERACIONAIS: Despesas administrativas, trabalhistas, salários, aluguel, honorários, depreciação, despesas gerais
-- LUCRO_OPERACIONAL: Linha explícita de lucro operacional ou resultado operacional (subtotal)
-- RESULTADO_FINANCEIRO: Receitas e despesas financeiras, juros, variação cambial, resultado financeiro
-- NAO_OPERACIONAL: Receitas e despesas não operacionais, alienação de ativos
-- CONTRIBUICAO_SOCIAL: CSLL, contribuição social sobre lucro líquido (NÃO confundir com contas que começam com "Resultado")
-- IR: IRPJ, imposto de renda pessoa jurídica (NÃO confundir com contas que começam com "Resultado")
-- PROVISOES: Provisões (contas que começam com "Provisão")
-- CONTAS_RESULTADO: Contas que começam com "Resultado" e são subtotais intermediários (ex: Resultado antes da contribuição social, Resultado antes do IR)
-- LUCRO_LIQUIDO: Lucro líquido do exercício, resultado do exercício, lucro do período (resultado final)
-- OUTROS: Contas que não se encaixam em nenhum grupo acima
+      const userPrompt = isDRE
+        ? `Classifique estas contas da DRE na ORDEM EXATA em que aparecem no documento original.
+A sequência completa é fundamental para entender a hierarquia:
 
-## Regras CRÍTICAS:
-1. **REGRA MAIS IMPORTANTE**: Se o campo "dentro_do_bloco_CMV" for true, a conta DEVE ser classificada como CMV, independentemente do nome. Contas como "Material de Consumo", "Frete sobre Vendas", "Embalagens", etc., podem aparecer tanto como CMV quanto como Despesa Operacional dependendo de onde estão posicionadas na DRE. Se "dentro_do_bloco_CMV" for true, significa que o parser detectou que a conta está entre a Receita Líquida e o Lucro Bruto, portanto faz parte do CMV. Se "dentro_do_bloco_CMV" for false, classifique normalmente pelo nome e contexto (provavelmente DESPESAS_OPERACIONAIS).
-2. Se a conta COMEÇA com "Resultado" (ex: "Resultado antes da contribuição social"), classifique como CONTAS_RESULTADO, NÃO como CONTRIBUICAO_SOCIAL ou IR
-3. Considere o SINAL do valor: receitas são positivas, despesas/custos são negativos
-4. Considere a POSIÇÃO da conta na demonstração: contas no topo são receita, no meio são custos/despesas, no final são impostos/resultado
-5. Subtotais (Receita Líquida, Lucro Bruto, etc.) devem ser classificados em seu grupo específico
-6. Retorne um JSON array com objetos {index, grupo, motivo}
-7. O campo "motivo" deve ser uma explicação BREVE (1 frase) de por que aquela classificação foi escolhida
-
-Responda APENAS com o JSON array, sem markdown, sem explicações adicionais.`;
-
-      const userPrompt = `Classifique estas contas contábeis de uma ${contexto_tipo.toUpperCase()}:
+${JSON.stringify(accountList, null, 2)}`
+        : `Classifique estas contas contábeis de uma ${contexto_tipo.toUpperCase()}:
 
 ${JSON.stringify(accountList, null, 2)}`;
 
@@ -306,13 +372,12 @@ ${JSON.stringify(accountList, null, 2)}`;
       const aiResponse = await response.json();
       const content = aiResponse.choices?.[0]?.message?.content || "[]";
 
-      // Parse AI response - handle potential markdown wrapping
       let cleanContent = content.trim();
       if (cleanContent.startsWith("```")) {
         cleanContent = cleanContent.replace(/```json?\n?/g, "").replace(/```$/g, "").trim();
       }
 
-      let parsed: Array<{ index: number; grupo: string; motivo: string }>;
+      let parsed: Array<{ index?: number; id_original?: number; grupo: string; motivo: string; confianca?: number; ambiguo?: boolean }>;
       try {
         parsed = JSON.parse(cleanContent);
       } catch {
@@ -322,12 +387,20 @@ ${JSON.stringify(accountList, null, 2)}`;
 
       // Map AI results back to entries
       for (const item of parsed) {
-        const entry = uncachedEntries[item.index];
+        // For DRE full-sequence mode, use id_original; for batched mode use index
+        const targetIndex = isDRE ? (item.id_original ?? item.index) : undefined;
+        const entry = isDRE
+          ? normalizedEntries[targetIndex ?? -1]
+          : uncachedEntries[item.index ?? -1];
+
         if (entry) {
           const grupo = validGrupos.includes(item.grupo) ? item.grupo : "OUTROS";
+          const confianca = typeof item.confianca === "number" ? item.confianca : 90;
           aiResults.set(entry.originalIndex, {
             grupo,
             motivo: item.motivo || "Classificado pela IA",
+            confianca,
+            ambiguo: item.ambiguo === true || confianca < 80,
           });
         }
       }
@@ -338,15 +411,21 @@ ${JSON.stringify(accountList, null, 2)}`;
           aiResults.set(entry.originalIndex, {
             grupo: "OUTROS",
             motivo: "Classificação não retornada pela IA (fallback)",
+            confianca: 0,
+            ambiguo: true,
           });
         }
       }
 
-      // Step 4: Save AI results to cache (skip ambiguous/repeated descriptions)
-      const cacheInserts = uncachedEntries
+      // Step 4: Save AI results to cache (skip duplicates and ambiguous for DRE)
+      const cacheInserts = (isDRE ? normalizedEntries : uncachedEntries)
         .filter((entry) => {
           const count = descFrequency.get(entry.descricao_normalized) || 0;
-          return count === 1 && !isMaterialConsumo(entry.descricao_normalized);
+          if (count > 1) return false; // Don't cache duplicates
+          if (isMaterialConsumo(entry.descricao_normalized)) return false;
+          const result = aiResults.get(entry.originalIndex);
+          if (result?.ambiguo) return false; // Don't cache ambiguous
+          return true;
         })
         .map((entry) => {
           const result = aiResults.get(entry.originalIndex) || {
@@ -375,22 +454,46 @@ ${JSON.stringify(accountList, null, 2)}`;
       }
     }
 
-    // Step 5: Build final classifications
+    // Step 5: Build final classifications with enriched data
     const classifications: ClassificationResult[] = normalizedEntries.map((e) => {
       const ai = aiResults.get(e.originalIndex);
       const cached = cacheMap.get(e.descricao_normalized);
-      const result = ai || cached || { grupo: "OUTROS", motivo: "Sem classificação" };
+
+      let grupo: string;
+      let motivo: string;
+      let confianca: number;
+      let ambiguo: boolean;
+
+      if (ai) {
+        grupo = ai.grupo;
+        motivo = ai.motivo;
+        confianca = ai.confianca;
+        ambiguo = ai.ambiguo;
+      } else if (cached) {
+        grupo = cached.grupo;
+        motivo = cached.motivo;
+        confianca = 95; // cached = previously validated
+        ambiguo = false;
+      } else {
+        grupo = "OUTROS";
+        motivo = "Sem classificação";
+        confianca = 0;
+        ambiguo = true;
+      }
 
       return {
         descricao: e.descricao,
-        grupo: result.grupo,
-        motivo: result.motivo,
+        grupo,
+        motivo,
+        confianca_contextual: confianca,
+        ambiguo,
+        id_original: e.originalIndex,
       };
     });
 
-    // Regra específica solicitada: "Material de Consumo"
+    // Regra específica: "Material de Consumo"
     // 1ª ocorrência => CMV | 2ª+ ocorrência => DESPESAS_OPERACIONAIS
-    if (contexto_tipo === "dre") {
+    if (isDRE) {
       let materialConsumoCount = 0;
 
       for (let i = 0; i < normalizedEntries.length; i++) {
@@ -401,27 +504,34 @@ ${JSON.stringify(accountList, null, 2)}`;
 
         if (materialConsumoCount === 1) {
           classifications[i] = {
-            descricao: classifications[i].descricao,
+            ...classifications[i],
             grupo: "CMV",
             motivo: "1ª ocorrência de Material de Consumo classificada como CMV por regra de negócio.",
+            confianca_contextual: 100,
+            ambiguo: false,
           };
         } else {
           classifications[i] = {
-            descricao: classifications[i].descricao,
+            ...classifications[i],
             grupo: "DESPESAS_OPERACIONAIS",
             motivo: "2ª+ ocorrência de Material de Consumo classificada como Despesa Operacional por regra de negócio.",
+            confianca_contextual: 100,
+            ambiguo: false,
           };
         }
       }
     }
+
+    const ambiguousCount = classifications.filter(c => c.ambiguo).length;
 
     return new Response(
       JSON.stringify({
         classifications,
         stats: {
           total: entries.length,
-          from_cache: entries.length - uncachedEntries.length,
+          from_cache: isDRE ? 0 : entries.length - uncachedEntries.length,
           from_ai: uncachedEntries.length,
+          ambiguous: ambiguousCount,
         },
       }),
       {
