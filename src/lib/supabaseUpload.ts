@@ -31,6 +31,9 @@ interface ClassificationResult {
   descricao: string;
   grupo: string;
   motivo: string;
+  confianca_contextual?: number;
+  ambiguo?: boolean;
+  id_original?: number;
 }
 
 // ============= AI: Identify file types =============
