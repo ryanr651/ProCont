@@ -630,36 +630,56 @@ export function DashboardIndicadores({
                      </tr>
                   </thead>
                   <tbody>
-                    {dreClassifiedEntries.map((entry, index) => (
-                      <tr
-                        key={index}
-                        className={`border-b border-border/50 hover:bg-muted/30 ${entry.isExplicit ? 'font-semibold' : ''}`}
-                      >
-                        <td className="py-2 px-3 text-muted-foreground">{index + 1}</td>
-                        <td className="py-2 px-3 text-foreground max-w-xs">
-                          <span className="block truncate" title={entry.descricao}>
-                            {entry.descricao}
-                          </span>
-                        </td>
-                        <td className="py-2 px-3 text-center">
-                          <span className={`px-2 py-1 rounded text-xs font-medium border ${getDREGroupColor(entry.grupo)}`}>
-                            {getDREGroupLabel(entry.grupo)}
-                          </span>
-                        </td>
-                        <td className="py-2 px-3 text-right text-foreground">
-                          {entry.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                        </td>
-                        <td className="py-2 px-3 text-center">
-                          {entry.isExplicit
-                            ? <span className="px-2 py-1 rounded text-xs font-medium bg-primary/20 text-primary border border-primary/30">Explícita</span>
-                            : <span className="px-2 py-1 rounded text-xs font-medium bg-muted text-muted-foreground border border-border">Componente</span>
-                          }
-                        </td>
-                        <td className="py-2 px-3 text-muted-foreground text-xs max-w-xs truncate" title={entry.motivo}>
-                          {entry.motivo}
-                        </td>
-                      </tr>
-                    ))}
+                     {dreClassifiedEntries.map((entry, index) => {
+                       const confianca = entry.confianca_contextual ?? 90;
+                       const isAmbiguous = entry.ambiguo === true;
+                       const confiancaColor = confianca >= 95
+                         ? 'text-green-400'
+                         : confianca >= 80
+                         ? 'text-blue-400'
+                         : confianca >= 60
+                         ? 'text-yellow-400'
+                         : 'text-red-400';
+
+                       return (
+                       <tr
+                         key={index}
+                         className={`border-b border-border/50 hover:bg-muted/30 ${entry.isExplicit ? 'font-semibold' : ''} ${isAmbiguous ? 'bg-yellow-500/10 border-l-2 border-l-yellow-500' : ''}`}
+                       >
+                         <td className="py-2 px-3 text-muted-foreground">{index + 1}</td>
+                         <td className="py-2 px-3 text-foreground max-w-xs">
+                           <span className="block truncate" title={entry.descricao}>
+                             {isAmbiguous && <span className="inline-block mr-1 text-yellow-500" title="Classificação ambígua - requer validação">⚠️</span>}
+                             {entry.descricao}
+                           </span>
+                         </td>
+                         <td className="py-2 px-3 text-center">
+                           <span className={`px-2 py-1 rounded text-xs font-medium border ${getDREGroupColor(entry.grupo)}`}>
+                             {getDREGroupLabel(entry.grupo)}
+                           </span>
+                         </td>
+                         <td className="py-2 px-3 text-right text-foreground">
+                           {entry.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                         </td>
+                         <td className="py-2 px-3 text-center">
+                           <span className={`text-xs font-medium ${confiancaColor}`} title={`Confiança contextual: ${confianca}%`}>
+                             {confianca}%
+                           </span>
+                         </td>
+                         <td className="py-2 px-3 text-center">
+                           {entry.isExplicit
+                             ? <span className="px-2 py-1 rounded text-xs font-medium bg-primary/20 text-primary border border-primary/30">Explícita</span>
+                             : isAmbiguous
+                             ? <span className="px-2 py-1 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">Ambígua</span>
+                             : <span className="px-2 py-1 rounded text-xs font-medium bg-muted text-muted-foreground border border-border">Componente</span>
+                           }
+                         </td>
+                         <td className="py-2 px-3 text-muted-foreground text-xs max-w-xs truncate" title={entry.motivo}>
+                           {entry.motivo}
+                         </td>
+                       </tr>
+                       );
+                     })}
                   </tbody>
                 </table>
               </div>
