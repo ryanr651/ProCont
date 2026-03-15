@@ -421,6 +421,13 @@ export async function uploadAndProcessFiles(
           const classification = aiResult.classifications[i];
           if (classification) {
             dreResult.entries[i].grupo = classification.grupo;
+            // Store classification metadata in raw_row for display
+            const existingRaw = dreResult.entries[i].raw_row || [];
+            (dreResult.entries[i] as any)._classificationMeta = {
+              motivo: classification.motivo,
+              confianca_contextual: classification.confianca_contextual ?? 90,
+              ambiguo: classification.ambiguo ?? false,
+            };
           }
         }
         aiStats = aiResult.stats;
