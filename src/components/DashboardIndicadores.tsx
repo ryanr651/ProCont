@@ -619,14 +619,15 @@ export function DashboardIndicadores({
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-border">
-                      <th className="text-left py-2 px-3 text-muted-foreground font-medium">#</th>
-                      <th className="text-left py-2 px-3 text-muted-foreground font-medium">Descrição</th>
-                      <th className="text-center py-2 px-3 text-muted-foreground font-medium">Grupo</th>
-                      <th className="text-right py-2 px-3 text-muted-foreground font-medium">Valor</th>
-                      <th className="text-center py-2 px-3 text-muted-foreground font-medium">Tipo</th>
-                      <th className="text-left py-2 px-3 text-muted-foreground font-medium">Motivo</th>
-                    </tr>
+                     <tr className="border-b border-border">
+                       <th className="text-left py-2 px-3 text-muted-foreground font-medium">#</th>
+                       <th className="text-left py-2 px-3 text-muted-foreground font-medium">Descrição</th>
+                       <th className="text-center py-2 px-3 text-muted-foreground font-medium">Grupo</th>
+                       <th className="text-right py-2 px-3 text-muted-foreground font-medium">Valor</th>
+                       <th className="text-center py-2 px-3 text-muted-foreground font-medium">Confiança</th>
+                       <th className="text-center py-2 px-3 text-muted-foreground font-medium">Tipo</th>
+                       <th className="text-left py-2 px-3 text-muted-foreground font-medium">Motivo</th>
+                     </tr>
                   </thead>
                   <tbody>
                     {dreClassifiedEntries.map((entry, index) => (
