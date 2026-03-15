@@ -473,16 +473,23 @@ export async function uploadAndProcessFiles(
       const dreBatches = chunkArray(dreResult.entries, 500);
       for (const batch of dreBatches) {
         const { error } = await supabase.from("dre_entries").insert(
-          batch.map((entry) => ({
-            user_id: userId,
-            empresa_id: empresaId || null,
-            periodo: dreResult!.periodo,
-            descricao: entry.descricao,
-            valor: entry.valor,
-            valor_anterior: entry.valor_anterior,
-            raw_row: entry.raw_row,
-            grupo: entry.grupo,
-          }))
+          batch.map((entry) => {
+            const meta = (entry as any)._classificationMeta;
+            const rawRowData = {
+              cells: entry.raw_row,
+              ...(meta ? { _classification: meta } : {}),
+            };
+            return {
+              user_id: userId,
+              empresa_id: empresaId || null,
+              periodo: dreResult!.periodo,
+              descricao: entry.descricao,
+              valor: entry.valor,
+              valor_anterior: entry.valor_anterior,
+              raw_row: rawRowData,
+              grupo: entry.grupo,
+            };
+          })
         );
         if (error) {
           errors.push(`Erro ao inserir DRE: ${error.message}`);
