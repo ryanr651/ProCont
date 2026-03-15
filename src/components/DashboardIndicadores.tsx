@@ -604,8 +604,22 @@ export function DashboardIndicadores({
           {showDreDebug && (
             <div className="glass-card p-6">
               <p className="text-sm text-muted-foreground mb-4">
-                Todas as linhas DRE importadas com seu grupo e classificação:
+                Todas as linhas DRE importadas com seu grupo, classificação e confiança contextual:
               </p>
+
+              {/* Ambiguous entries banner */}
+              {(() => {
+                const ambiguousCount = dreClassifiedEntries.filter(e => e.ambiguo).length;
+                if (ambiguousCount === 0) return null;
+                return (
+                  <div className="mb-4 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 flex items-center gap-2">
+                    <span className="text-yellow-500 text-lg">⚠️</span>
+                    <span className="text-sm text-yellow-200">
+                      <strong>{ambiguousCount} conta{ambiguousCount > 1 ? 's' : ''}</strong> com classificação ambígua detectada{ambiguousCount > 1 ? 's' : ''}. Revise as linhas destacadas em amarelo.
+                    </span>
+                  </div>
+                );
+              })()}
 
               {/* Group Legend */}
               <div className="flex flex-wrap gap-2 mb-4">
