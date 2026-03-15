@@ -125,8 +125,6 @@ interface DREClassifiedEntry {
   isExplicit: boolean;
   motivo: string;
   insideCMVBlock?: boolean;
-  confianca_contextual?: number;
-  ambiguo?: boolean;
 }
 
 interface EmpresaData {
@@ -500,22 +498,14 @@ const Resultado = () => {
         motivo = classification.motivo;
       }
 
-      // Extract classification metadata from raw_row if available
-      const rawRow = (entry as any).raw_row;
-      const classificationMeta = rawRow && typeof rawRow === 'object' && rawRow._classification
-        ? rawRow._classification
-        : null;
-
       classifiedEntries.push({
         descricao: entry.descricao,
         valor: entry.valor,
         valorAnterior: entry.valor_anterior,
         grupo,
         isExplicit,
-        motivo: classificationMeta?.motivo || motivo,
-        insideCMVBlock: grupo === 'cmv',
-        confianca_contextual: classificationMeta?.confianca_contextual,
-        ambiguo: classificationMeta?.ambiguo ?? false,
+        motivo,
+        insideCMVBlock: grupo === 'cmv'
       });
 
       // Acumular baseado no grupo classificado (para fallback)

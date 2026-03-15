@@ -31,9 +31,6 @@ interface ClassificationResult {
   descricao: string;
   grupo: string;
   motivo: string;
-  confianca_contextual?: number;
-  ambiguo?: boolean;
-  id_original?: number;
 }
 
 // ============= AI: Identify file types =============
@@ -421,13 +418,6 @@ export async function uploadAndProcessFiles(
           const classification = aiResult.classifications[i];
           if (classification) {
             dreResult.entries[i].grupo = classification.grupo;
-            // Store classification metadata in raw_row for display
-            const existingRaw = dreResult.entries[i].raw_row || [];
-            (dreResult.entries[i] as any)._classificationMeta = {
-              motivo: classification.motivo,
-              confianca_contextual: classification.confianca_contextual ?? 90,
-              ambiguo: classification.ambiguo ?? false,
-            };
           }
         }
         aiStats = aiResult.stats;
@@ -473,23 +463,16 @@ export async function uploadAndProcessFiles(
       const dreBatches = chunkArray(dreResult.entries, 500);
       for (const batch of dreBatches) {
         const { error } = await supabase.from("dre_entries").insert(
-          batch.map((entry) => {
-            const meta = (entry as any)._classificationMeta;
-            const rawRowData = {
-              cells: entry.raw_row,
-              ...(meta ? { _classification: meta } : {}),
-            };
-            return {
-              user_id: userId,
-              empresa_id: empresaId || null,
-              periodo: dreResult!.periodo,
-              descricao: entry.descricao,
-              valor: entry.valor,
-              valor_anterior: entry.valor_anterior,
-              raw_row: rawRowData,
-              grupo: entry.grupo,
-            };
-          })
+          batch.map((entry) => ({
+            user_id: userId,
+            empresa_id: empresaId || null,
+            periodo: dreResult!.periodo,
+            descricao: entry.descricao,
+            valor: entry.valor,
+            valor_anterior: entry.valor_anterior,
+            raw_row: entry.raw_row,
+            grupo: entry.grupo,
+          }))
         );
         if (error) {
           errors.push(`Erro ao inserir DRE: ${error.message}`);
