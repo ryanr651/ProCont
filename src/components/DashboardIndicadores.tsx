@@ -34,6 +34,8 @@ interface DREClassifiedEntry {
   isExplicit: boolean;
   motivo: string;
   insideCMVBlock?: boolean;
+  confianca_contextual?: number;
+  ambiguo?: boolean;
 }
 
 interface CalculatedDRE {
