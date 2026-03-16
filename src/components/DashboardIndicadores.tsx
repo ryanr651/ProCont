@@ -78,6 +78,7 @@ interface BalancoEntry {
   hierarchy: string;
   natureza_conta?: 'sintetica' | 'analitica';
   detection_motivo?: string;
+  is_redutora?: boolean;
 }
 
 interface DashboardIndicadoresProps {
@@ -322,6 +323,25 @@ export function DashboardIndicadores({
   ];
 
   // Balanço indicators
+  // Detect contra accounts for Ativo Total drill-down
+  const redutorasAtivo = useMemo(() => {
+    const norm = (s: string) => s.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    return rawBalancoEntries
+      .filter((e) => {
+        if (e.natureza_conta === 'sintetica') return false;
+        const n = norm(e.conta);
+        return (e.is_redutora || /DEPRECIA/.test(n) || /AMORTIZA/.test(n) || /EXAUSTAO/.test(n) ||
+                /PROVISAO.*DEVED/.test(n) || /PDD/.test(n) || e.conta.trim().startsWith('(-)')) &&
+               (e.tipo.startsWith('ATIVO') || e.tipo === 'IMOBILIZADO' || e.tipo === 'INTANGIVEL');
+      })
+      .map((e) => ({
+        descricao: e.conta,
+        valor: -Math.abs(e.valor),
+        motivo: "Conta redutora do ativo — subtraída do total conforme normas contábeis.",
+        isRedutora: true,
+      }));
+  }, [rawBalancoEntries]);
+
   const balancoIndicators: IndicatorConfig[] = [
     {
       title: "Ativo Total",
@@ -329,11 +349,12 @@ export function DashboardIndicadores({
       format: "currency",
       icon: Building,
       variant: "highlight",
-      formula: "Ativo Circulante + Ativo Não Circulante",
-      formulaDescription: "Total de bens e direitos da empresa.",
+      formula: "Ativo Circulante + Ativo Não Circulante (líquido de redutoras)",
+      formulaDescription: "Total de bens e direitos da empresa. Contas redutoras (depreciação, amortização) são subtraídas do grupo.",
       accounts: [
         { descricao: "Ativo Circulante", valor: balancoData.ativoCirculante, motivo: "Bens de curto prazo" },
         { descricao: "Ativo Não Circulante", valor: balancoData.ativoNaoCirculante, motivo: "Bens de longo prazo" },
+        ...redutorasAtivo,
       ],
     },
     {

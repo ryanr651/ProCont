@@ -60,6 +60,7 @@ interface BalancoEntry {
   hierarchy: string;
   natureza_conta?: 'sintetica' | 'analitica';
   detection_motivo?: string;
+  is_redutora?: boolean;
 }
 
 interface DiagnosticLine {
@@ -286,11 +287,17 @@ const Resultado = () => {
       const balanco = calculateBalancoMetrics(balancoEntries as BalancoEntry[]);
       setBalancoData(balanco);
       
-      // Apply synthetic/analytic detection to Balanço entries
+      // Apply synthetic/analytic detection and contra account detection to Balanço entries
+      const isContaRedutora = (conta: string) => {
+        const norm = normalizeText(conta);
+        return /DEPRECIA/.test(norm) || /AMORTIZA/.test(norm) || /EXAUSTAO/.test(norm) ||
+               /PROVISAO.*DEVED/.test(norm) || /PDD/.test(norm) || conta.trim().startsWith('(-)');
+      };
       const balancoWithDetection = detectSyntheticEntries(
         (balancoEntries as BalancoEntry[]).map((e) => ({
           ...e,
           indent_level: inferIndentFromRawRow(e),
+          is_redutora: isContaRedutora(e.conta),
         }))
       );
       

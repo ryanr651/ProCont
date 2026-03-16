@@ -232,9 +232,11 @@ Se "Impostos" tem contexto_pai "ATIVO CIRCULANTE", são "Impostos a Recuperar" (
 1. **REGRA SUPREMA**: Use o campo "contexto_pai" para determinar se a conta é ATIVO, PASSIVO ou PL. Se contexto_pai contém "ATIVO", a conta DEVE ser classificada em um grupo de ATIVO. Se contém "PASSIVO", DEVE ser um grupo de PASSIVO. NUNCA classifique uma conta de ATIVO como PASSIVO ou vice-versa.
 2. Nomes ambíguos como "Impostos", "Empréstimos", "Adiantamentos" existem tanto no Ativo quanto no Passivo. Use SEMPRE o contexto_pai para desambiguar.
 3. Contas de ATIVO são tipicamente devedoras, PASSIVO/PL credoras
-4. Retorne um JSON array com objetos {index, grupo, motivo, natureza_conta}
+4. Retorne um JSON array com objetos {index, grupo, motivo, natureza_conta, is_redutora}
 5. O campo "motivo" deve ser BREVE (1 frase)
-6. O campo "natureza_conta" deve ser "sintetica" para contas que são TOTAIS ou GRUPOS (ex: "Ativo", "Circulante", "Disponibilidades", "Imobilizado" quando seguido de subcontas), e "analitica" para contas específicas/detalhadas (ex: "Banco do Brasil", "Caixa Matriz", "ICMS a Recuperar").
+6. O campo "natureza_conta" deve ser "sintetica" para contas que são TOTAIS ou GRUPOS, e "analitica" para contas específicas/detalhadas.
+7. **CONTAS REDUTORAS**: Contas de Depreciação Acumulada, Amortização Acumulada, Exaustão Acumulada, Provisão para Devedores Duvidosos (PDD), e outras contas retificadoras que aparecem DENTRO do Ativo devem ser mantidas no grupo de ATIVO (IMOBILIZADO, INTANGIVEL, ou ATIVO_NAO_CIRCULANTE conforme aplicável). Marque "is_redutora": true para estas contas. Elas têm saldo credor mas pertencem ao Ativo — NUNCA as mova para o Passivo.
+8. Exemplos de contas redutoras: "(-) Depreciação Acumulada", "Depreciação Acum. Veículos", "Amortização Acumulada", "PDD", "Provisão p/ Perdas".
 
 Responda APENAS com o JSON array, sem markdown.`
         : `Você é um contador brasileiro especialista em classificação de contas contábeis.
