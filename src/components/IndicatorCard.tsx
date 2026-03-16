@@ -8,6 +8,7 @@ export interface AccountDetail {
   valor: number;
   motivo?: string;
   isSynthetic?: boolean;
+  isRedutora?: boolean;
 }
 
 export interface IndicatorConfig {
