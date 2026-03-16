@@ -16,6 +16,16 @@ function normalizeText(text: string): string {
     .trim();
 }
 
+function isContaRedutora(conta: string, valor: number): boolean {
+  const norm = conta.trim().toUpperCase();
+  return norm.startsWith('(-)') || 
+    /DEPRECIA[CÇ]/i.test(norm) || 
+    /AMORTIZA[CÇ]/i.test(norm) || 
+    /PERDAS.*ESTIMADAS/i.test(norm) ||
+    /PDD/i.test(norm) ||
+    (valor < 0 && (/DEPREC/i.test(norm) || /AMORT/i.test(norm)));
+}
+
 const KNOWN_SYNTHETIC_EXACT = new Set([
   "ATIVO",
   "PASSIVO",
@@ -89,12 +99,21 @@ export function detectSyntheticEntries<T extends SyntheticDetectionInput>(
       // Strategy 1: Single-child match (next non-synthetic entry has same value)
       const nextAnalytic = findNextAnalytic(results, i + 1);
       if (nextAnalytic !== -1 && Math.abs(Math.abs(results[nextAnalytic].valor) - val) / val <= tolerance) {
-        // Check that there isn't another entry after with a different value at the "same group"
-        // i.e., the single child pattern: A=100 → B=100 (B is the leaf, A is synthetic)
-        results[i].natureza_conta = "sintetica";
-        results[i].detection_motivo = `Totalizador: valor igual à subconta "${results[nextAnalytic].conta}"`;
-        changed = true;
-        continue;
+        // Do NOT mark as synthetic if current or next entry is a contra account (redutora)
+        // e.g., "EQUIPAMENTOS" (1079) followed by "(-) DEPRECIAÇÃO" (-1079) are NOT parent-child
+        const currentIsRedutora = isContaRedutora(results[i].conta, results[i].valor);
+        const nextIsRedutora = isContaRedutora(results[nextAnalytic].conta, results[nextAnalytic].valor);
+        
+        // If they have opposite signs, it's an asset + contra-asset pair, not parent-child
+        const opposingSigns = (results[i].valor >= 0 && results[nextAnalytic].valor < 0) || 
+                              (results[i].valor < 0 && results[nextAnalytic].valor >= 0);
+        
+        if (!nextIsRedutora && !currentIsRedutora && !opposingSigns) {
+          results[i].natureza_conta = "sintetica";
+          results[i].detection_motivo = `Totalizador: valor igual à subconta "${results[nextAnalytic].conta}"`;
+          changed = true;
+          continue;
+        }
       }
 
       // Strategy 2: Sum of consecutive following non-synthetic entries
