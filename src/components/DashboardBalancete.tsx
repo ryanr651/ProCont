@@ -246,13 +246,13 @@ export function DashboardBalancete({ entries, previousPeriods, dreReceitaBruta, 
       icon: Factory,
       variant: imobilizacaoPL <= 50 ? "success" : imobilizacaoPL <= 80 ? "warning" : "danger",
       formula: "(Ativo Imobilizado ÷ Patrimônio Líquido) × 100",
-      formulaDescription: "Quanto do capital próprio está investido em ativos fixos. Ideal < 50%. Acima de 80% pode indicar falta de liquidez.",
+      formulaDescription: "Quanto do capital próprio está investido em ativos fixos. Mesmo que o saldo líquido do imobilizado seja zero, as contas analíticas e redutoras continuam sendo exibidas na memória de cálculo.",
       accounts: [
         ...accountsForGrupos(entries, ["IMOBILIZADO"]),
         { descricao: "─── Patrimônio Líquido (denominador) ───", valor: 0, motivo: "" },
         ...accountsForGrupos(entries, ["PATRIMONIO", "CAPITAL_SOCIAL", "RESERVA", "LUCROS_ACUMULADOS"]),
       ],
-      visible: data.patrimonioLiquido > 0 && data.imobilizado > 0,
+      visible: data.patrimonioLiquido > 0 && accountsForGrupos(entries, ["IMOBILIZADO"]).some(a => !a.isSynthetic),
     },
   ];
 
