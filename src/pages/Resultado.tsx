@@ -130,6 +130,30 @@ interface DREClassifiedEntry {
   insideCMVBlock?: boolean;
 }
 
+/**
+ * Infer indent level from raw_row data or account name when DB entry doesn't have indent_level stored.
+ */
+function inferIndentFromRawRow(entry: any): number {
+  // If indent_level is already set (from parser), use it
+  if (typeof entry.indent_level === 'number') return entry.indent_level;
+  
+  // Try to find first non-empty text cell position from raw_row
+  if (entry.raw_row && Array.isArray(entry.raw_row)) {
+    for (let i = 0; i < entry.raw_row.length; i++) {
+      const cell = String(entry.raw_row[i] || '').trim();
+      if (cell.length >= 2 && /[a-zA-ZÀ-ú]/.test(cell)) {
+        return i;
+      }
+    }
+  }
+  
+  // Fallback: infer from account name (top-level groups = 0)
+  const norm = normalizeText(entry.conta || '');
+  const topLevelNames = ['ATIVO', 'PASSIVO', 'CIRCULANTE', 'NAO CIRCULANTE', 'PATRIMONIO LIQUIDO'];
+  if (topLevelNames.some(n => norm === n)) return 0;
+  return 1;
+}
+
 interface EmpresaData {
   nome: string;
   cnpj: string;
