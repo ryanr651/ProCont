@@ -57,6 +57,8 @@ interface BalancoEntry {
   valor: number;
   valor_anterior: number | null;
   hierarchy: string;
+  natureza_conta?: 'sintetica' | 'analitica';
+  detection_motivo?: string;
 }
 
 interface DiagnosticLine {
