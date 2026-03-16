@@ -30,6 +30,8 @@ export interface BalanceteClassifiedEntry {
   creditos: number;
   saldo_atual: number;
   natureza: string;
+  natureza_conta?: 'sintetica' | 'analitica';
+  detection_motivo?: string;
 }
 
 export interface PreviousPeriodBalanceteData {
@@ -44,10 +46,10 @@ interface DashboardBalanceteProps {
   dreCMV?: number;
 }
 
-// Map AI grupo to aggregation buckets
+// Only sum ANALYTIC (leaf) entries to avoid double-counting synthetic (total) lines
 function sumByGrupo(entries: BalanceteClassifiedEntry[], grupos: string[]): number {
   return entries
-    .filter((e) => grupos.some((g) => e.grupo.toUpperCase().includes(g)))
+    .filter((e) => e.natureza_conta !== 'sintetica' && grupos.some((g) => e.grupo.toUpperCase().includes(g)))
     .reduce((sum, e) => sum + Math.abs(e.saldo_atual), 0);
 }
 
@@ -57,7 +59,8 @@ function accountsForGrupos(entries: BalanceteClassifiedEntry[], grupos: string[]
     .map((e) => ({
       descricao: e.conta,
       valor: e.saldo_atual,
-      motivo: e.grupo,
+      motivo: e.natureza_conta === 'sintetica' ? `⊞ Totalizador de Grupo — ${e.grupo}` : e.grupo,
+      isSynthetic: e.natureza_conta === 'sintetica',
     }));
 }
 
@@ -268,8 +271,9 @@ export function DashboardBalancete({ entries, previousPeriods, dreReceitaBruta, 
   ];
 
   // Movement summary (flow indicators from debits/credits)
-  const totalDebitos = entries.reduce((s, e) => s + e.debitos, 0);
-  const totalCreditos = entries.reduce((s, e) => s + e.creditos, 0);
+  const analyticEntries = entries.filter(e => e.natureza_conta !== 'sintetica');
+  const totalDebitos = analyticEntries.reduce((s, e) => s + e.debitos, 0);
+  const totalCreditos = analyticEntries.reduce((s, e) => s + e.creditos, 0);
 
   const movementIndicators: IndicatorConfig[] = [
     {

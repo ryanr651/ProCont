@@ -15,6 +15,7 @@ import { BalanceteComparativo } from "@/components/BalanceteComparativo";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranding } from "@/contexts/BrandingContext";
+import { detectSyntheticEntries, validateAgainstSyntheticTotals } from "@/lib/syntheticDetector";
 import html2pdf from "html2pdf.js";
 import {
   ArrowLeft,
@@ -57,6 +58,8 @@ interface BalancoEntry {
   valor: number;
   valor_anterior: number | null;
   hierarchy: string;
+  natureza_conta?: 'sintetica' | 'analitica';
+  detection_motivo?: string;
 }
 
 interface DiagnosticLine {
@@ -125,6 +128,30 @@ interface DREClassifiedEntry {
   isExplicit: boolean;
   motivo: string;
   insideCMVBlock?: boolean;
+}
+
+/**
+ * Infer indent level from raw_row data or account name when DB entry doesn't have indent_level stored.
+ */
+function inferIndentFromRawRow(entry: any): number {
+  // If indent_level is already set (from parser), use it
+  if (typeof entry.indent_level === 'number') return entry.indent_level;
+  
+  // Try to find first non-empty text cell position from raw_row
+  if (entry.raw_row && Array.isArray(entry.raw_row)) {
+    for (let i = 0; i < entry.raw_row.length; i++) {
+      const cell = String(entry.raw_row[i] || '').trim();
+      if (cell.length >= 2 && /[a-zA-ZÀ-ú]/.test(cell)) {
+        return i;
+      }
+    }
+  }
+  
+  // Fallback: infer from account name (top-level groups = 0)
+  const norm = normalizeText(entry.conta || '');
+  const topLevelNames = ['ATIVO', 'PASSIVO', 'CIRCULANTE', 'NAO CIRCULANTE', 'PATRIMONIO LIQUIDO'];
+  if (topLevelNames.some(n => norm === n)) return 0;
+  return 1;
 }
 
 interface EmpresaData {
@@ -214,7 +241,9 @@ const Resultado = () => {
       if (balanceteData && balanceteData.length > 0) {
         // Store the periodo from the first entry
         setBalancetePeriodo(balanceteData[0].periodo || "");
-        setBalanceteEntries(balanceteData.map((e: any) => ({
+        
+        // Map raw data and apply synthetic detection
+        const rawBalancete = balanceteData.map((e: any) => ({
           conta: e.conta,
           grupo: e.grupo || 'OUTROS',
           saldo_anterior: Number(e.saldo_anterior) || 0,
@@ -222,6 +251,24 @@ const Resultado = () => {
           creditos: Number(e.creditos) || 0,
           saldo_atual: Number(e.saldo_atual) || 0,
           natureza: e.natureza || 'devedora',
+          valor: Number(e.saldo_atual) || 0, // for synthetic detection
+          indent_level: inferIndentFromRawRow(e),
+        }));
+        
+        const balanceteWithDetection = detectSyntheticEntries(rawBalancete);
+        const synthBalanceteCount = balanceteWithDetection.filter(e => e.natureza_conta === 'sintetica').length;
+        console.log(`[Synthetic Detection] ${synthBalanceteCount} sintéticas / ${balanceteWithDetection.length} total (Balancete)`);
+        
+        setBalanceteEntries(balanceteWithDetection.map(e => ({
+          conta: e.conta,
+          grupo: e.grupo,
+          saldo_anterior: e.saldo_anterior,
+          debitos: e.debitos,
+          creditos: e.creditos,
+          saldo_atual: e.saldo_atual,
+          natureza: e.natureza,
+          natureza_conta: e.natureza_conta,
+          detection_motivo: e.detection_motivo,
         })));
       }
 
@@ -239,8 +286,26 @@ const Resultado = () => {
       const balanco = calculateBalancoMetrics(balancoEntries as BalancoEntry[]);
       setBalancoData(balanco);
       
-      // Store raw entries for manual editing
-      setRawBalancoEntries(balancoEntries as BalancoEntry[]);
+      // Apply synthetic/analytic detection to Balanço entries
+      const balancoWithDetection = detectSyntheticEntries(
+        (balancoEntries as BalancoEntry[]).map((e) => ({
+          ...e,
+          indent_level: inferIndentFromRawRow(e),
+        }))
+      );
+      
+      // Log synthetic detection results
+      const synthCount = balancoWithDetection.filter(e => e.natureza_conta === 'sintetica').length;
+      console.log(`[Synthetic Detection] ${synthCount} sintéticas / ${balancoWithDetection.length} total (Balanço)`);
+      
+      // Validate: sum of analytics vs synthetic total
+      const validationWarnings = validateAgainstSyntheticTotals(balancoWithDetection);
+      if (validationWarnings.length > 0) {
+        console.warn('[Synthetic Validation]', validationWarnings);
+      }
+      
+      // Store raw entries with detection results
+      setRawBalancoEntries(balancoWithDetection);
       setRawDreEntries(dreEntries as DREEntry[]);
 
       // Generate diagnostic lines for debugging

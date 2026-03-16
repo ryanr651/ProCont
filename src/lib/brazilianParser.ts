@@ -40,6 +40,7 @@ interface XLSRow {
   cells: string[];
   firstTextCell: { text: string; index: number };
   numericValues: { value: number; raw: string }[];
+  isBold?: boolean;
 }
 
 export interface ParsedDREEntry {
@@ -58,6 +59,8 @@ export interface ParsedBalancoEntry {
   valor_anterior: number | null;
   hierarchy: string;
   raw_row: string[];
+  indent_level?: number;
+  is_bold?: boolean;
 }
 
 export interface BalancoMetrics {
@@ -610,12 +613,12 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
     
     // Tentar múltiplas estratégias de leitura
     const readStrategies: Array<{ type: 'binary' | 'array' | 'buffer'; opts: Partial<XLSX.ParsingOptions> }> = [
-      { type: 'binary', opts: { cellFormula: false, cellText: false, raw: true, sheetStubs: true } },
-      { type: 'binary', opts: { codepage: 1252, raw: true, sheetStubs: true } },
-      { type: 'binary', opts: { WTF: true, sheetStubs: true } },
-      { type: 'array', opts: { raw: true, sheetStubs: true } },
-      { type: 'binary', opts: {} },
-      { type: 'array', opts: {} },
+      { type: 'binary', opts: { cellFormula: false, cellText: false, raw: true, sheetStubs: true, cellStyles: true } },
+      { type: 'binary', opts: { codepage: 1252, raw: true, sheetStubs: true, cellStyles: true } },
+      { type: 'binary', opts: { WTF: true, sheetStubs: true, cellStyles: true } },
+      { type: 'array', opts: { raw: true, sheetStubs: true, cellStyles: true } },
+      { type: 'binary', opts: { cellStyles: true } },
+      { type: 'array', opts: { cellStyles: true } },
     ];
     
     for (const strategy of readStrategies) {
@@ -672,6 +675,29 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
       return [];
     }
     
+    // ===== EXTRACT BOLD FORMATTING =====
+    // Build a set of row indices that have bold cells (for synthetic detection)
+    const boldRows = new Set<number>();
+    try {
+      const sheetRef = sheet["!ref"];
+      if (sheetRef) {
+        const range = XLSX.utils.decode_range(sheetRef);
+        for (let r = range.s.r; r <= range.e.r; r++) {
+          for (let c = range.s.c; c <= range.e.c; c++) {
+            const addr = XLSX.utils.encode_cell({ r, c });
+            const cell = sheet[addr];
+            if (cell?.s?.font?.bold || cell?.s?.bold) {
+              boldRows.add(r);
+              break; // One bold cell in the row is enough
+            }
+          }
+        }
+      }
+      debugLog(`Bold rows detected: ${boldRows.size}`);
+    } catch (e) {
+      debugLog("Bold detection failed (non-critical):", e);
+    }
+    
     // ===== ETAPA PRINCIPAL: Converter para matriz JSON limpa =====
     // Esta é a mudança central: usar sheet_to_json com header: 1 e defval: ''
     // Isso normaliza QUALQUER formato (XLS legado, XLSX, etc.) para uma matriz uniforme
@@ -691,7 +717,7 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
     }
     
     // ===== Converter matriz JSON para XLSRow[] =====
-    const rows = convertMatrixToXLSRows(jsonMatrix);
+    const rows = convertMatrixToXLSRows(jsonMatrix, boldRows);
     const totalNumeric = rows.reduce((acc, r) => acc + (r.numericValues?.length || 0), 0);
     
     debugLog(`Conversão para XLSRow: ${rows.length} linhas, ${totalNumeric} valores numéricos`);
@@ -727,10 +753,12 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
  * Converte matriz JSON (de sheet_to_json) para XLSRow[]
  * Esta função processa a matriz limpa e extrai texto + valores numéricos
  */
-function convertMatrixToXLSRows(matrix: unknown[][]): XLSRow[] {
+function convertMatrixToXLSRows(matrix: unknown[][], boldRows?: Set<number>): XLSRow[] {
   const rows: XLSRow[] = [];
   
+  let matrixRowIdx = 0;
   for (const rowData of matrix) {
+    const currentMatrixRow = matrixRowIdx++;
     if (!Array.isArray(rowData)) continue;
     
     // Verificar se a linha tem conteúdo
@@ -777,6 +805,7 @@ function convertMatrixToXLSRows(matrix: unknown[][]): XLSRow[] {
       cells,
       firstTextCell: firstText,
       numericValues,
+      isBold: boldRows?.has(currentMatrixRow) || false,
     });
   }
   
@@ -1251,6 +1280,8 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         valor_anterior: valorAnterior !== null ? roundTo2Decimals(Math.abs(valorAnterior)) : null,
         hierarchy: conta,
         raw_row: safeGetCells(row),
+        indent_level: level,
+        is_bold: row.isBold || false,
       });
 
       debugLog(`Entry: ${conta} | Tipo: ${tipoEntry} | Valor: ${Math.abs(valor)}`);
@@ -2148,6 +2179,8 @@ export interface ParsedBalanceteEntry {
   saldo_atual: number;
   natureza: 'devedora' | 'credora';
   raw_row: string[];
+  indent_level?: number;
+  is_bold?: boolean;
 }
 
 export interface BalanceteParseResult {
@@ -2367,6 +2400,7 @@ function parseBalanceteFromXLS(rows: XLSRow[], filename: string): BalanceteParse
                       normalConta.includes('FORNECEDOR') || normalConta.includes('OBRIGAC');
     const natureza: 'devedora' | 'credora' = isCredora ? 'credora' : 'devedora';
     
+    const { index: textIdx } = safeGetFirstText(row);
     entries.push({
       conta,
       grupo: 'OUTROS',
@@ -2376,6 +2410,8 @@ function parseBalanceteFromXLS(rows: XLSRow[], filename: string): BalanceteParse
       saldo_atual: saldoAtual,
       natureza,
       raw_row: row.cells,
+      indent_level: textIdx >= 0 ? textIdx : 0,
+      is_bold: row.isBold || false,
     });
   }
   

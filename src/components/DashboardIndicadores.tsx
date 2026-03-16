@@ -76,6 +76,8 @@ interface BalancoEntry {
   valor: number;
   valor_anterior: number | null;
   hierarchy: string;
+  natureza_conta?: 'sintetica' | 'analitica';
+  detection_motivo?: string;
 }
 
 interface DashboardIndicadoresProps {
@@ -127,10 +129,11 @@ export function DashboardIndicadores({
     ? balancoData.ativoCirculante / balancoData.passivoCirculante
     : 0;
 
-  // Liquidez seca: (AC - Estoques) / PC
+  // Liquidez seca: (AC - Estoques) / PC — only analytic (leaf) entries to avoid double-counting
   const estoques = useMemo(() => {
     return rawBalancoEntries
       .filter((e) => {
+        if (e.natureza_conta === 'sintetica') return false;
         const conta = e.conta.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
         return conta.includes("ESTOQUE") || conta.includes("ESTOQUES");
       })

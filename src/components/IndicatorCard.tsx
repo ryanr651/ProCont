@@ -7,6 +7,7 @@ export interface AccountDetail {
   descricao: string;
   valor: number;
   motivo?: string;
+  isSynthetic?: boolean;
 }
 
 export interface IndicatorConfig {
@@ -156,15 +157,23 @@ export function IndicatorCard({ config }: { config: IndicatorConfig }) {
             {/* Accounts */}
             <div className="flex-1 overflow-y-auto p-5">
               <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3">
-                Contas utilizadas ({config.accounts.length})
+                Contas utilizadas ({config.accounts.filter(a => !a.isSynthetic).length})
+                {config.accounts.some(a => a.isSynthetic) && (
+                  <span className="ml-2 text-amber-500/80">
+                    + {config.accounts.filter(a => a.isSynthetic).length} totalizadores
+                  </span>
+                )}
               </p>
               {config.accounts.length === 0 ? (
                 <p className="text-sm text-muted-foreground italic">Nenhuma conta individual encontrada para este indicador.</p>
               ) : (
                 <div className="space-y-2">
-                  {config.accounts.map((account, i) => (
+                  {/* Show analytic accounts first */}
+                  {config.accounts
+                    .filter(a => !a.isSynthetic)
+                    .map((account, i) => (
                     <div
-                      key={i}
+                      key={`a-${i}`}
                       className="flex items-start justify-between p-3 rounded-lg bg-muted/30 border border-border/30 hover:bg-muted/50 transition-colors"
                     >
                       <div className="flex-1 min-w-0 mr-3">
@@ -186,6 +195,42 @@ export function IndicatorCard({ config }: { config: IndicatorConfig }) {
                       </span>
                     </div>
                   ))}
+                  
+                  {/* Show synthetic (totals) entries with label, dimmed */}
+                  {config.accounts.filter(a => a.isSynthetic).length > 0 && (
+                    <>
+                      <div className="mt-4 mb-2 flex items-center gap-2">
+                        <div className="h-px flex-1 bg-border/50" />
+                        <span className="text-xs text-amber-500/80 font-medium uppercase tracking-wider">
+                          Totalizadores de Grupo (não somados)
+                        </span>
+                        <div className="h-px flex-1 bg-border/50" />
+                      </div>
+                      {config.accounts
+                        .filter(a => a.isSynthetic)
+                        .map((account, i) => (
+                        <div
+                          key={`s-${i}`}
+                          className="flex items-start justify-between p-3 rounded-lg bg-amber-500/5 border border-amber-500/20 opacity-60"
+                        >
+                          <div className="flex-1 min-w-0 mr-3">
+                            <p className="text-sm text-foreground truncate flex items-center gap-1.5" title={account.descricao}>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-500 font-medium shrink-0">
+                                SINTÉTICA
+                              </span>
+                              {account.descricao}
+                            </p>
+                            {account.motivo && (
+                              <p className="text-xs text-muted-foreground mt-0.5 truncate">{account.motivo}</p>
+                            )}
+                          </div>
+                          <span className="text-sm font-mono font-medium whitespace-nowrap text-muted-foreground">
+                            {account.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                          </span>
+                        </div>
+                      ))}
+                    </>
+                  )}
                 </div>
               )}
             </div>
