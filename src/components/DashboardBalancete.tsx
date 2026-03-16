@@ -73,12 +73,20 @@ function sumByGrupo(entries: BalanceteClassifiedEntry[], grupos: string[]): numb
 function accountsForGrupos(entries: BalanceteClassifiedEntry[], grupos: string[]): AccountDetail[] {
   return entries
     .filter((e) => grupos.some((g) => e.grupo.toUpperCase().includes(g)))
-    .map((e) => ({
-      descricao: e.conta,
-      valor: e.saldo_atual,
-      motivo: e.natureza_conta === 'sintetica' ? `⊞ Totalizador de Grupo — ${e.grupo}` : e.grupo,
-      isSynthetic: e.natureza_conta === 'sintetica',
-    }));
+    .map((e) => {
+      const redutora = isBalanceteRedutora(e);
+      return {
+        descricao: e.conta,
+        valor: redutora ? -Math.abs(e.saldo_atual) : e.saldo_atual,
+        motivo: e.natureza_conta === 'sintetica' 
+          ? `⊞ Totalizador de Grupo — ${e.grupo}` 
+          : redutora 
+            ? `Conta redutora do ativo — subtraída do total conforme normas contábeis.`
+            : e.grupo,
+        isSynthetic: e.natureza_conta === 'sintetica',
+        isRedutora: redutora,
+      };
+    });
 }
 
 export function DashboardBalancete({ entries, previousPeriods, dreReceitaBruta, dreCMV }: DashboardBalanceteProps) {
