@@ -271,8 +271,9 @@ export function DashboardBalancete({ entries, previousPeriods, dreReceitaBruta, 
   ];
 
   // Movement summary (flow indicators from debits/credits)
-  const totalDebitos = entries.reduce((s, e) => s + e.debitos, 0);
-  const totalCreditos = entries.reduce((s, e) => s + e.creditos, 0);
+  const analyticEntries = entries.filter(e => e.natureza_conta !== 'sintetica');
+  const totalDebitos = analyticEntries.reduce((s, e) => s + e.debitos, 0);
+  const totalCreditos = analyticEntries.reduce((s, e) => s + e.creditos, 0);
 
   const movementIndicators: IndicatorConfig[] = [
     {
