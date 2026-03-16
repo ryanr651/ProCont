@@ -59,7 +59,8 @@ function accountsForGrupos(entries: BalanceteClassifiedEntry[], grupos: string[]
     .map((e) => ({
       descricao: e.conta,
       valor: e.saldo_atual,
-      motivo: e.grupo,
+      motivo: e.natureza_conta === 'sintetica' ? `⊞ Totalizador de Grupo — ${e.grupo}` : e.grupo,
+      isSynthetic: e.natureza_conta === 'sintetica',
     }));
 }
 
