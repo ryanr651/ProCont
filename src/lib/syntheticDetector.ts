@@ -99,16 +99,21 @@ export function detectSyntheticEntries<T extends SyntheticDetectionInput>(
       // Strategy 1: Single-child match (next non-synthetic entry has same value)
       const nextAnalytic = findNextAnalytic(results, i + 1);
       if (nextAnalytic !== -1 && Math.abs(Math.abs(results[nextAnalytic].valor) - val) / val <= tolerance) {
-        // Do NOT mark as synthetic if current or next entry is a contra account (redutora)
-        // e.g., "EQUIPAMENTOS" (1079) followed by "(-) DEPRECIAÇÃO" (-1079) are NOT parent-child
         const currentIsRedutora = isContaRedutora(results[i].conta, results[i].valor);
         const nextIsRedutora = isContaRedutora(results[nextAnalytic].conta, results[nextAnalytic].valor);
         
-        // If they have opposite signs, it's an asset + contra-asset pair, not parent-child
+        // If they have opposite signs, it's an asset + contra-asset pair, NOT parent-child
         const opposingSigns = (results[i].valor >= 0 && results[nextAnalytic].valor < 0) || 
                               (results[i].valor < 0 && results[nextAnalytic].valor >= 0);
         
-        if (!nextIsRedutora && !currentIsRedutora && !opposingSigns) {
+        // Block single-child match ONLY when:
+        // 1. Signs are opposite (asset vs contra-asset pair), OR
+        // 2. One is redutora and the other is not (different nature)
+        // Allow when both are redutora with same sign (parent-child redutora hierarchy)
+        // Allow when neither is redutora with same sign (normal parent-child)
+        const shouldBlock = opposingSigns || (currentIsRedutora !== nextIsRedutora);
+        
+        if (!shouldBlock) {
           results[i].natureza_conta = "sintetica";
           results[i].detection_motivo = `Totalizador: valor igual à subconta "${results[nextAnalytic].conta}"`;
           changed = true;
