@@ -183,6 +183,7 @@ serve(async (req) => {
         valor_anterior: e.valor_anterior,
         sinal: e.valor >= 0 ? "positivo" : "negativo",
         dentro_do_bloco_CMV: e.isCMV || false,
+        contexto_pai: e.contexto_pai || "",
       }));
 
       const validGrupos = contexto_tipo === "balancete" ? VALID_GRUPOS_BALANCETE : VALID_GRUPOS_DRE;
