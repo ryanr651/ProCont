@@ -40,6 +40,7 @@ interface XLSRow {
   cells: string[];
   firstTextCell: { text: string; index: number };
   numericValues: { value: number; raw: string }[];
+  isBold?: boolean;
 }
 
 export interface ParsedDREEntry {
