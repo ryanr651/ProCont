@@ -242,8 +242,26 @@ const Resultado = () => {
       const balanco = calculateBalancoMetrics(balancoEntries as BalancoEntry[]);
       setBalancoData(balanco);
       
-      // Store raw entries for manual editing
-      setRawBalancoEntries(balancoEntries as BalancoEntry[]);
+      // Apply synthetic/analytic detection to Balanço entries
+      const balancoWithDetection = detectSyntheticEntries(
+        (balancoEntries as BalancoEntry[]).map((e) => ({
+          ...e,
+          indent_level: inferIndentFromRawRow(e),
+        }))
+      );
+      
+      // Log synthetic detection results
+      const synthCount = balancoWithDetection.filter(e => e.natureza_conta === 'sintetica').length;
+      console.log(`[Synthetic Detection] ${synthCount} sintéticas / ${balancoWithDetection.length} total (Balanço)`);
+      
+      // Validate: sum of analytics vs synthetic total
+      const validationWarnings = validateAgainstSyntheticTotals(balancoWithDetection);
+      if (validationWarnings.length > 0) {
+        console.warn('[Synthetic Validation]', validationWarnings);
+      }
+      
+      // Store raw entries with detection results
+      setRawBalancoEntries(balancoWithDetection);
       setRawDreEntries(dreEntries as DREEntry[]);
 
       // Generate diagnostic lines for debugging
