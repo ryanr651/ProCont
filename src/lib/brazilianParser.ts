@@ -1280,6 +1280,8 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         valor_anterior: valorAnterior !== null ? roundTo2Decimals(Math.abs(valorAnterior)) : null,
         hierarchy: conta,
         raw_row: safeGetCells(row),
+        indent_level: level,
+        is_bold: row.isBold || false,
       });
 
       debugLog(`Entry: ${conta} | Tipo: ${tipoEntry} | Valor: ${Math.abs(valor)}`);
