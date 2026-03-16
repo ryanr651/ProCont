@@ -2400,6 +2400,7 @@ function parseBalanceteFromXLS(rows: XLSRow[], filename: string): BalanceteParse
                       normalConta.includes('FORNECEDOR') || normalConta.includes('OBRIGAC');
     const natureza: 'devedora' | 'credora' = isCredora ? 'credora' : 'devedora';
     
+    const { index: textIdx } = safeGetFirstText(row);
     entries.push({
       conta,
       grupo: 'OUTROS',
@@ -2409,6 +2410,8 @@ function parseBalanceteFromXLS(rows: XLSRow[], filename: string): BalanceteParse
       saldo_atual: saldoAtual,
       natureza,
       raw_row: row.cells,
+      indent_level: textIdx >= 0 ? textIdx : 0,
+      is_bold: row.isBold || false,
     });
   }
   
