@@ -132,6 +132,7 @@ serve(async (req) => {
       originalIndex: index,
       descricao_normalized: normalize(e.descricao),
       isCMV: e.isCMV || false,
+      contexto_pai: e.contexto_pai || "",
     }));
 
     const isMaterialConsumo = (descricaoNormalized: string) =>
