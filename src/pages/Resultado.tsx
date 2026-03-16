@@ -60,6 +60,7 @@ interface BalancoEntry {
   hierarchy: string;
   natureza_conta?: 'sintetica' | 'analitica';
   detection_motivo?: string;
+  is_redutora?: boolean;
 }
 
 interface DiagnosticLine {
