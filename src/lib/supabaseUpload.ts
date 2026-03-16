@@ -437,6 +437,7 @@ export async function uploadAndProcessFiles(
         balanceteResult.entries.map((e) => ({
           descricao: e.conta,
           valor: e.saldo_atual,
+          contexto_pai: e.contexto_pai || "",
         })),
         "balancete"
       );
