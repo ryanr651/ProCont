@@ -2181,6 +2181,7 @@ export interface ParsedBalanceteEntry {
   raw_row: string[];
   indent_level?: number;
   is_bold?: boolean;
+  contexto_pai?: string; // Section anchor detected by position (e.g. "ATIVO CIRCULANTE")
 }
 
 export interface BalanceteParseResult {
