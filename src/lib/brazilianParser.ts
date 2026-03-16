@@ -59,6 +59,8 @@ export interface ParsedBalancoEntry {
   valor_anterior: number | null;
   hierarchy: string;
   raw_row: string[];
+  indent_level?: number;
+  is_bold?: boolean;
 }
 
 export interface BalancoMetrics {
