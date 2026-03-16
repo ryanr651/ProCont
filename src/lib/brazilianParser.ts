@@ -753,7 +753,7 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
  * Converte matriz JSON (de sheet_to_json) para XLSRow[]
  * Esta função processa a matriz limpa e extrai texto + valores numéricos
  */
-function convertMatrixToXLSRows(matrix: unknown[][]): XLSRow[] {
+function convertMatrixToXLSRows(matrix: unknown[][], boldRows?: Set<number>): XLSRow[] {
   const rows: XLSRow[] = [];
   
   for (const rowData of matrix) {
