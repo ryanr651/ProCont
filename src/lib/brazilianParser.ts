@@ -756,7 +756,9 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
 function convertMatrixToXLSRows(matrix: unknown[][], boldRows?: Set<number>): XLSRow[] {
   const rows: XLSRow[] = [];
   
+  let matrixRowIdx = 0;
   for (const rowData of matrix) {
+    const currentMatrixRow = matrixRowIdx++;
     if (!Array.isArray(rowData)) continue;
     
     // Verificar se a linha tem conteúdo
@@ -803,6 +805,7 @@ function convertMatrixToXLSRows(matrix: unknown[][], boldRows?: Set<number>): XL
       cells,
       firstTextCell: firstText,
       numericValues,
+      isBold: boldRows?.has(currentMatrixRow) || false,
     });
   }
   
