@@ -226,8 +226,9 @@ Sua tarefa: classificar cada conta do balancete em um dos grupos abaixo.
 ## Regras CRÍTICAS:
 1. Considere o NOME da conta para classificar corretamente
 2. Contas de ATIVO são tipicamente devedoras, PASSIVO/PL credoras
-3. Retorne um JSON array com objetos {index, grupo, motivo}
+3. Retorne um JSON array com objetos {index, grupo, motivo, natureza_conta}
 4. O campo "motivo" deve ser BREVE (1 frase)
+5. O campo "natureza_conta" deve ser "sintetica" para contas que são TOTAIS ou GRUPOS (ex: "Ativo", "Circulante", "Disponibilidades", "Imobilizado" quando seguido de subcontas), e "analitica" para contas específicas/detalhadas (ex: "Banco do Brasil", "Caixa Matriz", "ICMS a Recuperar"). Termos genéricos como "Disponibilidades", "Impostos a Recuperar" (quando seguidos de itens específicos) são grupos sintéticos.
 
 Responda APENAS com o JSON array, sem markdown.`
         : `Você é um contador brasileiro especialista em classificação de contas contábeis.
