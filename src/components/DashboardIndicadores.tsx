@@ -129,13 +129,23 @@ export function DashboardIndicadores({
     ? balancoData.ativoCirculante / balancoData.passivoCirculante
     : 0;
 
-  // Liquidez seca: (AC - Estoques) / PC — only analytic (leaf) entries to avoid double-counting
+  // Liquidez seca: (AC - Estoques) / PC
+  // Strategy: find the highest-level synthetic "ESTOQUES" entry (the group total).
+  // If not found, fall back to summing analytic entries that match estoque keywords.
   const estoques = useMemo(() => {
+    const norm = (s: string) => s.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    // Try to find the synthetic total first (the group entry "ESTOQUES")
+    const syntheticEstoque = rawBalancoEntries.find((e) => {
+      const n = norm(e.conta);
+      return (n === "ESTOQUES" || n === "ESTOQUE") && e.natureza_conta === 'sintetica';
+    });
+    if (syntheticEstoque) return Math.abs(syntheticEstoque.valor);
+    // Fallback: sum analytic entries matching estoque/mercadoria keywords
     return rawBalancoEntries
       .filter((e) => {
         if (e.natureza_conta === 'sintetica') return false;
-        const conta = e.conta.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        return conta.includes("ESTOQUE") || conta.includes("ESTOQUES");
+        const conta = norm(e.conta);
+        return conta.includes("ESTOQUE") || conta.includes("MERCADORIA") || conta.includes("PRODUTO");
       })
       .reduce((sum, e) => sum + Math.abs(e.valor), 0);
   }, [rawBalancoEntries]);
