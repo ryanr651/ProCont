@@ -613,12 +613,12 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
     
     // Tentar múltiplas estratégias de leitura
     const readStrategies: Array<{ type: 'binary' | 'array' | 'buffer'; opts: Partial<XLSX.ParsingOptions> }> = [
-      { type: 'binary', opts: { cellFormula: false, cellText: false, raw: true, sheetStubs: true } },
-      { type: 'binary', opts: { codepage: 1252, raw: true, sheetStubs: true } },
-      { type: 'binary', opts: { WTF: true, sheetStubs: true } },
-      { type: 'array', opts: { raw: true, sheetStubs: true } },
-      { type: 'binary', opts: {} },
-      { type: 'array', opts: {} },
+      { type: 'binary', opts: { cellFormula: false, cellText: false, raw: true, sheetStubs: true, cellStyles: true } },
+      { type: 'binary', opts: { codepage: 1252, raw: true, sheetStubs: true, cellStyles: true } },
+      { type: 'binary', opts: { WTF: true, sheetStubs: true, cellStyles: true } },
+      { type: 'array', opts: { raw: true, sheetStubs: true, cellStyles: true } },
+      { type: 'binary', opts: { cellStyles: true } },
+      { type: 'array', opts: { cellStyles: true } },
     ];
     
     for (const strategy of readStrategies) {
