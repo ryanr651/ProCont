@@ -61,6 +61,7 @@ export interface ParsedBalancoEntry {
   raw_row: string[];
   indent_level?: number;
   is_bold?: boolean;
+  is_redutora?: boolean;
 }
 
 export interface BalancoMetrics {
