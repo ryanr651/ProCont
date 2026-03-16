@@ -1265,6 +1265,16 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
     // Criar entry se tiver valor
     if (valor !== 0 || (valorAnterior !== null && valorAnterior !== 0)) {
       const level = textIndex >= 0 ? textIndex : 0;
+
+      // Detect contra accounts (redutoras): depreciação, amortização, exaustão, PDD
+      const isRedutora = /DEPRECIA[CÇ]/i.test(normalConta) ||
+                         /AMORTIZA[CÇ]/i.test(normalConta) ||
+                         /EXAUSTAO/i.test(normalConta) ||
+                         /PROVISAO.*DEVED/i.test(normalConta) ||
+                         /PDD/i.test(normalConta) ||
+                         normalConta.startsWith('(-)') ||
+                         conta.trim().startsWith('(-)');
+
       debugContabil("GRAVAÇÃO ENTRY", {
         rowIndex: i,
         conta,
@@ -1272,6 +1282,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         secaoFinal: currentSection,
         valor,
         valorAnterior,
+        isRedutora,
       });
 
       entries.push({
@@ -1283,9 +1294,10 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         raw_row: safeGetCells(row),
         indent_level: level,
         is_bold: row.isBold || false,
+        is_redutora: isRedutora,
       });
 
-      debugLog(`Entry: ${conta} | Tipo: ${tipoEntry} | Valor: ${Math.abs(valor)}`);
+      debugLog(`Entry: ${conta} | Tipo: ${tipoEntry} | Valor: ${Math.abs(valor)}${isRedutora ? ' [REDUTORA]' : ''}`);
     }
   }
 
