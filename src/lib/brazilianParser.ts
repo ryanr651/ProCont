@@ -2151,6 +2151,8 @@ export interface ParsedBalanceteEntry {
   saldo_atual: number;
   natureza: 'devedora' | 'credora';
   raw_row: string[];
+  indent_level?: number;
+  is_bold?: boolean;
 }
 
 export interface BalanceteParseResult {
