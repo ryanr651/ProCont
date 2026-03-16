@@ -13,6 +13,7 @@ interface AccountEntry {
   valor_anterior?: number | null;
   posicao_relativa?: number;
   isCMV?: boolean; // flag from parser: account is inside CMV block
+  contexto_pai?: string; // section anchor detected by position (e.g. "ATIVO CIRCULANTE", "PASSIVO CIRCULANTE")
 }
 
 interface ClassificationResult {
