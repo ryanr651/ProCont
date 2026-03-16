@@ -46,11 +46,28 @@ interface DashboardBalanceteProps {
   dreCMV?: number;
 }
 
+// Detect if a balancete entry is a contra account (redutora)
+function isBalanceteRedutora(entry: BalanceteClassifiedEntry): boolean {
+  const norm = entry.conta.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return norm.startsWith('(-)') ||
+    /DEPRECIA[CÇ]/.test(norm) || /DEPREC\./.test(norm) ||
+    /AMORTIZA[CÇ]/.test(norm) ||
+    /EXAUSTAO/.test(norm) ||
+    /PROVISAO.*DEVED/.test(norm) || /PDD/.test(norm);
+}
+
 // Only sum ANALYTIC (leaf) entries to avoid double-counting synthetic (total) lines
+// Contra accounts (redutoras) are subtracted instead of added
 function sumByGrupo(entries: BalanceteClassifiedEntry[], grupos: string[]): number {
   return entries
     .filter((e) => e.natureza_conta !== 'sintetica' && grupos.some((g) => e.grupo.toUpperCase().includes(g)))
-    .reduce((sum, e) => sum + Math.abs(e.saldo_atual), 0);
+    .reduce((sum, e) => {
+      if (isBalanceteRedutora(e)) {
+        // Redutoras: subtract their absolute value
+        return sum - Math.abs(e.saldo_atual);
+      }
+      return sum + Math.abs(e.saldo_atual);
+    }, 0);
 }
 
 function accountsForGrupos(entries: BalanceteClassifiedEntry[], grupos: string[]): AccountDetail[] {
