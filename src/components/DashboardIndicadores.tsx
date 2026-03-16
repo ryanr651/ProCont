@@ -323,24 +323,63 @@ export function DashboardIndicadores({
   ];
 
   // Balanço indicators
-  // Detect contra accounts for Ativo Total drill-down
-  const redutorasAtivo = useMemo(() => {
-    const norm = (s: string) => s.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-    return rawBalancoEntries
-      .filter((e) => {
-        if (e.natureza_conta === 'sintetica') return false;
-        const n = norm(e.conta);
-        return (e.is_redutora || /DEPRECIA/.test(n) || /AMORTIZA/.test(n) || /EXAUSTAO/.test(n) ||
-                /PROVISAO.*DEVED/.test(n) || /PDD/.test(n) || e.conta.trim().startsWith('(-)')) &&
-               (e.tipo.startsWith('ATIVO') || e.tipo === 'IMOBILIZADO' || e.tipo === 'INTANGIVEL');
-      })
-      .map((e) => ({
+  // Helper to detect redutora entries in balanço
+  const isBalancoRedutora = (entry: BalancoEntry): boolean => {
+    const norm = entry.conta.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    return entry.is_redutora || norm.startsWith('(-)') ||
+      /DEPRECIA/.test(norm) || /DEPREC\./.test(norm) ||
+      /AMORTIZA/.test(norm) || /EXAUSTAO/.test(norm) ||
+      /PROVISAO.*DEVED/.test(norm) || /PDD/.test(norm);
+  };
+
+  // Build detailed analytic accounts for Ativo Total drill-down
+  const ativoAnalyticAccounts = useMemo((): AccountDetail[] => {
+    const ativoEntries = rawBalancoEntries.filter(
+      (e) => e.tipo.startsWith('ATIVO') || e.tipo === 'IMOBILIZADO' || e.tipo === 'INTANGIVEL' || e.tipo === 'INVESTIMENTO'
+    );
+
+    // Separate circulante and não circulante
+    const circulanteEntries = ativoEntries.filter(
+      (e) => e.tipo === 'ATIVO_CIRCULANTE' || e.tipo === 'ATIVO CIRCULANTE' ||
+        (!e.tipo.includes('NAO') && !['IMOBILIZADO', 'INTANGIVEL', 'INVESTIMENTO'].includes(e.tipo) && e.tipo !== 'ATIVO')
+    );
+    const naoCirculanteEntries = ativoEntries.filter(
+      (e) => e.tipo.includes('NAO') || ['IMOBILIZADO', 'INTANGIVEL', 'INVESTIMENTO'].includes(e.tipo)
+    );
+
+    const mapEntry = (e: BalancoEntry): AccountDetail => {
+      const redutora = isBalancoRedutora(e);
+      return {
         descricao: e.conta,
-        valor: -Math.abs(e.valor),
-        motivo: "Conta redutora do ativo — subtraída do total conforme normas contábeis.",
-        isRedutora: true,
-      }));
-  }, [rawBalancoEntries]);
+        valor: redutora ? -Math.abs(e.valor) : Math.abs(e.valor),
+        motivo: e.natureza_conta === 'sintetica'
+          ? `⊞ Totalizador — ${e.tipo}`
+          : redutora
+            ? 'Conta redutora do ativo — subtraída do total conforme normas contábeis.'
+            : e.tipo,
+        isSynthetic: e.natureza_conta === 'sintetica',
+        isRedutora: redutora,
+      };
+    };
+
+    const circulanteDetails = circulanteEntries.map(mapEntry);
+    const naoCirculanteDetails = naoCirculanteEntries.map(mapEntry);
+
+    if (circulanteDetails.length === 0 && naoCirculanteDetails.length === 0) {
+      // Fallback to aggregate values
+      return [
+        { descricao: "Ativo Circulante", valor: balancoData.ativoCirculante, motivo: "Bens de curto prazo" },
+        { descricao: "Ativo Não Circulante", valor: balancoData.ativoNaoCirculante, motivo: "Bens de longo prazo" },
+      ];
+    }
+
+    return [
+      ...circulanteDetails,
+      ...(naoCirculanteDetails.length > 0
+        ? [{ descricao: "─── Ativo Não Circulante ───", valor: 0, motivo: "" }, ...naoCirculanteDetails]
+        : []),
+    ];
+  }, [rawBalancoEntries, balancoData]);
 
   const balancoIndicators: IndicatorConfig[] = [
     {
@@ -350,12 +389,8 @@ export function DashboardIndicadores({
       icon: Building,
       variant: "highlight",
       formula: "Ativo Circulante + Ativo Não Circulante (líquido de redutoras)",
-      formulaDescription: "Total de bens e direitos da empresa. Contas redutoras (depreciação, amortização) são subtraídas do grupo.",
-      accounts: [
-        { descricao: "Ativo Circulante", valor: balancoData.ativoCirculante, motivo: "Bens de curto prazo" },
-        { descricao: "Ativo Não Circulante", valor: balancoData.ativoNaoCirculante, motivo: "Bens de longo prazo" },
-        ...redutorasAtivo,
-      ],
+      formulaDescription: "Total de bens e direitos da empresa. A memória de cálculo abaixo detalha as contas analíticas, incluindo imobilizado e suas redutoras (depreciação, amortização).",
+      accounts: ativoAnalyticAccounts,
     },
     {
       title: "Passivo Total",
