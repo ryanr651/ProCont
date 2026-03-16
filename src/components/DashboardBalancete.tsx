@@ -46,10 +46,10 @@ interface DashboardBalanceteProps {
   dreCMV?: number;
 }
 
-// Map AI grupo to aggregation buckets
+// Only sum ANALYTIC (leaf) entries to avoid double-counting synthetic (total) lines
 function sumByGrupo(entries: BalanceteClassifiedEntry[], grupos: string[]): number {
   return entries
-    .filter((e) => grupos.some((g) => e.grupo.toUpperCase().includes(g)))
+    .filter((e) => e.natureza_conta !== 'sintetica' && grupos.some((g) => e.grupo.toUpperCase().includes(g)))
     .reduce((sum, e) => sum + Math.abs(e.saldo_atual), 0);
 }
 
