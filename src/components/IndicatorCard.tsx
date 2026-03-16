@@ -175,10 +175,20 @@ export function IndicatorCard({ config }: { config: IndicatorConfig }) {
                     .map((account, i) => (
                     <div
                       key={`a-${i}`}
-                      className="flex items-start justify-between p-3 rounded-lg bg-muted/30 border border-border/30 hover:bg-muted/50 transition-colors"
+                      className={cn(
+                        "flex items-start justify-between p-3 rounded-lg border transition-colors",
+                        account.isRedutora
+                          ? "bg-red-500/5 border-red-500/20 hover:bg-red-500/10"
+                          : "bg-muted/30 border-border/30 hover:bg-muted/50"
+                      )}
                     >
                       <div className="flex-1 min-w-0 mr-3">
-                        <p className="text-sm text-foreground truncate" title={account.descricao}>
+                        <p className="text-sm text-foreground truncate flex items-center gap-1.5" title={account.descricao}>
+                          {account.isRedutora && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 font-medium shrink-0">
+                              REDUTORA
+                            </span>
+                          )}
                           {account.descricao}
                         </p>
                         {account.motivo && (
@@ -190,9 +200,12 @@ export function IndicatorCard({ config }: { config: IndicatorConfig }) {
                       </div>
                       <span className={cn(
                         "text-sm font-mono font-medium whitespace-nowrap",
-                        account.valor >= 0 ? "text-emerald-400" : "text-red-400"
+                        account.isRedutora ? "text-red-400" : account.valor >= 0 ? "text-emerald-400" : "text-red-400"
                       )}>
-                        {account.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                        {account.isRedutora
+                          ? `(${Math.abs(account.valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })})`
+                          : account.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+                        }
                       </span>
                     </div>
                   ))}
