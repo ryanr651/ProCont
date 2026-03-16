@@ -2181,6 +2181,7 @@ export interface ParsedBalanceteEntry {
   raw_row: string[];
   indent_level?: number;
   is_bold?: boolean;
+  contexto_pai?: string; // Section anchor detected by position (e.g. "ATIVO CIRCULANTE")
 }
 
 export interface BalanceteParseResult {
@@ -2351,6 +2352,9 @@ function parseBalanceteFromXLS(rows: XLSRow[], filename: string): BalanceteParse
     return Number.isFinite(parsed) ? parsed : 0;
   }
 
+  // Section anchor state machine for balancete
+  let currentBalanceteSection = "";
+
   for (let i = startRow; i < rows.length; i++) {
     const row = rows[i];
     const { text: conta } = safeGetFirstText(row);
@@ -2360,6 +2364,30 @@ function parseBalanceteFromXLS(rows: XLSRow[], filename: string): BalanceteParse
     
     // Skip total/summary lines
     if (normalConta === 'TOTAL' || normalConta === 'TOTAIS' || normalConta.includes('TOTAL GERAL')) continue;
+
+    // === SECTION ANCHOR DETECTION ===
+    if (normalConta === 'ATIVO') {
+      currentBalanceteSection = 'ATIVO';
+    } else if (normalConta === 'ATIVO CIRCULANTE' || (normalConta === 'CIRCULANTE' && currentBalanceteSection === 'ATIVO')) {
+      currentBalanceteSection = 'ATIVO CIRCULANTE';
+    } else if (normalConta === 'ATIVO NAO CIRCULANTE' || (normalConta === 'NAO CIRCULANTE' && currentBalanceteSection.startsWith('ATIVO'))) {
+      currentBalanceteSection = 'ATIVO NAO CIRCULANTE';
+    } else if (normalConta === 'PASSIVO') {
+      currentBalanceteSection = 'PASSIVO';
+    } else if (normalConta === 'PASSIVO CIRCULANTE' || (normalConta === 'CIRCULANTE' && currentBalanceteSection === 'PASSIVO')) {
+      currentBalanceteSection = 'PASSIVO CIRCULANTE';
+    } else if (normalConta === 'PASSIVO NAO CIRCULANTE' || (normalConta === 'NAO CIRCULANTE' && currentBalanceteSection.startsWith('PASSIVO'))) {
+      currentBalanceteSection = 'PASSIVO NAO CIRCULANTE';
+    } else if (normalConta === 'PATRIMONIO LIQUIDO' || normalConta.includes('PATRIMONIO LIQUIDO')) {
+      currentBalanceteSection = 'PATRIMONIO LIQUIDO';
+    } else if (normalConta.includes('RECEITA') && !currentBalanceteSection.includes('RECEITA')) {
+      // Only switch to RECEITA if it looks like a section header (short name)
+      if (normalConta === 'RECEITAS' || normalConta === 'RECEITA' || normalConta === 'RECEITAS OPERACIONAIS') {
+        currentBalanceteSection = 'RECEITAS';
+      }
+    } else if (normalConta === 'CUSTOS' || normalConta === 'CUSTO' || normalConta === 'DESPESAS' || normalConta === 'DESPESA') {
+      currentBalanceteSection = 'CUSTOS/DESPESAS';
+    }
     
     let saldoAnterior = 0;
     let debitos = 0;
@@ -2412,6 +2440,7 @@ function parseBalanceteFromXLS(rows: XLSRow[], filename: string): BalanceteParse
       raw_row: row.cells,
       indent_level: textIdx >= 0 ? textIdx : 0,
       is_bold: row.isBold || false,
+      contexto_pai: currentBalanceteSection,
     });
   }
   

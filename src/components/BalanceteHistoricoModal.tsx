@@ -93,6 +93,7 @@ export function BalanceteHistoricoModal({
                   descricao: e.conta,
                   valor: e.saldo_atual,
                   posicao_relativa: i,
+                  contexto_pai: e.contexto_pai || "",
                 })),
                 contexto_tipo: "balancete",
               }),

@@ -13,6 +13,7 @@ interface AccountEntry {
   valor_anterior?: number | null;
   posicao_relativa?: number;
   isCMV?: boolean; // flag from parser: account is inside CMV block
+  contexto_pai?: string; // section anchor detected by position (e.g. "ATIVO CIRCULANTE", "PASSIVO CIRCULANTE")
 }
 
 interface ClassificationResult {
@@ -131,6 +132,7 @@ serve(async (req) => {
       originalIndex: index,
       descricao_normalized: normalize(e.descricao),
       isCMV: e.isCMV || false,
+      contexto_pai: e.contexto_pai || "",
     }));
 
     const isMaterialConsumo = (descricaoNormalized: string) =>
@@ -181,14 +183,18 @@ serve(async (req) => {
         valor_anterior: e.valor_anterior,
         sinal: e.valor >= 0 ? "positivo" : "negativo",
         dentro_do_bloco_CMV: e.isCMV || false,
+        contexto_pai: e.contexto_pai || "",
       }));
 
       const validGrupos = contexto_tipo === "balancete" ? VALID_GRUPOS_BALANCETE : VALID_GRUPOS_DRE;
 
       const systemPrompt = contexto_tipo === "balancete"
         ? `Você é um contador brasileiro especialista em classificação de contas de Balancete Contábil.
+Você é um classificador HIERÁRQUICO. Cada conta vem acompanhada de um campo "contexto_pai" que indica o BLOCO DE SEÇÃO onde a conta está posicionada no arquivo original (ex: "ATIVO CIRCULANTE", "PASSIVO CIRCULANTE", "PATRIMONIO LIQUIDO").
 
-Sua tarefa: classificar cada conta do balancete em um dos grupos abaixo.
+## REGRA MAIS IMPORTANTE — LOCALIZAÇÃO PREVALECE:
+A classificação DEVE respeitar o "contexto_pai". Se uma conta chamada "Empréstimos" tem contexto_pai "ATIVO CIRCULANTE", ela é um ATIVO (empréstimos concedidos a receber), NÃO um passivo.
+Se "Impostos" tem contexto_pai "ATIVO CIRCULANTE", são "Impostos a Recuperar" (ativo). Se contexto_pai for "PASSIVO CIRCULANTE", são "Impostos a Recolher" (passivo).
 
 ## Grupos válidos para BALANCETE:
 - DISPONIBILIDADES: Caixa geral, fundo fixo, caixa pequena
@@ -223,11 +229,12 @@ Sua tarefa: classificar cada conta do balancete em um dos grupos abaixo.
 - OUTROS: Contas que não se encaixam acima
 
 ## Regras CRÍTICAS:
-1. Considere o NOME da conta para classificar corretamente
-2. Contas de ATIVO são tipicamente devedoras, PASSIVO/PL credoras
-3. Retorne um JSON array com objetos {index, grupo, motivo, natureza_conta}
-4. O campo "motivo" deve ser BREVE (1 frase)
-5. O campo "natureza_conta" deve ser "sintetica" para contas que são TOTAIS ou GRUPOS (ex: "Ativo", "Circulante", "Disponibilidades", "Imobilizado" quando seguido de subcontas), e "analitica" para contas específicas/detalhadas (ex: "Banco do Brasil", "Caixa Matriz", "ICMS a Recuperar"). Termos genéricos como "Disponibilidades", "Impostos a Recuperar" (quando seguidos de itens específicos) são grupos sintéticos.
+1. **REGRA SUPREMA**: Use o campo "contexto_pai" para determinar se a conta é ATIVO, PASSIVO ou PL. Se contexto_pai contém "ATIVO", a conta DEVE ser classificada em um grupo de ATIVO. Se contém "PASSIVO", DEVE ser um grupo de PASSIVO. NUNCA classifique uma conta de ATIVO como PASSIVO ou vice-versa.
+2. Nomes ambíguos como "Impostos", "Empréstimos", "Adiantamentos" existem tanto no Ativo quanto no Passivo. Use SEMPRE o contexto_pai para desambiguar.
+3. Contas de ATIVO são tipicamente devedoras, PASSIVO/PL credoras
+4. Retorne um JSON array com objetos {index, grupo, motivo, natureza_conta}
+5. O campo "motivo" deve ser BREVE (1 frase)
+6. O campo "natureza_conta" deve ser "sintetica" para contas que são TOTAIS ou GRUPOS (ex: "Ativo", "Circulante", "Disponibilidades", "Imobilizado" quando seguido de subcontas), e "analitica" para contas específicas/detalhadas (ex: "Banco do Brasil", "Caixa Matriz", "ICMS a Recuperar").
 
 Responda APENAS com o JSON array, sem markdown.`
         : `Você é um contador brasileiro especialista em classificação de contas contábeis.
@@ -376,10 +383,61 @@ ${JSON.stringify(accountList, null, 2)}`;
     }
 
     // Step 5: Build final classifications
+    const ATIVO_GRUPOS = new Set([
+      "DISPONIBILIDADES", "CAIXA", "BANCO", "APLICACOES", "CONTAS_A_RECEBER",
+      "CLIENTES", "ESTOQUE", "ATIVO_CIRCULANTE", "IMOBILIZADO", "INTANGIVEL",
+      "INVESTIMENTO", "REALIZAVEL", "ATIVO_NAO_CIRCULANTE",
+    ]);
+    const PASSIVO_GRUPOS = new Set([
+      "FORNECEDOR", "OBRIGACOES", "PASSIVO_CIRCULANTE", "EMPRESTIMO_CP",
+      "SALARIOS_A_PAGAR", "IMPOSTOS_A_PAGAR", "PASSIVO_NAO_CIRCULANTE",
+      "EMPRESTIMO_LP", "FINANCIAMENTO_LP",
+    ]);
+    const PL_GRUPOS = new Set([
+      "PATRIMONIO", "CAPITAL_SOCIAL", "RESERVA", "LUCROS_ACUMULADOS",
+    ]);
+
+    // Helper: determine if a grupo contradicts the section anchor
+    function getDefaultGrupoForSection(contextoPai: string): string | null {
+      const ctx = contextoPai.toUpperCase();
+      if (ctx.includes("ATIVO") && ctx.includes("NAO CIRCULANTE")) return "ATIVO_NAO_CIRCULANTE";
+      if (ctx.includes("ATIVO") && ctx.includes("CIRCULANTE")) return "ATIVO_CIRCULANTE";
+      if (ctx.includes("ATIVO")) return "ATIVO_CIRCULANTE";
+      if (ctx.includes("PASSIVO") && ctx.includes("NAO CIRCULANTE")) return "PASSIVO_NAO_CIRCULANTE";
+      if (ctx.includes("PASSIVO") && ctx.includes("CIRCULANTE")) return "PASSIVO_CIRCULANTE";
+      if (ctx.includes("PASSIVO")) return "PASSIVO_CIRCULANTE";
+      if (ctx.includes("PATRIMONIO")) return "PATRIMONIO";
+      return null;
+    }
+
+    function isGrupoInSection(grupo: string, contextoPai: string): boolean {
+      const ctx = contextoPai.toUpperCase();
+      if (ctx.includes("ATIVO")) return ATIVO_GRUPOS.has(grupo);
+      if (ctx.includes("PASSIVO")) return PASSIVO_GRUPOS.has(grupo);
+      if (ctx.includes("PATRIMONIO")) return PL_GRUPOS.has(grupo);
+      return true; // No context — trust AI
+    }
+
     const classifications: ClassificationResult[] = normalizedEntries.map((e) => {
       const ai = aiResults.get(e.originalIndex);
       const cached = cacheMap.get(e.descricao_normalized);
       const result = ai || cached || { grupo: "OUTROS", motivo: "Sem classificação" };
+
+      // POST-AI OVERRIDE: If contexto_pai exists and AI grupo contradicts section, override
+      if (contexto_tipo === "balancete" && e.contexto_pai) {
+        const grupoOk = isGrupoInSection(result.grupo, e.contexto_pai);
+        if (!grupoOk && result.grupo !== "RECEITA" && result.grupo !== "CUSTO" && result.grupo !== "DESPESA" && result.grupo !== "OUTROS") {
+          const defaultGrupo = getDefaultGrupoForSection(e.contexto_pai);
+          if (defaultGrupo) {
+            console.log(`[OVERRIDE] "${e.descricao}" AI=${result.grupo} → ${defaultGrupo} (contexto_pai=${e.contexto_pai})`);
+            return {
+              descricao: e.descricao,
+              grupo: defaultGrupo,
+              motivo: `Corrigido por localização: conta está no bloco ${e.contexto_pai}, prevalece sobre nome.`,
+            };
+          }
+        }
+      }
 
       return {
         descricao: e.descricao,
