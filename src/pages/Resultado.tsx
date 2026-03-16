@@ -15,6 +15,7 @@ import { BalanceteComparativo } from "@/components/BalanceteComparativo";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranding } from "@/contexts/BrandingContext";
+import { detectSyntheticEntries, validateAgainstSyntheticTotals } from "@/lib/syntheticDetector";
 import html2pdf from "html2pdf.js";
 import {
   ArrowLeft,
