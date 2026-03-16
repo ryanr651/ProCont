@@ -127,6 +127,12 @@ export function detectSyntheticEntries<T extends SyntheticDetectionInput>(
     }
   }
 
+  // Debug: log EQUIPAMENTOS detection result
+  const equipEntry = results.find(r => r.conta.toUpperCase().includes('EQUIPAMENTOS'));
+  if (equipEntry) {
+    console.log(`[Synthetic Debug] EQUIPAMENTOS: natureza=${equipEntry.natureza_conta}, motivo=${equipEntry.detection_motivo}, valor=${equipEntry.valor}`);
+  }
+
   console.log(`[Synthetic Detection] ${results.filter(r => r.natureza_conta === 'sintetica').length} sintéticas / ${results.length} total (${passes} passes)`);
 
   return results;
