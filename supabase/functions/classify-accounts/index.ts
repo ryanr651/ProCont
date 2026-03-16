@@ -383,10 +383,61 @@ ${JSON.stringify(accountList, null, 2)}`;
     }
 
     // Step 5: Build final classifications
+    const ATIVO_GRUPOS = new Set([
+      "DISPONIBILIDADES", "CAIXA", "BANCO", "APLICACOES", "CONTAS_A_RECEBER",
+      "CLIENTES", "ESTOQUE", "ATIVO_CIRCULANTE", "IMOBILIZADO", "INTANGIVEL",
+      "INVESTIMENTO", "REALIZAVEL", "ATIVO_NAO_CIRCULANTE",
+    ]);
+    const PASSIVO_GRUPOS = new Set([
+      "FORNECEDOR", "OBRIGACOES", "PASSIVO_CIRCULANTE", "EMPRESTIMO_CP",
+      "SALARIOS_A_PAGAR", "IMPOSTOS_A_PAGAR", "PASSIVO_NAO_CIRCULANTE",
+      "EMPRESTIMO_LP", "FINANCIAMENTO_LP",
+    ]);
+    const PL_GRUPOS = new Set([
+      "PATRIMONIO", "CAPITAL_SOCIAL", "RESERVA", "LUCROS_ACUMULADOS",
+    ]);
+
+    // Helper: determine if a grupo contradicts the section anchor
+    function getDefaultGrupoForSection(contextoPai: string): string | null {
+      const ctx = contextoPai.toUpperCase();
+      if (ctx.includes("ATIVO") && ctx.includes("NAO CIRCULANTE")) return "ATIVO_NAO_CIRCULANTE";
+      if (ctx.includes("ATIVO") && ctx.includes("CIRCULANTE")) return "ATIVO_CIRCULANTE";
+      if (ctx.includes("ATIVO")) return "ATIVO_CIRCULANTE";
+      if (ctx.includes("PASSIVO") && ctx.includes("NAO CIRCULANTE")) return "PASSIVO_NAO_CIRCULANTE";
+      if (ctx.includes("PASSIVO") && ctx.includes("CIRCULANTE")) return "PASSIVO_CIRCULANTE";
+      if (ctx.includes("PASSIVO")) return "PASSIVO_CIRCULANTE";
+      if (ctx.includes("PATRIMONIO")) return "PATRIMONIO";
+      return null;
+    }
+
+    function isGrupoInSection(grupo: string, contextoPai: string): boolean {
+      const ctx = contextoPai.toUpperCase();
+      if (ctx.includes("ATIVO")) return ATIVO_GRUPOS.has(grupo);
+      if (ctx.includes("PASSIVO")) return PASSIVO_GRUPOS.has(grupo);
+      if (ctx.includes("PATRIMONIO")) return PL_GRUPOS.has(grupo);
+      return true; // No context — trust AI
+    }
+
     const classifications: ClassificationResult[] = normalizedEntries.map((e) => {
       const ai = aiResults.get(e.originalIndex);
       const cached = cacheMap.get(e.descricao_normalized);
       const result = ai || cached || { grupo: "OUTROS", motivo: "Sem classificação" };
+
+      // POST-AI OVERRIDE: If contexto_pai exists and AI grupo contradicts section, override
+      if (contexto_tipo === "balancete" && e.contexto_pai) {
+        const grupoOk = isGrupoInSection(result.grupo, e.contexto_pai);
+        if (!grupoOk && result.grupo !== "RECEITA" && result.grupo !== "CUSTO" && result.grupo !== "DESPESA" && result.grupo !== "OUTROS") {
+          const defaultGrupo = getDefaultGrupoForSection(e.contexto_pai);
+          if (defaultGrupo) {
+            console.log(`[OVERRIDE] "${e.descricao}" AI=${result.grupo} → ${defaultGrupo} (contexto_pai=${e.contexto_pai})`);
+            return {
+              descricao: e.descricao,
+              grupo: defaultGrupo,
+              motivo: `Corrigido por localização: conta está no bloco ${e.contexto_pai}, prevalece sobre nome.`,
+            };
+          }
+        }
+      }
 
       return {
         descricao: e.descricao,

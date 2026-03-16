@@ -109,7 +109,7 @@ export async function identifyFileTypes(
 // ============= AI: Classify accounts =============
 
 async function classifyWithAI(
-  entries: { descricao: string; valor: number; valor_anterior?: number | null }[],
+  entries: { descricao: string; valor: number; valor_anterior?: number | null; isCMV?: boolean; contexto_pai?: string }[],
   contextoTipo: string
 ): Promise<{ classifications: ClassificationResult[]; stats: { total: number; from_cache: number; from_ai: number } } | null> {
   try {
@@ -133,6 +133,7 @@ async function classifyWithAI(
             valor_anterior: e.valor_anterior,
             posicao_relativa: i,
             isCMV: (e as any).isCMV || false,
+            contexto_pai: e.contexto_pai || "",
           })),
           contexto_tipo: contextoTipo,
         }),
