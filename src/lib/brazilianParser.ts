@@ -675,6 +675,29 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
       return [];
     }
     
+    // ===== EXTRACT BOLD FORMATTING =====
+    // Build a set of row indices that have bold cells (for synthetic detection)
+    const boldRows = new Set<number>();
+    try {
+      const sheetRef = sheet["!ref"];
+      if (sheetRef) {
+        const range = XLSX.utils.decode_range(sheetRef);
+        for (let r = range.s.r; r <= range.e.r; r++) {
+          for (let c = range.s.c; c <= range.e.c; c++) {
+            const addr = XLSX.utils.encode_cell({ r, c });
+            const cell = sheet[addr];
+            if (cell?.s?.font?.bold || cell?.s?.bold) {
+              boldRows.add(r);
+              break; // One bold cell in the row is enough
+            }
+          }
+        }
+      }
+      debugLog(`Bold rows detected: ${boldRows.size}`);
+    } catch (e) {
+      debugLog("Bold detection failed (non-critical):", e);
+    }
+    
     // ===== ETAPA PRINCIPAL: Converter para matriz JSON limpa =====
     // Esta é a mudança central: usar sheet_to_json com header: 1 e defval: ''
     // Isso normaliza QUALQUER formato (XLS legado, XLSX, etc.) para uma matriz uniforme
@@ -694,7 +717,7 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
     }
     
     // ===== Converter matriz JSON para XLSRow[] =====
-    const rows = convertMatrixToXLSRows(jsonMatrix);
+    const rows = convertMatrixToXLSRows(jsonMatrix, boldRows);
     const totalNumeric = rows.reduce((acc, r) => acc + (r.numericValues?.length || 0), 0);
     
     debugLog(`Conversão para XLSRow: ${rows.length} linhas, ${totalNumeric} valores numéricos`);
