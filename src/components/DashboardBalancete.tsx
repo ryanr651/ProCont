@@ -30,6 +30,8 @@ export interface BalanceteClassifiedEntry {
   creditos: number;
   saldo_atual: number;
   natureza: string;
+  natureza_conta?: 'sintetica' | 'analitica';
+  detection_motivo?: string;
 }
 
 export interface PreviousPeriodBalanceteData {
