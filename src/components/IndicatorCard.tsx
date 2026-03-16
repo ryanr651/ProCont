@@ -7,6 +7,7 @@ export interface AccountDetail {
   descricao: string;
   valor: number;
   motivo?: string;
+  isSynthetic?: boolean;
 }
 
 export interface IndicatorConfig {
