@@ -46,22 +46,47 @@ interface DashboardBalanceteProps {
   dreCMV?: number;
 }
 
+// Detect if a balancete entry is a contra account (redutora)
+function isBalanceteRedutora(entry: BalanceteClassifiedEntry): boolean {
+  const norm = entry.conta.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return norm.startsWith('(-)') ||
+    /DEPRECIA[CÇ]/.test(norm) || /DEPREC\./.test(norm) ||
+    /AMORTIZA[CÇ]/.test(norm) ||
+    /EXAUSTAO/.test(norm) ||
+    /PROVISAO.*DEVED/.test(norm) || /PDD/.test(norm);
+}
+
 // Only sum ANALYTIC (leaf) entries to avoid double-counting synthetic (total) lines
+// Contra accounts (redutoras) are subtracted instead of added
 function sumByGrupo(entries: BalanceteClassifiedEntry[], grupos: string[]): number {
   return entries
     .filter((e) => e.natureza_conta !== 'sintetica' && grupos.some((g) => e.grupo.toUpperCase().includes(g)))
-    .reduce((sum, e) => sum + Math.abs(e.saldo_atual), 0);
+    .reduce((sum, e) => {
+      if (isBalanceteRedutora(e)) {
+        // Redutoras: subtract their absolute value
+        return sum - Math.abs(e.saldo_atual);
+      }
+      return sum + Math.abs(e.saldo_atual);
+    }, 0);
 }
 
 function accountsForGrupos(entries: BalanceteClassifiedEntry[], grupos: string[]): AccountDetail[] {
   return entries
     .filter((e) => grupos.some((g) => e.grupo.toUpperCase().includes(g)))
-    .map((e) => ({
-      descricao: e.conta,
-      valor: e.saldo_atual,
-      motivo: e.natureza_conta === 'sintetica' ? `⊞ Totalizador de Grupo — ${e.grupo}` : e.grupo,
-      isSynthetic: e.natureza_conta === 'sintetica',
-    }));
+    .map((e) => {
+      const redutora = isBalanceteRedutora(e);
+      return {
+        descricao: e.conta,
+        valor: redutora ? -Math.abs(e.saldo_atual) : e.saldo_atual,
+        motivo: e.natureza_conta === 'sintetica' 
+          ? `⊞ Totalizador de Grupo — ${e.grupo}` 
+          : redutora 
+            ? `Conta redutora do ativo — subtraída do total conforme normas contábeis.`
+            : e.grupo,
+        isSynthetic: e.natureza_conta === 'sintetica',
+        isRedutora: redutora,
+      };
+    });
 }
 
 export function DashboardBalancete({ entries, previousPeriods, dreReceitaBruta, dreCMV }: DashboardBalanceteProps) {
