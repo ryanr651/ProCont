@@ -169,9 +169,6 @@ const Auth = () => {
           </div>
         </div>
 
-        <p className="text-center text-xs text-muted-foreground mt-6">
-          Admin de teste: admin@procont.com / Admin
-        </p>
       </div>
     </div>
   );
