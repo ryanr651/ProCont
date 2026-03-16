@@ -16,6 +16,16 @@ function normalizeText(text: string): string {
     .trim();
 }
 
+function isContaRedutora(conta: string, valor: number): boolean {
+  const norm = conta.trim().toUpperCase();
+  return norm.startsWith('(-)') || 
+    /DEPRECIA[CÇ]/i.test(norm) || 
+    /AMORTIZA[CÇ]/i.test(norm) || 
+    /PERDAS.*ESTIMADAS/i.test(norm) ||
+    /PDD/i.test(norm) ||
+    (valor < 0 && (/DEPREC/i.test(norm) || /AMORT/i.test(norm)));
+}
+
 const KNOWN_SYNTHETIC_EXACT = new Set([
   "ATIVO",
   "PASSIVO",
