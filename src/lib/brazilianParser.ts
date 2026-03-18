@@ -448,7 +448,7 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
       const isReceitaOperacional = /RECEITA\s*OPERACIONAL/i.test(normalConta);
       const isReceitaLiquida = /RECEITA\s*LIQUIDA/i.test(normalConta);
       const isLucroBruto = /LUCRO\s*BRUTO|RESULTADO\s*BRUTO/i.test(normalConta);
-      
+
       // Tenta extrair valores da linha (precisa antes para checar título sem valor)
       const valores = getNumericValuesRightOfText(row);
       const temValor = valores.length > 0;
@@ -484,17 +484,27 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
       }
 
       // === BLOCO RESULTADO FINANCEIRO ===
-      const isFinanceiroHeader = /DESPESAS?\s*FINANCEIRA|RECEITAS?\s*FINANCEIRA|RESULTADO\s*FINANCEIRO/i.test(normalConta);
-      
+      const isFinanceiroHeader = /DESPESAS?\s*FINANCEIRA|RECEITAS?\s*FINANCEIRA|RESULTADO\s*FINANCEIRO/i.test(
+        normalConta,
+      );
+
       // Fechar bloco financeiro se encontrar outro título de seção (sem valor) OU subtotais principais (com valor)
-      const isSubtotalPrincipal = /RESULTADO\s*(OPERACIONAL|ANTES|DO\s*EXERCICIO)|LUCRO\s*(OPERACIONAL|LIQUIDO|BRUTO)|CONTRIBUICAO\s*SOCIAL|CSLL|IRPJ|IMPOSTO\s*DE\s*RENDA/i.test(normalConta);
+      const isSubtotalPrincipal =
+        /RESULTADO\s*(OPERACIONAL|ANTES|DO\s*EXERCICIO)|LUCRO\s*(OPERACIONAL|LIQUIDO|BRUTO)|CONTRIBUICAO\s*SOCIAL|CSLL|IRPJ|IMPOSTO\s*DE\s*RENDA/i.test(
+          normalConta,
+        );
       if (isInsideResultadoFinanceiroBlock && !isFinanceiroHeader) {
         if ((!temValor && conta.length >= 2) || isSubtotalPrincipal) {
           isInsideResultadoFinanceiroBlock = false;
-          debugLog("🔴 Bloco Resultado Financeiro Fechado (" + (isSubtotalPrincipal ? "subtotal principal" : "novo título") + "): " + conta);
+          debugLog(
+            "🔴 Bloco Resultado Financeiro Fechado (" +
+              (isSubtotalPrincipal ? "subtotal principal" : "novo título") +
+              "): " +
+              conta,
+          );
         }
       }
-      
+
       // Abrir bloco financeiro
       if (isFinanceiroHeader && !temValor) {
         isInsideResultadoFinanceiroBlock = true;
@@ -515,10 +525,10 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
         }
         // 2. Se estamos dentro do bloco Receita Bruta, forçar classificação
         // Apenas valores positivos são Receita Bruta; negativos são Despesas Operacionais
-// Valores positivos são Receita Bruta; negativos são Deduções (ex: Simples Nacional)
-else if (isInsideReceitaBrutaBlock) {
-  grupo = valorAtual >= 0 ? "RECEITA_BRUTA" : "DEDUCOES";
-}
+        // Valores positivos são Receita Bruta; negativos são Deduções (ex: Simples Nacional)
+        else if (isInsideReceitaBrutaBlock) {
+          grupo = valorAtual >= 0 ? "RECEITA_BRUTA" : "DEDUCOES";
+        }
         // 3. Se estamos dentro do bloco Resultado Financeiro
         else if (isInsideResultadoFinanceiroBlock) {
           grupo = "RESULTADO_FINANCEIRO";
@@ -527,9 +537,7 @@ else if (isInsideReceitaBrutaBlock) {
         else {
           if (normalConta.includes("RECEITA LIQUIDA")) {
             grupo = "RECEITA_LIQUIDA";
-          } else if (
-            normalConta.includes("RECEITA BRUTA")
-          ) {
+          } else if (normalConta.includes("RECEITA BRUTA")) {
             grupo = "RECEITA_BRUTA";
           } else if (
             normalConta.includes("IMPOSTOS") ||
@@ -545,22 +553,14 @@ else if (isInsideReceitaBrutaBlock) {
             normalConta.includes("ALUGUEL")
           ) {
             grupo = "DESPESAS_OPERACIONAIS";
-          } else if (
-            normalConta.includes("NAO OPERACIONAL")
-          ) {
+          } else if (normalConta.includes("NAO OPERACIONAL")) {
             grupo = "RESULTADO_FINANCEIRO";
-          } else if (
-            normalConta.includes("PROVISAO") ||
-            normalConta.includes("PROVISÃO")
-          ) {
+          } else if (normalConta.includes("PROVISAO") || normalConta.includes("PROVISÃO")) {
             grupo = "PROVISOES";
           } else if (normalConta.startsWith("RESULTADO")) {
             // Contas que começam com "RESULTADO" → CONTAS_RESULTADO (antes de CSLL/IR)
             grupo = "CONTAS_RESULTADO";
-          } else if (
-            normalConta.includes("CONTRIBUICAO SOCIAL") ||
-            normalConta.includes("CSLL")
-          ) {
+          } else if (normalConta.includes("CONTRIBUICAO SOCIAL") || normalConta.includes("CSLL")) {
             grupo = "CONTRIBUICAO_SOCIAL";
           } else if (
             normalConta.includes("IRPJ") ||
@@ -606,28 +606,28 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
 
   try {
     const buffer = await file.arrayBuffer();
-    
+
     // NOVA ABORDAGEM: Converter QUALQUER arquivo (XLS ou XLSX) para matriz JSON limpa primeiro
     // Isso evita problemas de formatação de XLS legados (Domínio, PROCONT, etc.)
-    
+
     let workbook: XLSX.WorkBook | null = null;
     let sheet: XLSX.WorkSheet | null = null;
-    
+
     // Tentar múltiplas estratégias de leitura
-    const readStrategies: Array<{ type: 'binary' | 'array' | 'buffer'; opts: Partial<XLSX.ParsingOptions> }> = [
-      { type: 'binary', opts: { cellFormula: false, cellText: false, raw: true, sheetStubs: true, cellStyles: true } },
-      { type: 'binary', opts: { codepage: 1252, raw: true, sheetStubs: true, cellStyles: true } },
-      { type: 'binary', opts: { WTF: true, sheetStubs: true, cellStyles: true } },
-      { type: 'array', opts: { raw: true, sheetStubs: true, cellStyles: true } },
-      { type: 'binary', opts: { cellStyles: true } },
-      { type: 'array', opts: { cellStyles: true } },
+    const readStrategies: Array<{ type: "binary" | "array" | "buffer"; opts: Partial<XLSX.ParsingOptions> }> = [
+      { type: "binary", opts: { cellFormula: false, cellText: false, raw: true, sheetStubs: true, cellStyles: true } },
+      { type: "binary", opts: { codepage: 1252, raw: true, sheetStubs: true, cellStyles: true } },
+      { type: "binary", opts: { WTF: true, sheetStubs: true, cellStyles: true } },
+      { type: "array", opts: { raw: true, sheetStubs: true, cellStyles: true } },
+      { type: "binary", opts: { cellStyles: true } },
+      { type: "array", opts: { cellStyles: true } },
     ];
-    
+
     for (const strategy of readStrategies) {
       try {
         let inputData: ArrayBuffer | Uint8Array | string;
-        
-        if (strategy.type === 'binary') {
+
+        if (strategy.type === "binary") {
           // Converter para binary string
           const uint8Array = new Uint8Array(buffer);
           let binaryString = "";
@@ -638,9 +638,9 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
         } else {
           inputData = buffer;
         }
-        
+
         workbook = XLSX.read(inputData, { type: strategy.type, ...strategy.opts });
-        
+
         if (workbook?.SheetNames?.length > 0) {
           const sheetName = workbook.SheetNames[0];
           sheet = workbook.Sheets[sheetName];
@@ -653,17 +653,17 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
         debugLog(`Estratégia ${strategy.type} falhou:`, e);
       }
     }
-    
+
     if (!sheet) {
       debugLog("Nenhuma sheet encontrada após todas as tentativas");
-      
+
       // FALLBACK: Tentar BIFF8 manual parser para XLS muito antigos
       if (extension === "xls" && workbook) {
         const strings = (workbook as any)?.Strings || [];
-        const stringValues: string[] = strings.map((str: any) => 
-          typeof str === "object" && str?.t ? str.t : String(str || "")
+        const stringValues: string[] = strings.map((str: any) =>
+          typeof str === "object" && str?.t ? str.t : String(str || ""),
         );
-        
+
         const biffCells = parseBIFF8CellsFromXls(buffer, stringValues);
         if (biffCells.length > 0) {
           const biffRows = biffCellsToXLSRows(biffCells);
@@ -673,10 +673,10 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
           }
         }
       }
-      
+
       return [];
     }
-    
+
     // ===== EXTRACT BOLD FORMATTING =====
     // Build a set of row indices that have bold cells (for synthetic detection)
     const boldRows = new Set<number>();
@@ -699,40 +699,40 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
     } catch (e) {
       debugLog("Bold detection failed (non-critical):", e);
     }
-    
+
     // ===== ETAPA PRINCIPAL: Converter para matriz JSON limpa =====
     // Esta é a mudança central: usar sheet_to_json com header: 1 e defval: ''
     // Isso normaliza QUALQUER formato (XLS legado, XLSX, etc.) para uma matriz uniforme
-    
+
     const jsonMatrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
       header: 1,
-      defval: '',  // Células vazias viram string vazia (não null/undefined)
-      raw: true,   // Preservar tipos numéricos quando possível
+      defval: "", // Células vazias viram string vazia (não null/undefined)
+      raw: true, // Preservar tipos numéricos quando possível
       blankrows: false,
     }) as unknown[][];
-    
+
     debugLog(`Matriz JSON extraída: ${jsonMatrix.length} linhas`);
-    
+
     if (!jsonMatrix || jsonMatrix.length === 0) {
       debugLog("Matriz JSON vazia, tentando extração célula por célula...");
       return extractCellByCell(sheet);
     }
-    
+
     // ===== Converter matriz JSON para XLSRow[] =====
     const rows = convertMatrixToXLSRows(jsonMatrix, boldRows);
     const totalNumeric = rows.reduce((acc, r) => acc + (r.numericValues?.length || 0), 0);
-    
+
     debugLog(`Conversão para XLSRow: ${rows.length} linhas, ${totalNumeric} valores numéricos`);
-    
+
     // Se XLS retornou 0 números, tentar BIFF8 como fallback
     if (extension === "xls" && totalNumeric === 0 && workbook) {
       debugLog("XLS retornou 0 números via matriz JSON; tentando BIFF8 fallback...");
-      
+
       const strings = (workbook as any)?.Strings || [];
-      const stringValues: string[] = strings.map((str: any) => 
-        typeof str === "object" && str?.t ? str.t : String(str || "")
+      const stringValues: string[] = strings.map((str: any) =>
+        typeof str === "object" && str?.t ? str.t : String(str || ""),
       );
-      
+
       const biffCells = parseBIFF8CellsFromXls(buffer, stringValues);
       if (biffCells.length > 0) {
         const biffRows = biffCellsToXLSRows(biffCells);
@@ -742,9 +742,8 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
         }
       }
     }
-    
+
     return rows;
-    
   } catch (error) {
     debugLog("ERRO CRÍTICO ao processar XLS/XLSX:", error);
     return [];
@@ -757,26 +756,26 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
  */
 function convertMatrixToXLSRows(matrix: unknown[][], boldRows?: Set<number>): XLSRow[] {
   const rows: XLSRow[] = [];
-  
+
   let matrixRowIdx = 0;
   for (const rowData of matrix) {
     const currentMatrixRow = matrixRowIdx++;
     if (!Array.isArray(rowData)) continue;
-    
+
     // Verificar se a linha tem conteúdo
-    const hasContent = rowData.some(cell => 
-      (typeof cell === "string" && cell.trim().length > 0) || 
-      (typeof cell === "number" && Number.isFinite(cell))
+    const hasContent = rowData.some(
+      (cell) =>
+        (typeof cell === "string" && cell.trim().length > 0) || (typeof cell === "number" && Number.isFinite(cell)),
     );
     if (!hasContent) continue;
-    
+
     const cells: string[] = [];
     let firstText: { text: string; index: number } = { text: "", index: -1 };
     const numericValues: { value: number; raw: string }[] = [];
-    
+
     for (let colIdx = 0; colIdx < rowData.length; colIdx++) {
       const rawCell = rowData[colIdx];
-      
+
       // Número direto do Excel
       if (typeof rawCell === "number" && Number.isFinite(rawCell)) {
         const cellValue = String(rawCell);
@@ -784,16 +783,16 @@ function convertMatrixToXLSRows(matrix: unknown[][], boldRows?: Set<number>): XL
         numericValues.push({ value: rawCell, raw: cellValue });
         continue;
       }
-      
+
       // String (pode ser texto ou número formatado BR)
       const cellValue = typeof rawCell === "string" ? rawCell.trim() : String(rawCell ?? "");
       cells.push(cellValue);
-      
+
       // Detectar primeiro texto válido
       if (firstText.index === -1 && isTextCell(cellValue)) {
         firstText = { text: cellValue.trim(), index: colIdx };
       }
-      
+
       // Tentar parsear como número (formato brasileiro)
       if (cellValue && isNumericCell(cellValue)) {
         const parsed = parseSimpleBrazilianNumber(cellValue);
@@ -802,7 +801,7 @@ function convertMatrixToXLSRows(matrix: unknown[][], boldRows?: Set<number>): XL
         }
       }
     }
-    
+
     rows.push({
       cells,
       firstTextCell: firstText,
@@ -810,7 +809,7 @@ function convertMatrixToXLSRows(matrix: unknown[][], boldRows?: Set<number>): XL
       isBold: boldRows?.has(currentMatrixRow) || false,
     });
   }
-  
+
   return rows;
 }
 
@@ -1268,13 +1267,14 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
       const level = textIndex >= 0 ? textIndex : 0;
 
       // Detect contra accounts (redutoras): depreciação, amortização, exaustão, PDD
-      const isRedutora = /DEPRECIA[CÇ]/i.test(normalConta) ||
-                         /AMORTIZA[CÇ]/i.test(normalConta) ||
-                         /EXAUSTAO/i.test(normalConta) ||
-                         /PROVISAO.*DEVED/i.test(normalConta) ||
-                         /PDD/i.test(normalConta) ||
-                         normalConta.startsWith('(-)') ||
-                         conta.trim().startsWith('(-)');
+      const isRedutora =
+        /DEPRECIA[CÇ]/i.test(normalConta) ||
+        /AMORTIZA[CÇ]/i.test(normalConta) ||
+        /EXAUSTAO/i.test(normalConta) ||
+        /PROVISAO.*DEVED/i.test(normalConta) ||
+        /PDD/i.test(normalConta) ||
+        normalConta.startsWith("(-)") ||
+        conta.trim().startsWith("(-)");
 
       debugContabil("GRAVAÇÃO ENTRY", {
         rowIndex: i,
@@ -1298,7 +1298,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         is_redutora: isRedutora,
       });
 
-      debugLog(`Entry: ${conta} | Tipo: ${tipoEntry} | Valor: ${Math.abs(valor)}${isRedutora ? ' [REDUTORA]' : ''}`);
+      debugLog(`Entry: ${conta} | Tipo: ${tipoEntry} | Valor: ${Math.abs(valor)}${isRedutora ? " [REDUTORA]" : ""}`);
     }
   }
 
@@ -1654,10 +1654,10 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
   if (!found) startRow = Math.min(5, rows.length - 1);
 
   let currentGrupo: DREGrupo = "RECEITA_BRUTA";
-   let isInsideCMVBlock = false;
-   let cmvBlockStarted = false;
-   let foundReceitaLiquida = false;
-   let isInsideReceitaBrutaBlock = false;
+  let isInsideCMVBlock = false;
+  let cmvBlockStarted = false;
+  let foundReceitaLiquida = false;
+  let isInsideReceitaBrutaBlock = false;
 
   // Processar linhas DRE
   for (let i = startRow; i < rows.length; i++) {
@@ -1694,8 +1694,12 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
     }
 
     // Ativar bloco CMV: primeira conta após Receita Líquida
-    if (foundReceitaLiquida && !isInsideCMVBlock && !normalDesc.includes("RECEITA LIQUIDA") && 
-        !(normalDesc.includes("LUCRO BRUTO") || normalDesc.includes("RESULTADO BRUTO"))) {
+    if (
+      foundReceitaLiquida &&
+      !isInsideCMVBlock &&
+      !normalDesc.includes("RECEITA LIQUIDA") &&
+      !(normalDesc.includes("LUCRO BRUTO") || normalDesc.includes("RESULTADO BRUTO"))
+    ) {
       isInsideCMVBlock = true;
       cmvBlockStarted = true;
       foundReceitaLiquida = false;
@@ -1704,11 +1708,15 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
     if (!temValor) continue;
 
     let classification: DREClassificationResult;
-if (isInsideCMVBlock) {
+    if (isInsideCMVBlock) {
       classification = { grupo: "CMV", tipo: "normal", isGroupChange: false };
     } else if (isInsideReceitaBrutaBlock) {
       const valorPeriodo = numericValues[0]?.value;
-      classification = { grupo: valorPeriodo >= 0 ? "RECEITA_BRUTA" : "DESPESAS_OPERACIONAIS", tipo: "normal", isGroupChange: false };
+      classification = {
+        grupo: valorPeriodo >= 0 ? "RECEITA_BRUTA" : "DESPESAS_OPERACIONAIS",
+        tipo: "normal",
+        isGroupChange: false,
+      };
     } else {
       classification = classificarLinhaDRE(descricao, currentGrupo);
     }
@@ -1818,8 +1826,12 @@ function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
     }
 
     // Ativar bloco CMV: primeira conta após Receita Líquida
-    if (foundReceitaLiquida && !isInsideCMVBlock && !normalDesc.includes("RECEITA LIQUIDA") &&
-        !(normalDesc.includes("LUCRO BRUTO") || normalDesc.includes("RESULTADO BRUTO"))) {
+    if (
+      foundReceitaLiquida &&
+      !isInsideCMVBlock &&
+      !normalDesc.includes("RECEITA LIQUIDA") &&
+      !(normalDesc.includes("LUCRO BRUTO") || normalDesc.includes("RESULTADO BRUTO"))
+    ) {
       isInsideCMVBlock = true;
       cmvBlockStarted = true;
       foundReceitaLiquida = false;
@@ -1834,10 +1846,9 @@ function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
     if (isInsideCMVBlock) {
       classification = { grupo: "CMV", tipo: "normal", isGroupChange: false };
       debugLog(`CMV BLOCK CSV: Linha ${i} forçada como CMV: ${descricao}`);
-} else if (isInsideReceitaBrutaBlock) {
-  const valorPeriodo = numericValues.length > 0 ? parseBrazilianNumber(numericValues[0]) : 0;
-  classification = { grupo: valorPeriodo >= 0 ? "RECEITA_BRUTA" : "DEDUCOES", tipo: "normal", isGroupChange: false };
-}
+    } else if (isInsideReceitaBrutaBlock) {
+      const valorBloco = numericValues.length > 0 ? parseBrazilianNumber(numericValues[0]) : 0;
+      classification = { grupo: valorBloco >= 0 ? "RECEITA_BRUTA" : "DEDUCOES", tipo: "normal", isGroupChange: false };
     } else {
       classification = classificarLinhaDRE(descricao, currentGrupo);
     }
@@ -2192,7 +2203,7 @@ export interface ParsedBalanceteEntry {
   debitos: number;
   creditos: number;
   saldo_atual: number;
-  natureza: 'devedora' | 'credora';
+  natureza: "devedora" | "credora";
   raw_row: string[];
   indent_level?: number;
   is_bold?: boolean;
@@ -2212,18 +2223,18 @@ export interface BalanceteParseResult {
 function isBalanceteStructure(rows: XLSRow[]): boolean {
   // Check header row for balancete-specific keywords
   for (let i = 0; i < Math.min(10, rows.length); i++) {
-    const rowText = rows[i].cells.join(' ').toUpperCase();
+    const rowText = rows[i].cells.join(" ").toUpperCase();
     const norm = normalizeText(rowText);
     if (
-      (norm.includes('SALDO ANTERIOR') || norm.includes('SALDO INICIAL')) &&
-      (norm.includes('DEBITO') || norm.includes('DEBITOS')) &&
-      (norm.includes('CREDITO') || norm.includes('CREDITOS'))
+      (norm.includes("SALDO ANTERIOR") || norm.includes("SALDO INICIAL")) &&
+      (norm.includes("DEBITO") || norm.includes("DEBITOS")) &&
+      (norm.includes("CREDITO") || norm.includes("CREDITOS"))
     ) {
       return true;
     }
-    if (norm.includes('BALANCETE')) return true;
+    if (norm.includes("BALANCETE")) return true;
   }
-  
+
   // Check if majority of data rows have 4+ numeric columns
   let fourColCount = 0;
   const dataRows = rows.slice(Math.min(5, rows.length));
@@ -2249,7 +2260,7 @@ function normalizeColumnName(name: string): string {
  * Find column index by possible names with multi-tier matching
  */
 function findColumnIndex(headers: string[], possibleNames: string[]): number {
-  const normalizedHeaders = headers.map(h => h ? normalizeColumnName(String(h)) : "");
+  const normalizedHeaders = headers.map((h) => (h ? normalizeColumnName(String(h)) : ""));
   const normalizedNames = possibleNames.map(normalizeColumnName);
 
   // Priority 1: Exact match
@@ -2259,12 +2270,12 @@ function findColumnIndex(headers: string[], possibleNames: string[]): number {
   }
   // Priority 2: Starts with
   for (const name of normalizedNames) {
-    const idx = normalizedHeaders.findIndex(h => h.startsWith(name));
+    const idx = normalizedHeaders.findIndex((h) => h.startsWith(name));
     if (idx !== -1) return idx;
   }
   // Priority 3: Contains
   for (const name of normalizedNames) {
-    const idx = normalizedHeaders.findIndex(h => h.includes(name));
+    const idx = normalizedHeaders.findIndex((h) => h.includes(name));
     if (idx !== -1) return idx;
   }
   return -1;
@@ -2274,8 +2285,12 @@ function findColumnIndex(headers: string[], possibleNames: string[]): number {
  * Detect column positions for balancete using dynamic header detection.
  * Returns actual cell indices (column positions in the spreadsheet row).
  */
-function detectBalanceteColumns(rows: XLSRow[]): { 
-  saldoAnteriorCol: number; debitosCol: number; creditosCol: number; saldoAtualCol: number; headerRow: number;
+function detectBalanceteColumns(rows: XLSRow[]): {
+  saldoAnteriorCol: number;
+  debitosCol: number;
+  creditosCol: number;
+  saldoAtualCol: number;
+  headerRow: number;
 } | null {
   for (let i = 0; i < Math.min(15, rows.length); i++) {
     const cells = rows[i].cells;
@@ -2302,7 +2317,11 @@ function detectBalanceteColumns(rows: XLSRow[]): {
       }
 
       debugLog("Balancete columns detected:", {
-        saldoAnterior: saCol, debitos: debCol, creditos: credCol, saldoAtual: actualSfCol, headerRow: i
+        saldoAnterior: saCol,
+        debitos: debCol,
+        creditos: credCol,
+        saldoAtual: actualSfCol,
+        headerRow: i,
       });
 
       return {
@@ -2314,37 +2333,40 @@ function detectBalanceteColumns(rows: XLSRow[]): {
       };
     }
   }
-  
+
   return null;
 }
 
 function parseBalanceteFromXLS(rows: XLSRow[], filename: string): BalanceteParseResult {
   debugLog("=== Iniciando parseBalanceteFromXLS ===");
-  
+
   const entries: ParsedBalanceteEntry[] = [];
   const errors: string[] = [];
-  const periodo = extractPeriodFromRows(rows.map(r => r.cells), filename);
-  
+  const periodo = extractPeriodFromRows(
+    rows.map((r) => r.cells),
+    filename,
+  );
+
   // Detect column positions dynamically from headers
   const colInfo = detectBalanceteColumns(rows);
-  
+
   let startRow = 0;
-  
+
   if (colInfo) {
     startRow = colInfo.headerRow + 1;
     debugLog("Using dynamic column detection. Start row:", startRow);
   } else {
     // Fallback: find header row manually
     for (let i = 0; i < Math.min(15, rows.length); i++) {
-      const rowText = normalizeText(rows[i].cells.join(' '));
+      const rowText = normalizeText(rows[i].cells.join(" "));
       if (
-        (rowText.includes('SALDO ANTERIOR') || rowText.includes('SALDO INICIAL')) &&
-        (rowText.includes('DEBITO') || rowText.includes('DEBITOS'))
+        (rowText.includes("SALDO ANTERIOR") || rowText.includes("SALDO INICIAL")) &&
+        (rowText.includes("DEBITO") || rowText.includes("DEBITOS"))
       ) {
         startRow = i + 1;
         break;
       }
-      if (rowText.includes('BALANCETE') && !rowText.includes('SALDO')) {
+      if (rowText.includes("BALANCETE") && !rowText.includes("SALDO")) {
         continue;
       }
     }
@@ -2358,11 +2380,11 @@ function parseBalanceteFromXLS(rows: XLSRow[], filename: string): BalanceteParse
   function getCellNumericValue(row: XLSRow, colIdx: number): number {
     if (colIdx < 0 || colIdx >= row.cells.length) return 0;
     const cellStr = row.cells[colIdx];
-    if (!cellStr || cellStr.trim() === '') return 0;
-    
+    if (!cellStr || cellStr.trim() === "") return 0;
+
     // Try direct number first
-    if (typeof cellStr === 'number') return cellStr as unknown as number;
-    
+    if (typeof cellStr === "number") return cellStr as unknown as number;
+
     const parsed = parseSimpleBrazilianNumber(cellStr);
     return Number.isFinite(parsed) ? parsed : 0;
   }
@@ -2374,55 +2396,72 @@ function parseBalanceteFromXLS(rows: XLSRow[], filename: string): BalanceteParse
     const row = rows[i];
     const { text: conta } = safeGetFirstText(row);
     if (!conta || conta.length < 2) continue;
-    
+
     const normalConta = normalizeText(conta);
-    
+
     // Skip total/summary lines
-    if (normalConta === 'TOTAL' || normalConta === 'TOTAIS' || normalConta.includes('TOTAL GERAL')) continue;
+    if (normalConta === "TOTAL" || normalConta === "TOTAIS" || normalConta.includes("TOTAL GERAL")) continue;
 
     // === SECTION ANCHOR DETECTION ===
-    if (normalConta === 'ATIVO') {
-      currentBalanceteSection = 'ATIVO';
-    } else if (normalConta === 'ATIVO CIRCULANTE' || (normalConta === 'CIRCULANTE' && currentBalanceteSection === 'ATIVO')) {
-      currentBalanceteSection = 'ATIVO CIRCULANTE';
-    } else if (normalConta === 'ATIVO NAO CIRCULANTE' || (normalConta === 'NAO CIRCULANTE' && currentBalanceteSection.startsWith('ATIVO'))) {
-      currentBalanceteSection = 'ATIVO NAO CIRCULANTE';
-    } else if (normalConta === 'PASSIVO') {
-      currentBalanceteSection = 'PASSIVO';
-    } else if (normalConta === 'PASSIVO CIRCULANTE' || (normalConta === 'CIRCULANTE' && currentBalanceteSection === 'PASSIVO')) {
-      currentBalanceteSection = 'PASSIVO CIRCULANTE';
-    } else if (normalConta === 'PASSIVO NAO CIRCULANTE' || (normalConta === 'NAO CIRCULANTE' && currentBalanceteSection.startsWith('PASSIVO'))) {
-      currentBalanceteSection = 'PASSIVO NAO CIRCULANTE';
-    } else if (normalConta === 'PATRIMONIO LIQUIDO' || normalConta.includes('PATRIMONIO LIQUIDO')) {
-      currentBalanceteSection = 'PATRIMONIO LIQUIDO';
-    } else if (normalConta.includes('RECEITA') && !currentBalanceteSection.includes('RECEITA')) {
+    if (normalConta === "ATIVO") {
+      currentBalanceteSection = "ATIVO";
+    } else if (
+      normalConta === "ATIVO CIRCULANTE" ||
+      (normalConta === "CIRCULANTE" && currentBalanceteSection === "ATIVO")
+    ) {
+      currentBalanceteSection = "ATIVO CIRCULANTE";
+    } else if (
+      normalConta === "ATIVO NAO CIRCULANTE" ||
+      (normalConta === "NAO CIRCULANTE" && currentBalanceteSection.startsWith("ATIVO"))
+    ) {
+      currentBalanceteSection = "ATIVO NAO CIRCULANTE";
+    } else if (normalConta === "PASSIVO") {
+      currentBalanceteSection = "PASSIVO";
+    } else if (
+      normalConta === "PASSIVO CIRCULANTE" ||
+      (normalConta === "CIRCULANTE" && currentBalanceteSection === "PASSIVO")
+    ) {
+      currentBalanceteSection = "PASSIVO CIRCULANTE";
+    } else if (
+      normalConta === "PASSIVO NAO CIRCULANTE" ||
+      (normalConta === "NAO CIRCULANTE" && currentBalanceteSection.startsWith("PASSIVO"))
+    ) {
+      currentBalanceteSection = "PASSIVO NAO CIRCULANTE";
+    } else if (normalConta === "PATRIMONIO LIQUIDO" || normalConta.includes("PATRIMONIO LIQUIDO")) {
+      currentBalanceteSection = "PATRIMONIO LIQUIDO";
+    } else if (normalConta.includes("RECEITA") && !currentBalanceteSection.includes("RECEITA")) {
       // Only switch to RECEITA if it looks like a section header (short name)
-      if (normalConta === 'RECEITAS' || normalConta === 'RECEITA' || normalConta === 'RECEITAS OPERACIONAIS') {
-        currentBalanceteSection = 'RECEITAS';
+      if (normalConta === "RECEITAS" || normalConta === "RECEITA" || normalConta === "RECEITAS OPERACIONAIS") {
+        currentBalanceteSection = "RECEITAS";
       }
-    } else if (normalConta === 'CUSTOS' || normalConta === 'CUSTO' || normalConta === 'DESPESAS' || normalConta === 'DESPESA') {
-      currentBalanceteSection = 'CUSTOS/DESPESAS';
+    } else if (
+      normalConta === "CUSTOS" ||
+      normalConta === "CUSTO" ||
+      normalConta === "DESPESAS" ||
+      normalConta === "DESPESA"
+    ) {
+      currentBalanceteSection = "CUSTOS/DESPESAS";
     }
-    
+
     let saldoAnterior = 0;
     let debitos = 0;
     let creditos = 0;
     let saldoAtual = 0;
-    
+
     if (colInfo) {
       // === USE ACTUAL COLUMN POSITIONS from header detection ===
       saldoAnterior = colInfo.saldoAnteriorCol >= 0 ? getCellNumericValue(row, colInfo.saldoAnteriorCol) : 0;
       debitos = Math.abs(getCellNumericValue(row, colInfo.debitosCol));
       creditos = Math.abs(getCellNumericValue(row, colInfo.creditosCol));
       saldoAtual = getCellNumericValue(row, colInfo.saldoAtualCol);
-      
+
       // If saldoAtual is 0 but we have other values, it might genuinely be 0
       // Don't fallback to numericValues — trust the column position
     } else {
-      // Fallback: use numericValues array (old behavior) 
+      // Fallback: use numericValues array (old behavior)
       const numericVals = row.numericValues;
       if (numericVals.length < 2) continue;
-      
+
       if (numericVals.length >= 4) {
         saldoAnterior = numericVals[0].value;
         debitos = Math.abs(numericVals[1].value);
@@ -2436,17 +2475,21 @@ function parseBalanceteFromXLS(rows: XLSRow[], filename: string): BalanceteParse
         saldoAtual = numericVals[numericVals.length - 1].value;
       }
     }
-    
+
     // Determine nature based on account description or saldo sign
-    const isCredora = normalConta.includes('RECEITA') || normalConta.includes('PASSIVO') || 
-                      normalConta.includes('PATRIMONIO') || normalConta.includes('CAPITAL') ||
-                      normalConta.includes('FORNECEDOR') || normalConta.includes('OBRIGAC');
-    const natureza: 'devedora' | 'credora' = isCredora ? 'credora' : 'devedora';
-    
+    const isCredora =
+      normalConta.includes("RECEITA") ||
+      normalConta.includes("PASSIVO") ||
+      normalConta.includes("PATRIMONIO") ||
+      normalConta.includes("CAPITAL") ||
+      normalConta.includes("FORNECEDOR") ||
+      normalConta.includes("OBRIGAC");
+    const natureza: "devedora" | "credora" = isCredora ? "credora" : "devedora";
+
     const { index: textIdx } = safeGetFirstText(row);
     entries.push({
       conta,
-      grupo: 'OUTROS',
+      grupo: "OUTROS",
       saldo_anterior: saldoAnterior,
       debitos,
       creditos,
@@ -2458,9 +2501,9 @@ function parseBalanceteFromXLS(rows: XLSRow[], filename: string): BalanceteParse
       contexto_pai: currentBalanceteSection,
     });
   }
-  
+
   debugLog(`Balancete parsed: ${entries.length} entries`);
-  
+
   return {
     entries,
     periodo,
@@ -2472,7 +2515,7 @@ function parseBalanceteFromXLS(rows: XLSRow[], filename: string): BalanceteParse
 export async function parseBalanceteFileAuto(file: File): Promise<BalanceteParseResult> {
   const extension = getFileExtension(file.name);
   debugLog("Balancete - Tipo de arquivo:", extension);
-  
+
   if (extension === "csv") {
     const rows = await parseCSVFile(file);
     const xlsRows = processXLSRawRows(rows);
@@ -2481,7 +2524,7 @@ export async function parseBalanceteFileAuto(file: File): Promise<BalanceteParse
     const xlsRows = await parseXLSFile(file);
     return parseBalanceteFromXLS(xlsRows, file.name);
   }
-  
+
   throw new Error("Formato não suportado. Use CSV, XLS ou XLSX.");
 }
 
