@@ -1098,7 +1098,8 @@ export function AIPresentationDialog({
       });
     }
   });
-}
+        }
+      });
       // ========== CLOSING SLIDE ==========
       const closingSlide = pptx.addSlide();
       closingSlide.background = { fill: colors.darkBg };
