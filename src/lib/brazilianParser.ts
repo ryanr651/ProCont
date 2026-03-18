@@ -471,16 +471,22 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
       }
 
       // Marcar que passou pela Receita Líquida
+      // Marcar que passou pela Receita Líquida
       if (isReceitaLiquida) {
         foundReceitaLiquida = true;
         debugLog("📌 Receita Líquida encontrada, CMV será ativado na próxima conta");
       }
 
       // Ativar bloco CMV: qualquer linha após Receita Líquida (e antes de Lucro Bruto)
-      if (foundReceitaLiquida && !isInsideCMVBlock && !isReceitaLiquida && !isLucroBruto) {
+      // Só ativa se a linha atual NÃO for Lucro Bruto E tiver valor (conta analítica de custo)
+      if (foundReceitaLiquida && !isInsideCMVBlock && !isReceitaLiquida && !isLucroBruto && temValor) {
         isInsideCMVBlock = true;
         foundReceitaLiquida = false;
         debugLog("🟢 Bloco CMV Ativado (após Receita Líquida): " + conta);
+      } else if (foundReceitaLiquida && isLucroBruto) {
+        // Lucro Bruto imediatamente após Receita Líquida = sem CMV (empresa de serviços pura)
+        foundReceitaLiquida = false;
+        debugLog("⏭️ Lucro Bruto logo após Receita Líquida: sem CMV, bloco ignorado");
       }
 
       // === BLOCO RESULTADO FINANCEIRO ===
@@ -1700,8 +1706,13 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
       !normalDesc.includes("RECEITA LIQUIDA") &&
       !(normalDesc.includes("LUCRO BRUTO") || normalDesc.includes("RESULTADO BRUTO"))
     ) {
-      isInsideCMVBlock = true;
-      cmvBlockStarted = true;
+      if (temValor) {
+        isInsideCMVBlock = true;
+        cmvBlockStarted = true;
+      }
+      foundReceitaLiquida = false;
+    } else if (foundReceitaLiquida && (normalDesc.includes("LUCRO BRUTO") || normalDesc.includes("RESULTADO BRUTO"))) {
+      // Lucro Bruto imediatamente após Receita Líquida = sem CMV
       foundReceitaLiquida = false;
     }
 
@@ -1832,10 +1843,14 @@ function parseDREFromCSV(rows: string[][], filename: string): DREParseResult {
       !normalDesc.includes("RECEITA LIQUIDA") &&
       !(normalDesc.includes("LUCRO BRUTO") || normalDesc.includes("RESULTADO BRUTO"))
     ) {
-      isInsideCMVBlock = true;
-      cmvBlockStarted = true;
+      if (temValor) {
+        isInsideCMVBlock = true;
+        cmvBlockStarted = true;
+      }
       foundReceitaLiquida = false;
-      debugLog(`CMV CSV: Bloco CMV ativado após Receita Líquida na linha ${i}: ${descricao}`);
+    } else if (foundReceitaLiquida && (normalDesc.includes("LUCRO BRUTO") || normalDesc.includes("RESULTADO BRUTO"))) {
+      // Lucro Bruto imediatamente após Receita Líquida = sem CMV
+      foundReceitaLiquida = false;
     }
 
     if (!temValor) continue;
