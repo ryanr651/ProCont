@@ -1043,37 +1043,63 @@ export function AIPresentationDialog({
             });
           }
         } else {
-          // Content slides with styled cards
-          const contentY = 1.6;
-          const itemHeight = Math.min(0.9, 4.8 / Math.max(slide.content.length, 1));
-          
-          slide.content.forEach((item, i) => {
-            const y = contentY + (i * itemHeight);
-            
-            // Bullet circle
-            pptSlide.addShape(pptx.ShapeType.ellipse, {
-              x: 1, y: y + 0.15, w: 0.18, h: 0.18,
-              fill: { color: hlColor }
-            });
+         } else {
+  // Content slides com card de fundo e layout profissional
+  const items = slide.content.slice(0, 6); // máximo 6 itens por slide
+  const cardPadding = 0.3;
+  const cardX = 0.6;
+  const cardY = 1.6;
+  const cardW = 12.13;
+  const cardH = 5.1;
 
-            // Text
-            pptSlide.addText(item, {
-              x: 1.4, y: y, w: 11, h: itemHeight,
-              fontSize: 15, fontFace: 'Segoe UI', color: colors.text,
-              valign: 'middle', lineSpacingMultiple: 1.3
-            });
+  // Card de fundo (igual aos slides de gráfico)
+  pptSlide.addShape(pptx.ShapeType.roundRect, {
+    x: cardX, y: cardY, w: cardW, h: cardH,
+    fill: { color: colors.lightGray },
+    line: { color: colors.border, width: 0.5 },
+    rectRadius: 0.12
+  });
 
-            // Separator
-            if (i < slide.content.length - 1) {
-              pptSlide.addShape(pptx.ShapeType.line, {
-                x: 1, y: y + itemHeight - 0.02, w: 11.33, h: 0,
-                line: { color: colors.border, width: 0.5, dashType: 'dash' }
-              });
-            }
-          });
-        }
+  // Linha colorida à esquerda do card
+  pptSlide.addShape(pptx.ShapeType.rect, {
+    x: cardX, y: cardY, w: 0.06, h: cardH,
+    fill: { color: hlColor }
+  });
+
+  const itemH = (cardH - cardPadding * 2) / Math.max(items.length, 1);
+
+  items.forEach((item, i) => {
+    const y = cardY + cardPadding + (i * itemH);
+
+    // Número do item (mais elegante que bullet)
+    pptSlide.addShape(pptx.ShapeType.roundRect, {
+      x: cardX + 0.25, y: y + (itemH / 2) - 0.18, w: 0.36, h: 0.36,
+      fill: { color: hlColor },
+      rectRadius: 0.06
+    });
+    pptSlide.addText(`${i + 1}`, {
+      x: cardX + 0.25, y: y + (itemH / 2) - 0.18, w: 0.36, h: 0.36,
+      fontSize: 11, fontFace: 'Segoe UI', bold: true,
+      color: colors.white, align: 'center', valign: 'middle'
+    });
+
+    // Texto do item
+    pptSlide.addText(item, {
+      x: cardX + 0.75, y: y, w: 11.2, h: itemH,
+      fontSize: 14, fontFace: 'Segoe UI', color: colors.text,
+      valign: 'middle', lineSpacingMultiple: 1.25,
+      wrap: true
+    });
+
+    // Separador (apenas entre itens, não após o último)
+    if (i < items.length - 1) {
+      pptSlide.addShape(pptx.ShapeType.line, {
+        x: cardX + 0.2, y: y + itemH - 0.01, w: 11.7, h: 0,
+        line: { color: colors.border, width: 0.5 }
       });
-
+    }
+  });
+}
       // ========== CLOSING SLIDE ==========
       const closingSlide = pptx.addSlide();
       closingSlide.background = { fill: colors.darkBg };
