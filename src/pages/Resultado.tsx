@@ -58,7 +58,7 @@ interface BalancoEntry {
   valor: number;
   valor_anterior: number | null;
   hierarchy: string;
-  natureza_conta?: 'sintetica' | 'analitica';
+  natureza_conta?: "sintetica" | "analitica";
   detection_motivo?: string;
   is_redutora?: boolean;
 }
@@ -67,32 +67,32 @@ interface DiagnosticLine {
   conta: string;
   valor: number;
   valorAnterior: number | null;
-  colunaUsada: 'atual' | 'anterior' | 'nenhuma';
+  colunaUsada: "atual" | "anterior" | "nenhuma";
   encontrado: boolean;
-  secao: 'ATIVO' | 'PASSIVO' | 'PL' | '-';
+  secao: "ATIVO" | "PASSIVO" | "PL" | "-";
   tipoClassificado: string;
   motivo: string;
 }
 
 interface CalculatedDRE {
   receitaBruta: number;
-  receitaBrutaOrigem: 'linha_explicita' | 'soma_contas';
+  receitaBrutaOrigem: "linha_explicita" | "soma_contas";
   receitaLiquida: number;
-  receitaLiquidaOrigem: 'linha_explicita' | 'soma_contas';
+  receitaLiquidaOrigem: "linha_explicita" | "soma_contas";
   cmv: number;
-  cmvOrigem: 'linha_explicita' | 'soma_contas';
+  cmvOrigem: "linha_explicita" | "soma_contas";
   lucroBruto: number;
-  lucroBrutoOrigem: 'linha_explicita' | 'soma_contas';
+  lucroBrutoOrigem: "linha_explicita" | "soma_contas";
   despesasOperacionais: number;
-  despesasOperacionaisOrigem: 'linha_explicita' | 'soma_contas';
+  despesasOperacionaisOrigem: "linha_explicita" | "soma_contas";
   lucroOperacional: number;
-  lucroOperacionalOrigem: 'linha_explicita' | 'soma_contas';
+  lucroOperacionalOrigem: "linha_explicita" | "soma_contas";
   resultadoFinanceiro: number;
-  resultadoFinanceiroOrigem: 'linha_explicita' | 'soma_contas';
+  resultadoFinanceiroOrigem: "linha_explicita" | "soma_contas";
   contribuicaoSocial: number;
-  contribuicaoSocialOrigem: 'linha_explicita' | 'soma_contas';
+  contribuicaoSocialOrigem: "linha_explicita" | "soma_contas";
   lucroLiquido: number;
-  lucroLiquidoOrigem: 'linha_explicita' | 'soma_contas';
+  lucroLiquidoOrigem: "linha_explicita" | "soma_contas";
   // Margens calculadas
   margemBruta: number;
   margemOperacional: number;
@@ -115,8 +115,8 @@ interface CalculatedBalanco {
 function normalizeText(text: string): string {
   return text
     .toUpperCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .trim();
 }
 
@@ -125,7 +125,20 @@ interface DREClassifiedEntry {
   descricao: string;
   valor: number;
   valorAnterior: number | null;
-  grupo: 'receita_bruta' | 'receita_liquida' | 'cmv' | 'lucro_bruto' | 'despesas_operacionais' | 'lucro_operacional' | 'resultado_financeiro' | 'nao_operacional' | 'contribuicao_social' | 'ir' | 'lucro_liquido' | 'contas_resultado' | 'provisoes';
+  grupo:
+    | "receita_bruta"
+    | "receita_liquida"
+    | "cmv"
+    | "lucro_bruto"
+    | "despesas_operacionais"
+    | "lucro_operacional"
+    | "resultado_financeiro"
+    | "nao_operacional"
+    | "contribuicao_social"
+    | "ir"
+    | "lucro_liquido"
+    | "contas_resultado"
+    | "provisoes";
   isExplicit: boolean;
   motivo: string;
   insideCMVBlock?: boolean;
@@ -136,22 +149,22 @@ interface DREClassifiedEntry {
  */
 function inferIndentFromRawRow(entry: any): number {
   // If indent_level is already set (from parser), use it
-  if (typeof entry.indent_level === 'number') return entry.indent_level;
-  
+  if (typeof entry.indent_level === "number") return entry.indent_level;
+
   // Try to find first non-empty text cell position from raw_row
   if (entry.raw_row && Array.isArray(entry.raw_row)) {
     for (let i = 0; i < entry.raw_row.length; i++) {
-      const cell = String(entry.raw_row[i] || '').trim();
+      const cell = String(entry.raw_row[i] || "").trim();
       if (cell.length >= 2 && /[a-zA-ZÀ-ú]/.test(cell)) {
         return i;
       }
     }
   }
-  
+
   // Fallback: infer from account name (top-level groups = 0)
-  const norm = normalizeText(entry.conta || '');
-  const topLevelNames = ['ATIVO', 'PASSIVO', 'CIRCULANTE', 'NAO CIRCULANTE', 'PATRIMONIO LIQUIDO'];
-  if (topLevelNames.some(n => norm === n)) return 0;
+  const norm = normalizeText(entry.conta || "");
+  const topLevelNames = ["ATIVO", "PASSIVO", "CIRCULANTE", "NAO CIRCULANTE", "PATRIMONIO LIQUIDO"];
+  if (topLevelNames.some((n) => norm === n)) return 0;
   return 1;
 }
 
@@ -175,16 +188,16 @@ const Resultado = () => {
   const [isExporting, setIsExporting] = useState(false);
   const [dreClassifiedEntries, setDreClassifiedEntries] = useState<DREClassifiedEntry[]>([]);
   const [showDreDebug, setShowDreDebug] = useState(false);
-  
+
   // Manual edit state
   const [showManualEdit, setShowManualEdit] = useState(false);
   const [isApplyingChanges, setIsApplyingChanges] = useState(false);
   const [rawBalancoEntries, setRawBalancoEntries] = useState<BalancoEntry[]>([]);
   const [rawDreEntries, setRawDreEntries] = useState<DREEntry[]>([]);
-  
+
   // AI Analysis state
   const [showAIAnalysis, setShowAIAnalysis] = useState(false);
-  
+
   // AI Presentation state
   const [showAIPresentation, setShowAIPresentation] = useState(false);
 
@@ -196,7 +209,7 @@ const Resultado = () => {
 
   // Empresa context
   const [selectedEmpresa, setSelectedEmpresa] = useState<EmpresaData | null>(null);
-  
+
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const empresaIdParam = searchParams.get("empresa_id");
@@ -217,14 +230,14 @@ const Resultado = () => {
 
     try {
       // Build query filters
-      let dreQuery = supabase.from('dre_entries').select('*').eq('user_id', user.id);
-      let balancoQuery = supabase.from('balanco_entries').select('*').eq('user_id', user.id);
-      let balanceteQuery = supabase.from('balancete_entries').select('*').eq('user_id', user.id);
+      let dreQuery = supabase.from("dre_entries").select("*").eq("user_id", user.id);
+      let balancoQuery = supabase.from("balanco_entries").select("*").eq("user_id", user.id);
+      let balanceteQuery = supabase.from("balancete_entries").select("*").eq("user_id", user.id);
 
       if (empresaIdParam) {
-        dreQuery = dreQuery.eq('empresa_id', empresaIdParam);
-        balancoQuery = balancoQuery.eq('empresa_id', empresaIdParam);
-        balanceteQuery = balanceteQuery.eq('empresa_id', empresaIdParam);
+        dreQuery = dreQuery.eq("empresa_id", empresaIdParam);
+        balancoQuery = balancoQuery.eq("empresa_id", empresaIdParam);
+        balanceteQuery = balanceteQuery.eq("empresa_id", empresaIdParam);
       }
 
       // Load DRE entries
@@ -242,35 +255,39 @@ const Resultado = () => {
       if (balanceteData && balanceteData.length > 0) {
         // Store the periodo from the first entry
         setBalancetePeriodo(balanceteData[0].periodo || "");
-        
+
         // Map raw data and apply synthetic detection
         const rawBalancete = balanceteData.map((e: any) => ({
           conta: e.conta,
-          grupo: e.grupo || 'OUTROS',
+          grupo: e.grupo || "OUTROS",
           saldo_anterior: Number(e.saldo_anterior) || 0,
           debitos: Number(e.debitos) || 0,
           creditos: Number(e.creditos) || 0,
           saldo_atual: Number(e.saldo_atual) || 0,
-          natureza: e.natureza || 'devedora',
+          natureza: e.natureza || "devedora",
           valor: Number(e.saldo_atual) || 0, // for synthetic detection
           indent_level: inferIndentFromRawRow(e),
         }));
-        
+
         const balanceteWithDetection = detectSyntheticEntries(rawBalancete);
-        const synthBalanceteCount = balanceteWithDetection.filter(e => e.natureza_conta === 'sintetica').length;
-        console.log(`[Synthetic Detection] ${synthBalanceteCount} sintéticas / ${balanceteWithDetection.length} total (Balancete)`);
-        
-        setBalanceteEntries(balanceteWithDetection.map(e => ({
-          conta: e.conta,
-          grupo: e.grupo,
-          saldo_anterior: e.saldo_anterior,
-          debitos: e.debitos,
-          creditos: e.creditos,
-          saldo_atual: e.saldo_atual,
-          natureza: e.natureza,
-          natureza_conta: e.natureza_conta,
-          detection_motivo: e.detection_motivo,
-        })));
+        const synthBalanceteCount = balanceteWithDetection.filter((e) => e.natureza_conta === "sintetica").length;
+        console.log(
+          `[Synthetic Detection] ${synthBalanceteCount} sintéticas / ${balanceteWithDetection.length} total (Balancete)`,
+        );
+
+        setBalanceteEntries(
+          balanceteWithDetection.map((e) => ({
+            conta: e.conta,
+            grupo: e.grupo,
+            saldo_anterior: e.saldo_anterior,
+            debitos: e.debitos,
+            creditos: e.creditos,
+            saldo_atual: e.saldo_atual,
+            natureza: e.natureza,
+            natureza_conta: e.natureza_conta,
+            detection_motivo: e.detection_motivo,
+          })),
+        );
       }
 
       if (!dreEntries?.length && !balancoEntries?.length && !balanceteData?.length) {
@@ -286,31 +303,37 @@ const Resultado = () => {
       // Calculate Balanço metrics from key lines
       const balanco = calculateBalancoMetrics(balancoEntries as BalancoEntry[]);
       setBalancoData(balanco);
-      
+
       // Apply synthetic/analytic detection and contra account detection to Balanço entries
       const isContaRedutora = (conta: string) => {
         const norm = normalizeText(conta);
-        return /DEPRECIA/.test(norm) || /AMORTIZA/.test(norm) || /EXAUSTAO/.test(norm) ||
-               /PROVISAO.*DEVED/.test(norm) || /PDD/.test(norm) || conta.trim().startsWith('(-)');
+        return (
+          /DEPRECIA/.test(norm) ||
+          /AMORTIZA/.test(norm) ||
+          /EXAUSTAO/.test(norm) ||
+          /PROVISAO.*DEVED/.test(norm) ||
+          /PDD/.test(norm) ||
+          conta.trim().startsWith("(-)")
+        );
       };
       const balancoWithDetection = detectSyntheticEntries(
         (balancoEntries as BalancoEntry[]).map((e) => ({
           ...e,
           indent_level: inferIndentFromRawRow(e),
           is_redutora: isContaRedutora(e.conta),
-        }))
+        })),
       );
-      
+
       // Log synthetic detection results
-      const synthCount = balancoWithDetection.filter(e => e.natureza_conta === 'sintetica').length;
+      const synthCount = balancoWithDetection.filter((e) => e.natureza_conta === "sintetica").length;
       console.log(`[Synthetic Detection] ${synthCount} sintéticas / ${balancoWithDetection.length} total (Balanço)`);
-      
+
       // Validate: sum of analytics vs synthetic total
       const validationWarnings = validateAgainstSyntheticTotals(balancoWithDetection);
       if (validationWarnings.length > 0) {
-        console.warn('[Synthetic Validation]', validationWarnings);
+        console.warn("[Synthetic Validation]", validationWarnings);
       }
-      
+
       // Store raw entries with detection results
       setRawBalancoEntries(balancoWithDetection);
       setRawDreEntries(dreEntries as DREEntry[]);
@@ -331,7 +354,7 @@ const Resultado = () => {
       if (validationLogs && validationLogs.length > 0) {
         const log = validationLogs[0];
         // Cast from Json to ValidationRow[]
-        const rows = (log.validation_rows as unknown) as ValidationRow[];
+        const rows = log.validation_rows as unknown as ValidationRow[];
         setValidationRows(Array.isArray(rows) ? rows : []);
         setValidationFilename(log.filename || "balanco.xls");
       }
@@ -362,149 +385,199 @@ const Resultado = () => {
   /**
    * Classify a DRE entry into its group
    */
-  const classifyDREEntry = (descNormalized: string, descOriginal: string, valor: number): { grupo: DREClassifiedEntry['grupo']; isExplicit: boolean; motivo: string } => {
+  const classifyDREEntry = (
+    descNormalized: string,
+    descOriginal: string,
+    valor: number,
+  ): { grupo: DREClassifiedEntry["grupo"]; isExplicit: boolean; motivo: string } => {
     const desc = descNormalized;
     // ===== RECEITA BRUTA =====
-    if (desc.includes('RECEITA BRUTA') || desc.includes('RECEITA OPERACIONAL BRUTA')) {
-      const isExplicit = desc === 'RECEITA BRUTA' || desc === 'RECEITA OPERACIONAL BRUTA' || desc.includes('TOTAL');
-      return { 
-        grupo: 'receita_bruta', 
-        isExplicit, 
-        motivo: isExplicit ? 'Linha explícita de Receita Bruta' : 'Componente da Receita Bruta' 
+    if (desc.includes("RECEITA BRUTA") || desc.includes("RECEITA OPERACIONAL BRUTA")) {
+      const isExplicit = desc === "RECEITA BRUTA" || desc === "RECEITA OPERACIONAL BRUTA" || desc.includes("TOTAL");
+      return {
+        grupo: "receita_bruta",
+        isExplicit,
+        motivo: isExplicit ? "Linha explícita de Receita Bruta" : "Componente da Receita Bruta",
       };
     }
     // Vendas/serviços/faturamento são classificados pelo bloco do parser, não por keyword aqui
 
     // ===== RECEITA LÍQUIDA =====
-    if (desc.includes('RECEITA LIQUIDA') || desc.includes('RECEITA OPERACIONAL LIQUIDA')) {
-      return { grupo: 'receita_liquida', isExplicit: true, motivo: 'Linha explícita de Receita Líquida' };
+    if (desc.includes("RECEITA LIQUIDA") || desc.includes("RECEITA OPERACIONAL LIQUIDA")) {
+      return { grupo: "receita_liquida", isExplicit: true, motivo: "Linha explícita de Receita Líquida" };
     }
 
     // ===== CMV =====
-    if (desc.includes('CMV') || desc.includes('CPV') || 
-        desc.includes('CUSTO DA MERCADORIA') || desc.includes('CUSTO DAS MERCADORIAS') ||
-        desc.includes('CUSTO DOS PRODUTOS') || desc.includes('CUSTO DOS SERVICOS')) {
-      const isExplicit = desc === 'CMV' || desc === 'CPV' || 
-                         desc === 'CUSTO DA MERCADORIA VENDIDA' || 
-                         desc === 'CUSTO DAS MERCADORIAS VENDIDAS' ||
-                         desc === 'CUSTO DOS PRODUTOS VENDIDOS' ||
-                         desc === 'CUSTO DOS SERVICOS PRESTADOS' ||
-                         desc.includes('TOTAL');
-      return { grupo: 'cmv', isExplicit, motivo: isExplicit ? 'Linha explícita de CMV' : 'Componente de CMV' };
+    if (
+      desc.includes("CMV") ||
+      desc.includes("CPV") ||
+      desc.includes("CUSTO DA MERCADORIA") ||
+      desc.includes("CUSTO DAS MERCADORIAS") ||
+      desc.includes("CUSTO DOS PRODUTOS") ||
+      desc.includes("CUSTO DOS SERVICOS")
+    ) {
+      const isExplicit =
+        desc === "CMV" ||
+        desc === "CPV" ||
+        desc === "CUSTO DA MERCADORIA VENDIDA" ||
+        desc === "CUSTO DAS MERCADORIAS VENDIDAS" ||
+        desc === "CUSTO DOS PRODUTOS VENDIDOS" ||
+        desc === "CUSTO DOS SERVICOS PRESTADOS" ||
+        desc.includes("TOTAL");
+      return { grupo: "cmv", isExplicit, motivo: isExplicit ? "Linha explícita de CMV" : "Componente de CMV" };
     }
 
     // ===== LUCRO BRUTO =====
-    if (desc === 'LUCRO BRUTO' || desc === 'RESULTADO BRUTO') {
-      return { grupo: 'lucro_bruto', isExplicit: true, motivo: 'Linha explícita de Lucro Bruto' };
+    if (desc === "LUCRO BRUTO" || desc === "RESULTADO BRUTO") {
+      return { grupo: "lucro_bruto", isExplicit: true, motivo: "Linha explícita de Lucro Bruto" };
     }
 
-
     // ===== DESPESAS OPERACIONAIS =====
-    if (desc.includes('DESPESAS OPERACIONAIS') || desc.includes('DESPESAS ADMINISTRATIVAS') ||
-        desc.includes('DESPESAS COM VENDAS') || desc.includes('DESPESAS GERAIS') ||
-        desc.includes('DESPESAS TRABALHISTAS')) {
-      const isExplicit = desc === 'DESPESAS OPERACIONAIS' || 
-                         desc === 'TOTAL DESPESAS OPERACIONAIS' ||
-                         desc === 'TOTAL DAS DESPESAS OPERACIONAIS' ||
-                         (desc.includes('TOTAL') && desc.includes('DESPESAS'));
-      return { grupo: 'despesas_operacionais', isExplicit, motivo: isExplicit ? 'Linha explícita de Despesas Operacionais' : 'Componente de Despesas Operacionais' };
+    if (
+      desc.includes("DESPESAS OPERACIONAIS") ||
+      desc.includes("DESPESAS ADMINISTRATIVAS") ||
+      desc.includes("DESPESAS COM VENDAS") ||
+      desc.includes("DESPESAS GERAIS") ||
+      desc.includes("DESPESAS TRABALHISTAS")
+    ) {
+      const isExplicit =
+        desc === "DESPESAS OPERACIONAIS" ||
+        desc === "TOTAL DESPESAS OPERACIONAIS" ||
+        desc === "TOTAL DAS DESPESAS OPERACIONAIS" ||
+        (desc.includes("TOTAL") && desc.includes("DESPESAS"));
+      return {
+        grupo: "despesas_operacionais",
+        isExplicit,
+        motivo: isExplicit ? "Linha explícita de Despesas Operacionais" : "Componente de Despesas Operacionais",
+      };
     }
 
     // ===== LUCRO OPERACIONAL =====
     // Inclui: LUCRO OPERACIONAL, RESULTADO OPERACIONAL, e qualquer conta com "OPERACIONAL LIQUIDO"
-    if (desc === 'LUCRO OPERACIONAL' || desc === 'RESULTADO OPERACIONAL' || desc.includes('OPERACIONAL LIQUIDO')) {
-      return { grupo: 'lucro_operacional', isExplicit: true, motivo: 'Linha explícita de Lucro Operacional' };
+    if (desc === "LUCRO OPERACIONAL" || desc === "RESULTADO OPERACIONAL" || desc.includes("OPERACIONAL LIQUIDO")) {
+      return { grupo: "lucro_operacional", isExplicit: true, motivo: "Linha explícita de Lucro Operacional" };
     }
 
     // ===== NÃO OPERACIONAL (categoria separada) =====
     // Detectar itens NÃO OPERACIONAIS (com ou sem acento, maiúsculo/minúsculo)
-    const isNaoOperacional = desc.includes('NAO OPERACIONAL') || 
-                             desc.includes('NÃO OPERACIONAL') ||
-                             desc.includes('NAO OPERACIONAIS') ||
-                             desc.includes('NÃO OPERACIONAIS') ||
-                             descOriginal.toUpperCase().includes('NÃO OPERACIONAL') ||
-                             descOriginal.toUpperCase().includes('NAO OPERACIONAL');
-    
+    const isNaoOperacional =
+      desc.includes("NAO OPERACIONAL") ||
+      desc.includes("NÃO OPERACIONAL") ||
+      desc.includes("NAO OPERACIONAIS") ||
+      desc.includes("NÃO OPERACIONAIS") ||
+      descOriginal.toUpperCase().includes("NÃO OPERACIONAL") ||
+      descOriginal.toUpperCase().includes("NAO OPERACIONAL");
+
     if (isNaoOperacional) {
-      return { grupo: 'nao_operacional', isExplicit: false, motivo: 'Item Não Operacional' };
+      return { grupo: "nao_operacional", isExplicit: false, motivo: "Item Não Operacional" };
     }
 
     // ===== ALIENAÇÃO → NÃO OPERACIONAL =====
-    if (desc.includes('ALIENACAO') || descOriginal.toUpperCase().includes('ALIENAÇÃO')) {
-      return { grupo: 'nao_operacional', isExplicit: false, motivo: 'Conta de Alienação (Não Operacional)' };
+    if (desc.includes("ALIENACAO") || descOriginal.toUpperCase().includes("ALIENAÇÃO")) {
+      return { grupo: "nao_operacional", isExplicit: false, motivo: "Conta de Alienação (Não Operacional)" };
     }
 
     // ===== RESULTADO FINANCEIRO (apenas headers de bloco — classificação real é feita pelo bloco) =====
-    if (desc === 'RESULTADO FINANCEIRO' || desc === 'RESULTADO FINANCEIRO LIQUIDO' ||
-        (desc.includes('TOTAL') && desc.includes('FINANCEIRO'))) {
-      return { grupo: 'resultado_financeiro', isExplicit: true, motivo: 'Linha explícita de Resultado Financeiro' };
+    if (
+      desc === "RESULTADO FINANCEIRO" ||
+      desc === "RESULTADO FINANCEIRO LIQUIDO" ||
+      (desc.includes("TOTAL") && desc.includes("FINANCEIRO"))
+    ) {
+      return { grupo: "resultado_financeiro", isExplicit: true, motivo: "Linha explícita de Resultado Financeiro" };
     }
 
     // ===== PROVISÕES (contas que começam com "PROVISÃO" ou "PROVISAO") — ANTES de Contribuição Social e IRPJ =====
-    if (desc.startsWith('PROVISAO') || desc.startsWith('PROVISÃO') ||
-        descOriginal.toUpperCase().startsWith('PROVISÃO') || descOriginal.toUpperCase().startsWith('PROVISAO')) {
-      return { grupo: 'provisoes', isExplicit: false, motivo: 'Provisão (começa com PROVISÃO)' };
+    if (
+      desc.startsWith("PROVISAO") ||
+      desc.startsWith("PROVISÃO") ||
+      descOriginal.toUpperCase().startsWith("PROVISÃO") ||
+      descOriginal.toUpperCase().startsWith("PROVISAO")
+    ) {
+      return { grupo: "provisoes", isExplicit: false, motivo: "Provisão (começa com PROVISÃO)" };
     }
 
     // ===== CONTAS RESULTADO (contas que começam com "RESULTADO" — prioridade sobre CSLL e IR) =====
-    if (desc.startsWith('RESULTADO')) {
+    if (desc.startsWith("RESULTADO")) {
       // Exceto as já capturadas acima (RESULTADO FINANCEIRO, RESULTADO BRUTO, RESULTADO OPERACIONAL, RESULTADO LÍQUIDO)
-      return { grupo: 'contas_resultado', isExplicit: false, motivo: 'Conta de Resultado (começa com RESULTADO)' };
+      return { grupo: "contas_resultado", isExplicit: false, motivo: "Conta de Resultado (começa com RESULTADO)" };
     }
 
     // ===== CONTRIBUIÇÃO SOCIAL (não começa com RESULTADO) =====
-    if (desc.includes('CONTRIBUICAO SOCIAL') || desc.includes('CSLL')) {
-      const isExplicit = desc === 'CONTRIBUICAO SOCIAL' || desc === 'CSLL';
-      return { grupo: 'contribuicao_social', isExplicit, motivo: isExplicit ? 'Linha explícita de Contribuição Social' : 'Componente de Contribuição Social' };
+    if (desc.includes("CONTRIBUICAO SOCIAL") || desc.includes("CSLL")) {
+      const isExplicit = desc === "CONTRIBUICAO SOCIAL" || desc === "CSLL";
+      return {
+        grupo: "contribuicao_social",
+        isExplicit,
+        motivo: isExplicit ? "Linha explícita de Contribuição Social" : "Componente de Contribuição Social",
+      };
     }
 
     // ===== IR / IRPJ / IMPOSTO DE RENDA (não começa com RESULTADO) =====
-    if (desc.includes('IRPJ') || desc.includes('IMPOSTO DE RENDA') || 
-        (desc.includes(' IR ') || desc.endsWith(' IR') || desc === 'IR')) {
-      return { grupo: 'ir', isExplicit: false, motivo: 'Imposto de Renda (IR/IRPJ)' };
+    if (
+      desc.includes("IRPJ") ||
+      desc.includes("IMPOSTO DE RENDA") ||
+      desc.includes(" IR ") ||
+      desc.endsWith(" IR") ||
+      desc === "IR"
+    ) {
+      return { grupo: "ir", isExplicit: false, motivo: "Imposto de Renda (IR/IRPJ)" };
     }
 
-    if (desc.includes('LUCRO LIQUIDO') || desc.includes('RESULTADO LIQUIDO') ||
-        desc.includes('LUCRO DO EXERCICIO') || desc.includes('RESULTADO DO EXERCICIO') ||
-        desc.includes('LUCRO DO PERIODO')) {
-      return { grupo: 'lucro_liquido', isExplicit: true, motivo: 'Linha explícita de Lucro Líquido' };
+    if (
+      desc.includes("LUCRO LIQUIDO") ||
+      desc.includes("RESULTADO LIQUIDO") ||
+      desc.includes("LUCRO DO EXERCICIO") ||
+      desc.includes("RESULTADO DO EXERCICIO") ||
+      desc.includes("LUCRO DO PERIODO")
+    ) {
+      return { grupo: "lucro_liquido", isExplicit: true, motivo: "Linha explícita de Lucro Líquido" };
     }
 
-    // ===== CONTAS QUE COMEÇAM COM "IMPOSTOS" → DESPESAS OPERACIONAIS =====
-    if (desc.startsWith('IMPOSTOS')) {
-      return { grupo: 'despesas_operacionais', isExplicit: false, motivo: 'Conta de Impostos (Despesa Operacional)' };
+    // ===== CONTAS QUE COMEÇAM COM "IMPOSTOS", "MULTAS" ou "TAXAS" → DESPESAS TRIBUTÁRIAS =====
+    if (desc.startsWith("IMPOSTOS") || desc.startsWith("MULTAS") || desc.startsWith("TAXAS")) {
+      return {
+        grupo: "despesas_operacionais",
+        isExplicit: false,
+        motivo: "Despesa Tributária (Impostos/Multas/Taxas)",
+      };
     }
 
     // Deduções são classificadas pelo bloco do parser (entre Receita Operacional e Receita Líquida = DEDUCOES)
 
     // ===== FALLBACK: Contas não classificadas vão para DESPESAS OPERACIONAIS =====
-    return { grupo: 'despesas_operacionais', isExplicit: false, motivo: 'Classificado como Despesa Operacional (fallback)' };
+    return {
+      grupo: "despesas_operacionais",
+      isExplicit: false,
+      motivo: "Classificado como Despesa Operacional (fallback)",
+    };
   };
 
   /**
    * Calculate DRE metrics with classification for debug
    * Includes range-based CMV block detection (ESTOQUE INICIAL → ESTOQUE FINAL)
    */
-  const calculateDREMetricsWithClassification = (entries: DREEntry[]): { metrics: CalculatedDRE; classifiedEntries: DREClassifiedEntry[] } => {
+  const calculateDREMetricsWithClassification = (
+    entries: DREEntry[],
+  ): { metrics: CalculatedDRE; classifiedEntries: DREClassifiedEntry[] } => {
     const metrics: CalculatedDRE = {
       receitaBruta: 0,
-      receitaBrutaOrigem: 'soma_contas',
+      receitaBrutaOrigem: "soma_contas",
       receitaLiquida: 0,
-      receitaLiquidaOrigem: 'soma_contas',
+      receitaLiquidaOrigem: "soma_contas",
       cmv: 0,
-      cmvOrigem: 'soma_contas',
+      cmvOrigem: "soma_contas",
       lucroBruto: 0,
-      lucroBrutoOrigem: 'soma_contas',
+      lucroBrutoOrigem: "soma_contas",
       despesasOperacionais: 0,
-      despesasOperacionaisOrigem: 'soma_contas',
+      despesasOperacionaisOrigem: "soma_contas",
       lucroOperacional: 0,
-      lucroOperacionalOrigem: 'soma_contas',
+      lucroOperacionalOrigem: "soma_contas",
       resultadoFinanceiro: 0,
-      resultadoFinanceiroOrigem: 'soma_contas',
+      resultadoFinanceiroOrigem: "soma_contas",
       contribuicaoSocial: 0,
-      contribuicaoSocialOrigem: 'soma_contas',
+      contribuicaoSocialOrigem: "soma_contas",
       lucroLiquido: 0,
-      lucroLiquidoOrigem: 'soma_contas',
+      lucroLiquidoOrigem: "soma_contas",
       margemBruta: 0,
       margemOperacional: 0,
       margemLiquida: 0,
@@ -529,24 +602,24 @@ const Resultado = () => {
     let somaResultadoFinanceiro = 0;
 
     // Map parser grupo to classification grupo
-    const mapGrupo = (parserGrupo: string): DREClassifiedEntry['grupo'] => {
-      const map: Record<string, DREClassifiedEntry['grupo']> = {
-        'RECEITA_BRUTA': 'receita_bruta',
-        'RECEITA_LIQUIDA': 'receita_liquida',
-        'CMV': 'cmv',
-        'LUCRO_BRUTO': 'lucro_bruto',
-        'DESPESAS_OPERACIONAIS': 'despesas_operacionais',
-        'DEDUCOES': 'despesas_operacionais',
-        'LUCRO_OPERACIONAL': 'lucro_operacional',
-        'RESULTADO_FINANCEIRO': 'resultado_financeiro',
-        'NAO_OPERACIONAL': 'nao_operacional',
-        'CONTRIBUICAO_SOCIAL': 'contribuicao_social',
-        'LUCRO_LIQUIDO': 'lucro_liquido',
-        'CONTAS_RESULTADO': 'contas_resultado',
-        'PROVISOES': 'provisoes',
-        'IR': 'ir',
+    const mapGrupo = (parserGrupo: string): DREClassifiedEntry["grupo"] => {
+      const map: Record<string, DREClassifiedEntry["grupo"]> = {
+        RECEITA_BRUTA: "receita_bruta",
+        RECEITA_LIQUIDA: "receita_liquida",
+        CMV: "cmv",
+        LUCRO_BRUTO: "lucro_bruto",
+        DESPESAS_OPERACIONAIS: "despesas_operacionais",
+        DEDUCOES: "despesas_operacionais",
+        LUCRO_OPERACIONAL: "lucro_operacional",
+        RESULTADO_FINANCEIRO: "resultado_financeiro",
+        NAO_OPERACIONAL: "nao_operacional",
+        CONTRIBUICAO_SOCIAL: "contribuicao_social",
+        LUCRO_LIQUIDO: "lucro_liquido",
+        CONTAS_RESULTADO: "contas_resultado",
+        PROVISOES: "provisoes",
+        IR: "ir",
       };
-      return map[parserGrupo] || 'despesas_operacionais';
+      return map[parserGrupo] || "despesas_operacionais";
     };
 
     for (const entry of entries) {
@@ -555,11 +628,11 @@ const Resultado = () => {
       const valorAbs = Math.abs(valor);
 
       // Use stored grupo from parser (falls back to classifyDREEntry if no grupo stored)
-      let grupo: DREClassifiedEntry['grupo'];
+      let grupo: DREClassifiedEntry["grupo"];
       let motivo: string;
       let isExplicit: boolean;
 
-      if (entry.grupo && entry.grupo !== 'OUTROS') {
+      if (entry.grupo && entry.grupo !== "OUTROS") {
         grupo = mapGrupo(entry.grupo);
         isExplicit = false;
         motivo = `Classificado pela IA: ${entry.grupo}`;
@@ -577,110 +650,129 @@ const Resultado = () => {
         grupo,
         isExplicit,
         motivo,
-        insideCMVBlock: grupo === 'cmv'
+        insideCMVBlock: grupo === "cmv",
       });
 
       // Acumular baseado no grupo classificado (para fallback)
-      if (grupo === 'despesas_operacionais') {
+      if (grupo === "despesas_operacionais") {
         somaDespesasOperacionais += valorAbs;
       }
-      if (grupo === 'resultado_financeiro') {
+      if (grupo === "resultado_financeiro") {
         somaResultadoFinanceiro += valor;
       }
-      if (grupo === 'cmv') {
+      if (grupo === "cmv") {
         somaCMV += valor;
       }
-      if (grupo === 'receita_bruta') {
+      if (grupo === "receita_bruta") {
         somaReceitaBruta += valorAbs;
       }
 
       // ===== RECEITA BRUTA (linha explícita) =====
-      if (desc.includes('RECEITA BRUTA') || desc.includes('RECEITA OPERACIONAL BRUTA')) {
-        if (desc === 'RECEITA BRUTA' || desc === 'RECEITA OPERACIONAL BRUTA' || desc.includes('TOTAL')) {
+      if (desc.includes("RECEITA BRUTA") || desc.includes("RECEITA OPERACIONAL BRUTA")) {
+        if (desc === "RECEITA BRUTA" || desc === "RECEITA OPERACIONAL BRUTA" || desc.includes("TOTAL")) {
           if (!foundReceitaBruta) {
             metrics.receitaBruta = valorAbs;
-            metrics.receitaBrutaOrigem = 'linha_explicita';
+            metrics.receitaBrutaOrigem = "linha_explicita";
             foundReceitaBruta = true;
           }
         }
       }
 
       // ===== RECEITA LÍQUIDA =====
-      if (desc.includes('RECEITA LIQUIDA') || desc.includes('RECEITA OPERACIONAL LIQUIDA')) {
+      if (desc.includes("RECEITA LIQUIDA") || desc.includes("RECEITA OPERACIONAL LIQUIDA")) {
         if (!foundReceitaLiquida) {
           metrics.receitaLiquida = valorAbs;
-          metrics.receitaLiquidaOrigem = 'linha_explicita';
+          metrics.receitaLiquidaOrigem = "linha_explicita";
           foundReceitaLiquida = true;
         }
       }
 
       // ===== CMV (linha explícita) =====
-      if (desc.includes('CMV') || desc.includes('CPV') || 
-          desc.includes('CUSTO DA MERCADORIA') || desc.includes('CUSTO DAS MERCADORIAS') ||
-          desc.includes('CUSTO DOS PRODUTOS') || desc.includes('CUSTO DOS SERVICOS')) {
-        const isTotal = desc === 'CMV' || desc === 'CPV' || 
-                       desc === 'CUSTO DA MERCADORIA VENDIDA' || 
-                       desc === 'CUSTO DAS MERCADORIAS VENDIDAS' ||
-                       desc === 'CUSTO DOS PRODUTOS VENDIDOS' ||
-                       desc === 'CUSTO DOS SERVICOS PRESTADOS' ||
-                       desc.includes('TOTAL');
+      if (
+        desc.includes("CMV") ||
+        desc.includes("CPV") ||
+        desc.includes("CUSTO DA MERCADORIA") ||
+        desc.includes("CUSTO DAS MERCADORIAS") ||
+        desc.includes("CUSTO DOS PRODUTOS") ||
+        desc.includes("CUSTO DOS SERVICOS")
+      ) {
+        const isTotal =
+          desc === "CMV" ||
+          desc === "CPV" ||
+          desc === "CUSTO DA MERCADORIA VENDIDA" ||
+          desc === "CUSTO DAS MERCADORIAS VENDIDAS" ||
+          desc === "CUSTO DOS PRODUTOS VENDIDOS" ||
+          desc === "CUSTO DOS SERVICOS PRESTADOS" ||
+          desc.includes("TOTAL");
         if (isTotal && !foundCMV) {
           metrics.cmv = valor;
-          metrics.cmvOrigem = 'linha_explicita';
+          metrics.cmvOrigem = "linha_explicita";
           foundCMV = true;
         }
       }
 
       // ===== LUCRO BRUTO =====
-      if (desc === 'LUCRO BRUTO' || desc === 'RESULTADO BRUTO') {
+      if (desc === "LUCRO BRUTO" || desc === "RESULTADO BRUTO") {
         if (!foundLucroBruto) {
           metrics.lucroBruto = valorAbs;
-          metrics.lucroBrutoOrigem = 'linha_explicita';
+          metrics.lucroBrutoOrigem = "linha_explicita";
           foundLucroBruto = true;
         }
       }
 
       // ===== DESPESAS OPERACIONAIS (linha explícita) =====
-      if (desc.includes('DESPESAS OPERACIONAIS') || desc.includes('DESPESAS ADMINISTRATIVAS') ||
-          desc.includes('DESPESAS COM VENDAS') || desc.includes('DESPESAS GERAIS') ||
-          desc.includes('DESPESAS TRABALHISTAS')) {
-        const isTotal = desc === 'DESPESAS OPERACIONAIS' || 
-                       desc === 'TOTAL DESPESAS OPERACIONAIS' ||
-                       desc === 'TOTAL DAS DESPESAS OPERACIONAIS' ||
-                       (desc.includes('TOTAL') && desc.includes('DESPESAS'));
+      if (
+        desc.includes("DESPESAS OPERACIONAIS") ||
+        desc.includes("DESPESAS ADMINISTRATIVAS") ||
+        desc.includes("DESPESAS COM VENDAS") ||
+        desc.includes("DESPESAS GERAIS") ||
+        desc.includes("DESPESAS TRABALHISTAS")
+      ) {
+        const isTotal =
+          desc === "DESPESAS OPERACIONAIS" ||
+          desc === "TOTAL DESPESAS OPERACIONAIS" ||
+          desc === "TOTAL DAS DESPESAS OPERACIONAIS" ||
+          (desc.includes("TOTAL") && desc.includes("DESPESAS"));
         if (isTotal && !foundDespesasOp) {
           metrics.despesasOperacionais = valorAbs;
-          metrics.despesasOperacionaisOrigem = 'linha_explicita';
+          metrics.despesasOperacionaisOrigem = "linha_explicita";
           foundDespesasOp = true;
         }
       }
 
       // ===== LUCRO OPERACIONAL =====
-      if (desc === 'LUCRO OPERACIONAL' || desc === 'RESULTADO OPERACIONAL' || desc.includes('OPERACIONAL LIQUIDO')) {
+      if (desc === "LUCRO OPERACIONAL" || desc === "RESULTADO OPERACIONAL" || desc.includes("OPERACIONAL LIQUIDO")) {
         if (!foundLucroOp) {
           metrics.lucroOperacional = valorAbs;
-          metrics.lucroOperacionalOrigem = 'linha_explicita';
+          metrics.lucroOperacionalOrigem = "linha_explicita";
           foundLucroOp = true;
         }
       }
 
       // ===== RESULTADO FINANCEIRO (linha explícita total) =====
-      if (desc === 'RESULTADO FINANCEIRO' || desc === 'RESULTADO FINANCEIRO LIQUIDO' ||
-          (desc.includes('TOTAL') && desc.includes('FINANCEIRO'))) {
+      if (
+        desc === "RESULTADO FINANCEIRO" ||
+        desc === "RESULTADO FINANCEIRO LIQUIDO" ||
+        (desc.includes("TOTAL") && desc.includes("FINANCEIRO"))
+      ) {
         if (!foundResultadoFin) {
           metrics.resultadoFinanceiro = valor;
-          metrics.resultadoFinanceiroOrigem = 'linha_explicita';
+          metrics.resultadoFinanceiroOrigem = "linha_explicita";
           foundResultadoFin = true;
         }
       }
 
       // ===== LUCRO LÍQUIDO =====
-      if (desc.includes('LUCRO LIQUIDO') || desc.includes('RESULTADO LIQUIDO') ||
-          desc.includes('LUCRO DO EXERCICIO') || desc.includes('RESULTADO DO EXERCICIO') ||
-          desc.includes('LUCRO DO PERIODO')) {
+      if (
+        desc.includes("LUCRO LIQUIDO") ||
+        desc.includes("RESULTADO LIQUIDO") ||
+        desc.includes("LUCRO DO EXERCICIO") ||
+        desc.includes("RESULTADO DO EXERCICIO") ||
+        desc.includes("LUCRO DO PERIODO")
+      ) {
         if (!foundLucroLiq) {
           metrics.lucroLiquido = valorAbs;
-          metrics.lucroLiquidoOrigem = 'linha_explicita';
+          metrics.lucroLiquidoOrigem = "linha_explicita";
           foundLucroLiq = true;
         }
       }
@@ -689,7 +781,7 @@ const Resultado = () => {
     // ===== FALLBACKS =====
     if (!foundReceitaBruta && somaReceitaBruta > 0) {
       metrics.receitaBruta = somaReceitaBruta;
-      metrics.receitaBrutaOrigem = 'soma_contas';
+      metrics.receitaBrutaOrigem = "soma_contas";
     }
 
     if (!foundReceitaLiquida && metrics.receitaBruta > 0) {
@@ -699,17 +791,17 @@ const Resultado = () => {
 
     if (!foundCMV && somaCMV !== 0) {
       metrics.cmv = somaCMV;
-      metrics.cmvOrigem = 'soma_contas';
+      metrics.cmvOrigem = "soma_contas";
     }
 
     if (!foundDespesasOp && somaDespesasOperacionais > 0) {
       metrics.despesasOperacionais = somaDespesasOperacionais;
-      metrics.despesasOperacionaisOrigem = 'soma_contas';
+      metrics.despesasOperacionaisOrigem = "soma_contas";
     }
 
     if (!foundResultadoFin && somaResultadoFinanceiro !== 0) {
       metrics.resultadoFinanceiro = somaResultadoFinanceiro;
-      metrics.resultadoFinanceiroOrigem = 'soma_contas';
+      metrics.resultadoFinanceiroOrigem = "soma_contas";
     }
 
     // Calcular margens
@@ -724,21 +816,21 @@ const Resultado = () => {
   /**
    * Get color class for DRE group
    */
-  const getDREGroupColor = (grupo: DREClassifiedEntry['grupo']): string => {
-    const colors: Record<DREClassifiedEntry['grupo'], string> = {
-      receita_bruta: 'bg-green-500/20 text-green-400 border-green-500/30',
-      receita_liquida: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-      cmv: 'bg-red-500/20 text-red-400 border-red-500/30',
-      lucro_bruto: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-      despesas_operacionais: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-      lucro_operacional: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
-      resultado_financeiro: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-      contribuicao_social: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30',
-      nao_operacional: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
-      lucro_liquido: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-      contas_resultado: 'bg-teal-500/20 text-teal-400 border-teal-500/30',
-      provisoes: 'bg-rose-500/20 text-rose-400 border-rose-500/30',
-      ir: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+  const getDREGroupColor = (grupo: DREClassifiedEntry["grupo"]): string => {
+    const colors: Record<DREClassifiedEntry["grupo"], string> = {
+      receita_bruta: "bg-green-500/20 text-green-400 border-green-500/30",
+      receita_liquida: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+      cmv: "bg-red-500/20 text-red-400 border-red-500/30",
+      lucro_bruto: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+      despesas_operacionais: "bg-orange-500/20 text-orange-400 border-orange-500/30",
+      lucro_operacional: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+      resultado_financeiro: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+      contribuicao_social: "bg-indigo-500/20 text-indigo-400 border-indigo-500/30",
+      nao_operacional: "bg-pink-500/20 text-pink-400 border-pink-500/30",
+      lucro_liquido: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+      contas_resultado: "bg-teal-500/20 text-teal-400 border-teal-500/30",
+      provisoes: "bg-rose-500/20 text-rose-400 border-rose-500/30",
+      ir: "bg-amber-500/20 text-amber-400 border-amber-500/30",
     };
     return colors[grupo];
   };
@@ -746,28 +838,28 @@ const Resultado = () => {
   /**
    * Get label for DRE group
    */
-  const getDREGroupLabel = (grupo: DREClassifiedEntry['grupo']): string => {
-    const labels: Record<DREClassifiedEntry['grupo'], string> = {
-      receita_bruta: 'Receita Bruta',
-      receita_liquida: 'Receita Líquida',
-      cmv: 'CMV',
-      lucro_bruto: 'Lucro Bruto',
-      despesas_operacionais: 'Despesas Operacionais',
-      lucro_operacional: 'Lucro Operacional',
-      resultado_financeiro: 'Resultado Financeiro',
-      contribuicao_social: 'Contribuição Social',
-      nao_operacional: 'Não Operacional',
-      lucro_liquido: 'Lucro Líquido',
-      contas_resultado: 'Contas Resultado',
-      provisoes: 'Provisões',
-      ir: 'Imposto de Renda',
+  const getDREGroupLabel = (grupo: DREClassifiedEntry["grupo"]): string => {
+    const labels: Record<DREClassifiedEntry["grupo"], string> = {
+      receita_bruta: "Receita Bruta",
+      receita_liquida: "Receita Líquida",
+      cmv: "CMV",
+      lucro_bruto: "Lucro Bruto",
+      despesas_operacionais: "Despesas Operacionais",
+      lucro_operacional: "Lucro Operacional",
+      resultado_financeiro: "Resultado Financeiro",
+      contribuicao_social: "Contribuição Social",
+      nao_operacional: "Não Operacional",
+      lucro_liquido: "Lucro Líquido",
+      contas_resultado: "Contas Resultado",
+      provisoes: "Provisões",
+      ir: "Imposto de Renda",
     };
     return labels[grupo];
   };
 
   /**
    * Calculate Balanço metrics by finding KEY LINES directly
-   * 
+   *
    * RULES (DO NOT SUM - read directly from specific lines):
    * 1. ATIVO → Ativo Total
    * 2. CIRCULANTE (first one after ATIVO) → Ativo Circulante
@@ -797,7 +889,7 @@ const Resultado = () => {
       const conta = normalizeText(entry.conta);
 
       // 1. Line "ATIVO" → ATIVO_TOTAL
-      if (conta === 'ATIVO') {
+      if (conta === "ATIVO") {
         ativoTotal = valor;
         inAtivoSection = true;
         inPassivoSection = false;
@@ -805,7 +897,7 @@ const Resultado = () => {
       }
 
       // 4. Line "PASSIVO" → PASSIVO_TOTAL
-      if (conta === 'PASSIVO') {
+      if (conta === "PASSIVO") {
         passivoTotal = valor;
         inAtivoSection = false;
         inPassivoSection = true;
@@ -814,7 +906,7 @@ const Resultado = () => {
 
       // 2. Line "CIRCULANTE" under ATIVO → ATIVO_CIRCULANTE
       // 5. Line "CIRCULANTE" under PASSIVO → PASSIVO_CIRCULANTE
-      if (conta === 'CIRCULANTE') {
+      if (conta === "CIRCULANTE") {
         if (inAtivoSection && !foundAtivoCirculante) {
           ativoCirculante = valor;
           foundAtivoCirculante = true;
@@ -826,19 +918,19 @@ const Resultado = () => {
       }
 
       // 3. Line "ATIVO NAO CIRCULANTE" or "NAO CIRCULANTE" under ATIVO
-      if (conta === 'ATIVO NAO CIRCULANTE' || (conta === 'NAO CIRCULANTE' && inAtivoSection)) {
+      if (conta === "ATIVO NAO CIRCULANTE" || (conta === "NAO CIRCULANTE" && inAtivoSection)) {
         ativoNaoCirculante = valor;
         continue;
       }
 
       // 6. Line "PASSIVO NAO CIRCULANTE" or "NAO CIRCULANTE" under PASSIVO
-      if (conta === 'PASSIVO NAO CIRCULANTE' || (conta === 'NAO CIRCULANTE' && inPassivoSection)) {
+      if (conta === "PASSIVO NAO CIRCULANTE" || (conta === "NAO CIRCULANTE" && inPassivoSection)) {
         passivoNaoCirculante = valor;
         continue;
       }
 
       // 7. Line "PATRIMONIO LIQUIDO"
-      if (conta === 'PATRIMONIO LIQUIDO') {
+      if (conta === "PATRIMONIO LIQUIDO") {
         patrimonioLiquido = valor;
         continue;
       }
@@ -851,7 +943,7 @@ const Resultado = () => {
       passivoCirculante,
       passivoNaoCirculante,
       passivoTotal,
-      patrimonioLiquido
+      patrimonioLiquido,
     };
   };
 
@@ -859,79 +951,88 @@ const Resultado = () => {
    * Generate diagnostic lines for debugging import issues
    */
   const generateDiagnosticLines = (entries: BalancoEntry[]): DiagnosticLine[] => {
-    const keyAccounts = ['ATIVO', 'CIRCULANTE', 'NAO CIRCULANTE', 'ATIVO NAO CIRCULANTE', 'PASSIVO', 'PASSIVO NAO CIRCULANTE', 'PATRIMONIO LIQUIDO'];
+    const keyAccounts = [
+      "ATIVO",
+      "CIRCULANTE",
+      "NAO CIRCULANTE",
+      "ATIVO NAO CIRCULANTE",
+      "PASSIVO",
+      "PASSIVO NAO CIRCULANTE",
+      "PATRIMONIO LIQUIDO",
+    ];
     const diagnostics: DiagnosticLine[] = [];
 
     // Track section context
-    let currentSection: 'ATIVO' | 'PASSIVO' | 'PL' = 'ATIVO';
+    let currentSection: "ATIVO" | "PASSIVO" | "PL" = "ATIVO";
     let foundAtivoCirculante = false;
     let foundPassivoCirculante = false;
 
     for (const entry of entries) {
       const contaNorm = normalizeText(entry.conta);
-      
-      let secao: 'ATIVO' | 'PASSIVO' | 'PL' | '-' = currentSection;
-      let motivo = '';
+
+      let secao: "ATIVO" | "PASSIVO" | "PL" | "-" = currentSection;
+      let motivo = "";
       let tipoClassificado = entry.tipo;
 
-      if (contaNorm === 'ATIVO') {
-        currentSection = 'ATIVO';
-        secao = 'ATIVO';
+      if (contaNorm === "ATIVO") {
+        currentSection = "ATIVO";
+        secao = "ATIVO";
         foundAtivoCirculante = false;
-        motivo = 'Início da seção ATIVO';
-      } else if (contaNorm === 'PASSIVO') {
-        currentSection = 'PASSIVO';
-        secao = 'PASSIVO';
+        motivo = "Início da seção ATIVO";
+      } else if (contaNorm === "PASSIVO") {
+        currentSection = "PASSIVO";
+        secao = "PASSIVO";
         foundPassivoCirculante = false;
-        motivo = 'Início da seção PASSIVO';
-      } else if (contaNorm.includes('PATRIMONIO LIQUIDO')) {
-        currentSection = 'PL';
-        secao = 'PL';
-        motivo = 'Patrimônio Líquido detectado';
-      } else if (contaNorm === 'CIRCULANTE' || contaNorm.startsWith('CIRCULANTE')) {
+        motivo = "Início da seção PASSIVO";
+      } else if (contaNorm.includes("PATRIMONIO LIQUIDO")) {
+        currentSection = "PL";
+        secao = "PL";
+        motivo = "Patrimônio Líquido detectado";
+      } else if (contaNorm === "CIRCULANTE" || contaNorm.startsWith("CIRCULANTE")) {
         secao = currentSection;
-        if (currentSection === 'ATIVO' && !foundAtivoCirculante) {
+        if (currentSection === "ATIVO" && !foundAtivoCirculante) {
           foundAtivoCirculante = true;
           motivo = `PRIMEIRO "CIRCULANTE" na seção ATIVO → ATIVO_CIRCULANTE`;
-        } else if (currentSection === 'PASSIVO' && !foundPassivoCirculante) {
+        } else if (currentSection === "PASSIVO" && !foundPassivoCirculante) {
           foundPassivoCirculante = true;
           motivo = `PRIMEIRO "CIRCULANTE" na seção PASSIVO → PASSIVO_CIRCULANTE`;
         } else {
           motivo = `"CIRCULANTE" adicional - subconta de ${tipoClassificado}`;
         }
-      } else if (contaNorm === 'ATIVO CIRCULANTE') {
-        secao = 'ATIVO';
+      } else if (contaNorm === "ATIVO CIRCULANTE") {
+        secao = "ATIVO";
         foundAtivoCirculante = true;
         motivo = '"ATIVO CIRCULANTE" explícito';
-      } else if (contaNorm === 'PASSIVO CIRCULANTE') {
-        secao = 'PASSIVO';
+      } else if (contaNorm === "PASSIVO CIRCULANTE") {
+        secao = "PASSIVO";
         foundPassivoCirculante = true;
         motivo = '"PASSIVO CIRCULANTE" explícito';
-      } else if (contaNorm.includes('NAO CIRCULANTE')) {
+      } else if (contaNorm.includes("NAO CIRCULANTE")) {
         secao = currentSection;
-        motivo = currentSection === 'ATIVO' 
-          ? '"NÃO CIRCULANTE" na seção ATIVO → ATIVO_NAO_CIRCULANTE'
-          : '"NÃO CIRCULANTE" na seção PASSIVO → PASSIVO_NAO_CIRCULANTE';
+        motivo =
+          currentSection === "ATIVO"
+            ? '"NÃO CIRCULANTE" na seção ATIVO → ATIVO_NAO_CIRCULANTE'
+            : '"NÃO CIRCULANTE" na seção PASSIVO → PASSIVO_NAO_CIRCULANTE';
       } else {
         secao = currentSection;
         motivo = `Herda tipo da seção atual (${currentSection})`;
       }
 
-      const isKeyAccount = keyAccounts.some(k => contaNorm === k || contaNorm.includes(k));
-      
+      const isKeyAccount = keyAccounts.some((k) => contaNorm === k || contaNorm.includes(k));
+
       if (isKeyAccount) {
         const hasValor = entry.valor !== 0;
         const hasValorAnterior = entry.valor_anterior !== null && entry.valor_anterior !== 0;
-        
+
         diagnostics.push({
           conta: entry.conta,
           valor: entry.valor,
           valorAnterior: entry.valor_anterior,
-          colunaUsada: hasValor ? 'atual' : (hasValorAnterior ? 'anterior' : 'nenhuma'),
+          colunaUsada: hasValor ? "atual" : hasValorAnterior ? "anterior" : "nenhuma",
           encontrado: hasValor || hasValorAnterior,
           secao,
           tipoClassificado,
-          motivo
+          motivo,
         });
       }
     }
@@ -943,11 +1044,15 @@ const Resultado = () => {
     const insights: string[] = [];
 
     if (dre.margemLiquida > 20) {
-      insights.push("✅ Margem líquida excelente, acima de 20%. A empresa demonstra alta eficiência na conversão de receitas em lucro.");
+      insights.push(
+        "✅ Margem líquida excelente, acima de 20%. A empresa demonstra alta eficiência na conversão de receitas em lucro.",
+      );
     } else if (dre.margemLiquida > 10) {
       insights.push("👍 Margem líquida saudável entre 10-20%. Há espaço para otimização de custos.");
     } else if (dre.margemLiquida > 0) {
-      insights.push("⚠️ Margem líquida abaixo de 10%. Recomenda-se revisão de custos operacionais e estratégia de preços.");
+      insights.push(
+        "⚠️ Margem líquida abaixo de 10%. Recomenda-se revisão de custos operacionais e estratégia de preços.",
+      );
     } else {
       insights.push("🚨 Empresa operando com prejuízo. Necessária reestruturação urgente de custos.");
     }
@@ -961,11 +1066,15 @@ const Resultado = () => {
     if (balanco.ativoTotal > 0 && balanco.passivoCirculante > 0) {
       const liquidezGeral = balanco.ativoCirculante / balanco.passivoCirculante;
       if (liquidezGeral > 2) {
-        insights.push("💰 Liquidez corrente excelente. A empresa tem folga financeira para honrar compromissos de curto prazo.");
+        insights.push(
+          "💰 Liquidez corrente excelente. A empresa tem folga financeira para honrar compromissos de curto prazo.",
+        );
       } else if (liquidezGeral > 1) {
         insights.push("💵 Liquidez corrente adequada. Ativo circulante cobre as obrigações de curto prazo.");
       } else {
-        insights.push("⚠️ Liquidez corrente preocupante. Pode haver dificuldades no pagamento de obrigações de curto prazo.");
+        insights.push(
+          "⚠️ Liquidez corrente preocupante. Pode haver dificuldades no pagamento de obrigações de curto prazo.",
+        );
       }
     }
 
@@ -1059,9 +1168,9 @@ const Resultado = () => {
           if (edited && edited.isModified) {
             return {
               ...entry,
-              grupo: edited.grupo as DREClassifiedEntry['grupo'],
+              grupo: edited.grupo as DREClassifiedEntry["grupo"],
               valor: edited.valor,
-              motivo: 'Modificado manualmente pelo usuário',
+              motivo: "Modificado manualmente pelo usuário",
             };
           }
           return entry;
@@ -1084,30 +1193,30 @@ const Resultado = () => {
         setIsApplyingChanges(false);
       }
     },
-    [rawBalancoEntries, rawDreEntries, dreClassifiedEntries]
+    [rawBalancoEntries, rawDreEntries, dreClassifiedEntries],
   );
 
   // Recalculate DRE metrics from classified entries (used after manual edit)
   const recalculateDREMetricsFromClassified = (entries: DREClassifiedEntry[]): CalculatedDRE => {
     const metrics: CalculatedDRE = {
       receitaBruta: 0,
-      receitaBrutaOrigem: 'soma_contas',
+      receitaBrutaOrigem: "soma_contas",
       receitaLiquida: 0,
-      receitaLiquidaOrigem: 'soma_contas',
+      receitaLiquidaOrigem: "soma_contas",
       cmv: 0,
-      cmvOrigem: 'soma_contas',
+      cmvOrigem: "soma_contas",
       lucroBruto: 0,
-      lucroBrutoOrigem: 'soma_contas',
+      lucroBrutoOrigem: "soma_contas",
       despesasOperacionais: 0,
-      despesasOperacionaisOrigem: 'soma_contas',
+      despesasOperacionaisOrigem: "soma_contas",
       lucroOperacional: 0,
-      lucroOperacionalOrigem: 'soma_contas',
+      lucroOperacionalOrigem: "soma_contas",
       resultadoFinanceiro: 0,
-      resultadoFinanceiroOrigem: 'soma_contas',
+      resultadoFinanceiroOrigem: "soma_contas",
       contribuicaoSocial: 0,
-      contribuicaoSocialOrigem: 'soma_contas',
+      contribuicaoSocialOrigem: "soma_contas",
       lucroLiquido: 0,
-      lucroLiquidoOrigem: 'soma_contas',
+      lucroLiquidoOrigem: "soma_contas",
       margemBruta: 0,
       margemOperacional: 0,
       margemLiquida: 0,
@@ -1116,70 +1225,70 @@ const Resultado = () => {
     // Find explicit lines first, then sum components
     for (const entry of entries) {
       const valorAbs = Math.abs(entry.valor);
-      
+
       switch (entry.grupo) {
-        case 'receita_bruta':
+        case "receita_bruta":
           if (entry.isExplicit && metrics.receitaBruta === 0) {
             metrics.receitaBruta = valorAbs;
-            metrics.receitaBrutaOrigem = 'linha_explicita';
+            metrics.receitaBrutaOrigem = "linha_explicita";
           } else if (!entry.isExplicit) {
-            if (metrics.receitaBrutaOrigem !== 'linha_explicita') {
+            if (metrics.receitaBrutaOrigem !== "linha_explicita") {
               metrics.receitaBruta += valorAbs;
             }
           }
           break;
-        case 'receita_liquida':
+        case "receita_liquida":
           if (metrics.receitaLiquida === 0) {
             metrics.receitaLiquida = valorAbs;
-            metrics.receitaLiquidaOrigem = 'linha_explicita';
+            metrics.receitaLiquidaOrigem = "linha_explicita";
           }
           break;
-        case 'cmv':
+        case "cmv":
           if (entry.isExplicit && metrics.cmv === 0) {
             metrics.cmv = entry.valor; // Keep sign
-            metrics.cmvOrigem = 'linha_explicita';
+            metrics.cmvOrigem = "linha_explicita";
           } else if (!entry.isExplicit) {
-            if (metrics.cmvOrigem !== 'linha_explicita') {
+            if (metrics.cmvOrigem !== "linha_explicita") {
               metrics.cmv += entry.valor;
             }
           }
           break;
-        case 'lucro_bruto':
+        case "lucro_bruto":
           if (metrics.lucroBruto === 0) {
             metrics.lucroBruto = valorAbs;
-            metrics.lucroBrutoOrigem = 'linha_explicita';
+            metrics.lucroBrutoOrigem = "linha_explicita";
           }
           break;
-        case 'despesas_operacionais':
+        case "despesas_operacionais":
           if (entry.isExplicit && metrics.despesasOperacionais === 0) {
             metrics.despesasOperacionais = valorAbs;
-            metrics.despesasOperacionaisOrigem = 'linha_explicita';
+            metrics.despesasOperacionaisOrigem = "linha_explicita";
           } else if (!entry.isExplicit) {
-            if (metrics.despesasOperacionaisOrigem !== 'linha_explicita') {
+            if (metrics.despesasOperacionaisOrigem !== "linha_explicita") {
               metrics.despesasOperacionais += valorAbs;
             }
           }
           break;
-        case 'lucro_operacional':
+        case "lucro_operacional":
           if (metrics.lucroOperacional === 0) {
             metrics.lucroOperacional = valorAbs;
-            metrics.lucroOperacionalOrigem = 'linha_explicita';
+            metrics.lucroOperacionalOrigem = "linha_explicita";
           }
           break;
-        case 'resultado_financeiro':
+        case "resultado_financeiro":
           if (entry.isExplicit && metrics.resultadoFinanceiro === 0) {
             metrics.resultadoFinanceiro = entry.valor;
-            metrics.resultadoFinanceiroOrigem = 'linha_explicita';
+            metrics.resultadoFinanceiroOrigem = "linha_explicita";
           } else if (!entry.isExplicit) {
-            if (metrics.resultadoFinanceiroOrigem !== 'linha_explicita') {
+            if (metrics.resultadoFinanceiroOrigem !== "linha_explicita") {
               metrics.resultadoFinanceiro += entry.valor;
             }
           }
           break;
-        case 'lucro_liquido':
+        case "lucro_liquido":
           if (metrics.lucroLiquido === 0) {
             metrics.lucroLiquido = valorAbs;
-            metrics.lucroLiquidoOrigem = 'linha_explicita';
+            metrics.lucroLiquidoOrigem = "linha_explicita";
           }
           break;
       }
@@ -1202,23 +1311,23 @@ const Resultado = () => {
 
   const handleExportPDF = async () => {
     if (!dreData || !balancoData) {
-      console.error('No data available for PDF export');
+      console.error("No data available for PDF export");
       return;
     }
-    
+
     setIsExporting(true);
-    console.log('Starting PDF export...');
-    
-    const currentDate = new Date().toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+    console.log("Starting PDF export...");
+
+    const currentDate = new Date().toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
 
     // Create PDF wrapper with custom styling
-    const pdfWrapper = document.createElement('div');
+    const pdfWrapper = document.createElement("div");
     pdfWrapper.innerHTML = `
       <style>
         * {
@@ -1356,11 +1465,11 @@ const Resultado = () => {
       <div class="pdf-container">
         <div class="pdf-header">
           ${branding?.logo_url ? `<img src="${branding.logo_url}" alt="Logo" style="max-height: 60px; max-width: 200px; margin-bottom: 10px;" crossorigin="anonymous" />` : `<div class="pdf-logo">📊 ProCont</div>`}
-          <div class="pdf-logo" style="font-size: ${branding?.nome_empresa ? '24px' : '32px'};">${branding?.nome_empresa || 'ProCont'}</div>
-          ${branding?.cnpj_empresa ? `<div style="font-size: 13px; color: #6b7280; margin-bottom: 4px;">CNPJ: ${branding.cnpj_empresa}</div>` : ''}
-          ${branding?.telefone_fixo ? `<div style="font-size: 13px; color: #6b7280; margin-bottom: 8px;">Tel: ${branding.telefone_fixo}</div>` : ''}
+          <div class="pdf-logo" style="font-size: ${branding?.nome_empresa ? "24px" : "32px"};">${branding?.nome_empresa || "ProCont"}</div>
+          ${branding?.cnpj_empresa ? `<div style="font-size: 13px; color: #6b7280; margin-bottom: 4px;">CNPJ: ${branding.cnpj_empresa}</div>` : ""}
+          ${branding?.telefone_fixo ? `<div style="font-size: 13px; color: #6b7280; margin-bottom: 8px;">Tel: ${branding.telefone_fixo}</div>` : ""}
           <div class="pdf-title">Relatório de Resultados Financeiros</div>
-          ${selectedEmpresa ? `<div style="font-size: 14px; color: #374151; margin-bottom: 4px;"><strong>${selectedEmpresa.nome}</strong> - CNPJ: ${selectedEmpresa.cnpj}</div>` : ''}
+          ${selectedEmpresa ? `<div style="font-size: 14px; color: #374151; margin-bottom: 4px;"><strong>${selectedEmpresa.nome}</strong> - CNPJ: ${selectedEmpresa.cnpj}</div>` : ""}
           <div class="pdf-date">Gerado em: ${currentDate}</div>
         </div>
 
@@ -1369,35 +1478,35 @@ const Resultado = () => {
           <div class="pdf-metrics-grid">
             <div class="pdf-metric-card pdf-metric-highlight">
               <div class="pdf-metric-label">Receita Bruta</div>
-              <div class="pdf-metric-value">${dreData?.receitaBruta.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+              <div class="pdf-metric-value">${dreData?.receitaBruta.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div>
             </div>
             <div class="pdf-metric-card">
               <div class="pdf-metric-label">Receita Líquida</div>
-              <div class="pdf-metric-value">${dreData?.receitaLiquida.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+              <div class="pdf-metric-value">${dreData?.receitaLiquida.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div>
             </div>
             <div class="pdf-metric-card">
               <div class="pdf-metric-label">CMV / Custos</div>
-              <div class="pdf-metric-value">${dreData?.cmv.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+              <div class="pdf-metric-value">${dreData?.cmv.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div>
             </div>
             <div class="pdf-metric-card">
               <div class="pdf-metric-label">Lucro Bruto</div>
-              <div class="pdf-metric-value">${dreData?.lucroBruto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+              <div class="pdf-metric-value">${dreData?.lucroBruto.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div>
             </div>
             <div class="pdf-metric-card">
               <div class="pdf-metric-label">Despesas Operacionais</div>
-              <div class="pdf-metric-value">${dreData?.despesasOperacionais.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+              <div class="pdf-metric-value">${dreData?.despesasOperacionais.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div>
             </div>
             <div class="pdf-metric-card">
               <div class="pdf-metric-label">Lucro Operacional</div>
-              <div class="pdf-metric-value">${dreData?.lucroOperacional.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+              <div class="pdf-metric-value">${dreData?.lucroOperacional.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div>
             </div>
             <div class="pdf-metric-card">
               <div class="pdf-metric-label">Resultado Financeiro</div>
-              <div class="pdf-metric-value">${dreData?.resultadoFinanceiro.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+              <div class="pdf-metric-value">${dreData?.resultadoFinanceiro.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div>
             </div>
             <div class="pdf-metric-card pdf-metric-highlight">
               <div class="pdf-metric-label">Lucro Líquido</div>
-              <div class="pdf-metric-value">${dreData?.lucroLiquido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+              <div class="pdf-metric-value">${dreData?.lucroLiquido.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div>
             </div>
           </div>
           
@@ -1446,15 +1555,15 @@ const Resultado = () => {
           <div class="pdf-metrics-grid">
             <div class="pdf-metric-card pdf-metric-highlight">
               <div class="pdf-metric-label">Ativo Total</div>
-              <div class="pdf-metric-value">${balancoData?.ativoTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+              <div class="pdf-metric-value">${balancoData?.ativoTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div>
             </div>
             <div class="pdf-metric-card">
               <div class="pdf-metric-label">Passivo Total</div>
-              <div class="pdf-metric-value">${balancoData?.passivoTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+              <div class="pdf-metric-value">${balancoData?.passivoTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div>
             </div>
             <div class="pdf-metric-card">
               <div class="pdf-metric-label">Patrimônio Líquido</div>
-              <div class="pdf-metric-value">${balancoData?.patrimonioLiquido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+              <div class="pdf-metric-value">${balancoData?.patrimonioLiquido.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div>
             </div>
           </div>
 
@@ -1469,27 +1578,27 @@ const Resultado = () => {
             <tbody>
               <tr>
                 <td>Ativo Circulante</td>
-                <td>${balancoData?.ativoCirculante.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                <td>${balancoData?.ativoCirculante.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
                 <td>${balancoData?.ativoTotal ? ((balancoData.ativoCirculante / balancoData.ativoTotal) * 100).toFixed(1) : 0}%</td>
               </tr>
               <tr>
                 <td>Ativo Não Circulante</td>
-                <td>${balancoData?.ativoNaoCirculante.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                <td>${balancoData?.ativoNaoCirculante.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
                 <td>${balancoData?.ativoTotal ? ((balancoData.ativoNaoCirculante / balancoData.ativoTotal) * 100).toFixed(1) : 0}%</td>
               </tr>
               <tr>
                 <td>Passivo Circulante</td>
-                <td>${balancoData?.passivoCirculante.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                <td>${balancoData?.passivoCirculante.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
                 <td>${balancoData?.ativoTotal ? ((balancoData.passivoCirculante / balancoData.ativoTotal) * 100).toFixed(1) : 0}%</td>
               </tr>
               <tr>
                 <td>Passivo Não Circulante</td>
-                <td>${balancoData?.passivoNaoCirculante.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                <td>${balancoData?.passivoNaoCirculante.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
                 <td>${balancoData?.ativoTotal ? ((balancoData.passivoNaoCirculante / balancoData.ativoTotal) * 100).toFixed(1) : 0}%</td>
               </tr>
               <tr>
                 <td><strong>Patrimônio Líquido</strong></td>
-                <td><strong>${balancoData?.patrimonioLiquido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong></td>
+                <td><strong>${balancoData?.patrimonioLiquido.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong></td>
                 <td><strong>${balancoData?.ativoTotal ? ((balancoData.patrimonioLiquido / balancoData.ativoTotal) * 100).toFixed(1) : 0}%</strong></td>
               </tr>
             </tbody>
@@ -1498,33 +1607,33 @@ const Resultado = () => {
 
         <div class="pdf-section">
           <div class="pdf-section-title">💡 Insights e Recomendações</div>
-          ${insights.map(insight => `<div class="pdf-insight">${insight}</div>`).join('')}
+          ${insights.map((insight) => `<div class="pdf-insight">${insight}</div>`).join("")}
         </div>
 
         <div class="pdf-footer">
-          <div class="pdf-footer-brand">Gerado por ${branding?.nome_empresa || 'ProCont'}</div>
+          <div class="pdf-footer-brand">Gerado por ${branding?.nome_empresa || "ProCont"}</div>
           <div>Sistema de Análise Financeira Contábil</div>
-          ${branding?.telefone_fixo ? `<div style="margin-top: 4px;">Contato: ${branding.telefone_fixo}</div>` : ''}
+          ${branding?.telefone_fixo ? `<div style="margin-top: 4px;">Contato: ${branding.telefone_fixo}</div>` : ""}
         </div>
       </div>
     `;
 
     const opt = {
       margin: 10,
-      filename: `relatorio-procont-${new Date().toISOString().split('T')[0]}.pdf`,
-      image: { type: 'jpeg' as const, quality: 0.98 },
+      filename: `relatorio-procont-${new Date().toISOString().split("T")[0]}.pdf`,
+      image: { type: "jpeg", quality: 0.98 },
       html2canvas: { scale: 2, useCORS: true, logging: false },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
-      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" as const },
+      pagebreak: { mode: ["avoid-all", "css", "legacy"] },
     };
 
     try {
-      console.log('Generating PDF with html2pdf...');
+      console.log("Generating PDF with html2pdf...");
       await html2pdf().from(pdfWrapper).set(opt).save();
-      console.log('PDF generated successfully');
+      console.log("PDF generated successfully");
     } catch (error) {
-      console.error('Error generating PDF:', error);
-      alert('Erro ao gerar PDF. Tente novamente.');
+      console.error("Error generating PDF:", error);
+      alert("Erro ao gerar PDF. Tente novamente.");
     } finally {
       setIsExporting(false);
     }
@@ -1565,9 +1674,7 @@ const Resultado = () => {
         {/* Header */}
         <div className="max-w-4xl mx-auto text-center mb-12">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-green-500/10 border border-green-500/20 mb-6">
-            <span className="text-sm text-green-400 font-medium">
-              ✓ Análise Concluída
-            </span>
+            <span className="text-sm text-green-400 font-medium">✓ Análise Concluída</span>
           </div>
           <h1 className="font-display text-4xl md:text-5xl font-bold mb-4">
             Resultado da <span className="gradient-text">Análise Financeira</span>
@@ -1589,17 +1696,16 @@ const Resultado = () => {
           setShowDreDebug={setShowDreDebug}
         />
 
-
         {/* ===== DASHBOARD BALANCETE ===== */}
         {balanceteEntries.length > 0 && (
           <>
             <DashboardBalancete
               entries={balanceteEntries}
-              previousPeriods={previousPeriods.map(p => ({ ano: p.ano, entries: p.entries }))}
+              previousPeriods={previousPeriods.map((p) => ({ ano: p.ano, entries: p.entries }))}
               dreReceitaBruta={dreData?.receitaBruta}
               dreCMV={dreData?.cmv}
             />
-            
+
             {/* Análise Vertical e Horizontal */}
             <section className="mb-12">
               <div className="flex items-center justify-between mb-6">
@@ -1607,10 +1713,7 @@ const Resultado = () => {
                   <BarChart3 className="w-6 h-6 text-primary" />
                   Análise Comparativa (AV / AH)
                 </h2>
-                <Button
-                  variant="neon-outline"
-                  onClick={() => setShowHistoricoModal(true)}
-                >
+                <Button variant="neon-outline" onClick={() => setShowHistoricoModal(true)}>
                   <CalendarDays className="w-4 h-4 mr-2" />
                   Adicionar Exercício Anterior
                 </Button>
@@ -1626,7 +1729,7 @@ const Resultado = () => {
                       >
                         {p.ano} ({p.entries.length} contas)
                         <button
-                          onClick={() => setPreviousPeriods(prev => prev.filter((_, idx) => idx !== i))}
+                          onClick={() => setPreviousPeriods((prev) => prev.filter((_, idx) => idx !== i))}
                           className="ml-1 text-primary/60 hover:text-primary"
                           title="Remover"
                         >
@@ -1645,13 +1748,10 @@ const Resultado = () => {
                 <div className="glass-card p-8 text-center border-2 border-dashed border-border/50">
                   <BarChart3 className="w-12 h-12 text-muted-foreground/40 mx-auto mb-3" />
                   <p className="text-muted-foreground mb-2">
-                    Importe balancetes de exercícios anteriores para gerar a tabela comparativa com Análise Vertical e Horizontal.
+                    Importe balancetes de exercícios anteriores para gerar a tabela comparativa com Análise Vertical e
+                    Horizontal.
                   </p>
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowHistoricoModal(true)}
-                    className="mt-2"
-                  >
+                  <Button variant="outline" onClick={() => setShowHistoricoModal(true)} className="mt-2">
                     <CalendarDays className="w-4 h-4 mr-2" />
                     Adicionar Exercício Anterior
                   </Button>
@@ -1686,15 +1786,17 @@ const Resultado = () => {
                       <tr key={index} className="border-b border-border/50 hover:bg-muted/30">
                         <td className="py-2 px-3 font-medium text-foreground">{line.conta}</td>
                         <td className="py-2 px-3 text-center">
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${
-                            line.secao === 'ATIVO' 
-                              ? 'bg-blue-500/20 text-blue-400' 
-                              : line.secao === 'PASSIVO'
-                                ? 'bg-orange-500/20 text-orange-400'
-                                : line.secao === 'PL'
-                                  ? 'bg-green-500/20 text-green-400'
-                                  : 'bg-muted text-muted-foreground'
-                          }`}>
+                          <span
+                            className={`px-2 py-1 rounded text-xs font-medium ${
+                              line.secao === "ATIVO"
+                                ? "bg-blue-500/20 text-blue-400"
+                                : line.secao === "PASSIVO"
+                                  ? "bg-orange-500/20 text-orange-400"
+                                  : line.secao === "PL"
+                                    ? "bg-green-500/20 text-green-400"
+                                    : "bg-muted text-muted-foreground"
+                            }`}
+                          >
                             {line.secao}
                           </span>
                         </td>
@@ -1703,10 +1805,11 @@ const Resultado = () => {
                           {line.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                         </td>
                         <td className="py-2 px-3 text-center">
-                          {line.encontrado 
-                            ? <span className="text-green-400">✓</span>
-                            : <span className="text-red-400">✗</span>
-                          }
+                          {line.encontrado ? (
+                            <span className="text-green-400">✓</span>
+                          ) : (
+                            <span className="text-red-400">✗</span>
+                          )}
                         </td>
                         <td className="py-2 px-3 text-muted-foreground text-xs max-w-xs truncate" title={line.motivo}>
                           {line.motivo}
@@ -1728,11 +1831,7 @@ const Resultado = () => {
                 <FileSearch className="w-6 h-6 text-primary" />
                 Validação XLS
               </h2>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowValidation(!showValidation)}
-              >
+              <Button variant="outline" size="sm" onClick={() => setShowValidation(!showValidation)}>
                 <FileSearch className="w-4 h-4 mr-2" />
                 {showValidation ? "Ocultar" : "Ver"} Validação ({validationRows.length} linhas)
               </Button>
@@ -1755,18 +1854,11 @@ const Resultado = () => {
               <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
                 <Sparkles className="w-8 h-8 text-primary" />
               </div>
-              <h3 className="font-display text-xl font-bold mb-3">
-                🤖 Análise Inteligente
-              </h3>
+              <h3 className="font-display text-xl font-bold mb-3">🤖 Análise Inteligente</h3>
               <p className="text-muted-foreground mb-6 text-sm">
-                Gere uma análise detalhada com insights estratégicos, 
-                pontos de atenção e recomendações personalizadas.
+                Gere uma análise detalhada com insights estratégicos, pontos de atenção e recomendações personalizadas.
               </p>
-              <Button 
-                variant="hero" 
-                size="lg" 
-                onClick={() => setShowAIAnalysis(true)}
-              >
+              <Button variant="hero" size="lg" onClick={() => setShowAIAnalysis(true)}>
                 <Sparkles className="w-5 h-5 mr-2" />
                 Gerar Análise
               </Button>
@@ -1777,18 +1869,12 @@ const Resultado = () => {
               <div className="w-16 h-16 rounded-full bg-secondary/10 flex items-center justify-center mx-auto mb-4">
                 <Presentation className="w-8 h-8 text-secondary" />
               </div>
-              <h3 className="font-display text-xl font-bold mb-3">
-                📊 Apresentação Executiva
-              </h3>
+              <h3 className="font-display text-xl font-bold mb-3">📊 Apresentação Executiva</h3>
               <p className="text-muted-foreground mb-6 text-sm">
-                Crie slides profissionais com a situação financeira da empresa,
-                indicadores chave e recomendações estratégicas.
+                Crie slides profissionais com a situação financeira da empresa, indicadores chave e recomendações
+                estratégicas.
               </p>
-              <Button 
-                variant="neon" 
-                size="lg" 
-                onClick={() => setShowAIPresentation(true)}
-              >
+              <Button variant="neon" size="lg" onClick={() => setShowAIPresentation(true)}>
                 <Presentation className="w-5 h-5 mr-2" />
                 Gerar Apresentação
               </Button>
@@ -1798,15 +1884,10 @@ const Resultado = () => {
 
         {/* Insights Section */}
         <section className="mb-12">
-          <h2 className="font-display text-2xl font-bold mb-6">
-            💡 Insights Automáticos
-          </h2>
+          <h2 className="font-display text-2xl font-bold mb-6">💡 Insights Automáticos</h2>
           <div className="glass-card p-6 space-y-4">
             {insights.map((insight, index) => (
-              <div
-                key={index}
-                className="flex items-start gap-3 p-4 rounded-lg bg-muted/30 border border-border/50"
-              >
+              <div key={index} className="flex items-start gap-3 p-4 rounded-lg bg-muted/30 border border-border/50">
                 <p className="text-foreground">{insight}</p>
               </div>
             ))}
@@ -1816,31 +1897,31 @@ const Resultado = () => {
         {/* Financial Chat Section */}
         {dreData && balancoData && (
           <section className="mb-12">
-            <h2 className="font-display text-2xl font-bold mb-6">
-              🤖 Simulador de Cenários
-            </h2>
+            <h2 className="font-display text-2xl font-bold mb-6">🤖 Simulador de Cenários</h2>
             <FinancialChatBox
               financialContext={{
                 dre: dreData,
                 balanco: balancoData,
-                dreEntries: dreClassifiedEntries.map(e => ({
+                dreEntries: dreClassifiedEntries.map((e) => ({
                   descricao: e.descricao,
                   valor: e.valor,
                   grupo: e.grupo,
                 })),
-                balancoEntries: rawBalancoEntries.map(e => ({
+                balancoEntries: rawBalancoEntries.map((e) => ({
                   conta: e.conta,
                   valor: e.valor,
                   tipo: e.tipo,
-                  hierarchy: e.hierarchy || '',
+                  hierarchy: e.hierarchy || "",
                 })),
-                empresa: selectedEmpresa ? {
-                  nome: selectedEmpresa.nome,
-                  cnpj: selectedEmpresa.cnpj,
-                  cnae: selectedEmpresa.cnae,
-                  regime_tributario: selectedEmpresa.regime_tributario,
-                  contexto: selectedEmpresa.contexto,
-                } : undefined,
+                empresa: selectedEmpresa
+                  ? {
+                      nome: selectedEmpresa.nome,
+                      cnpj: selectedEmpresa.cnpj,
+                      cnae: selectedEmpresa.cnae,
+                      regime_tributario: selectedEmpresa.regime_tributario,
+                      contexto: selectedEmpresa.contexto,
+                    }
+                  : undefined,
               }}
             />
           </section>
@@ -1849,18 +1930,11 @@ const Resultado = () => {
         {/* Export PDF Button */}
         <section className="mb-12">
           <div className="glass-card p-8 text-center">
-            <h3 className="font-display text-xl font-bold mb-3">
-              📄 Exportar Relatório
-            </h3>
+            <h3 className="font-display text-xl font-bold mb-3">📄 Exportar Relatório</h3>
             <p className="text-muted-foreground mb-6">
               Gere um PDF profissional com todos os dados desta análise para enviar aos seus clientes.
             </p>
-            <Button 
-              variant="hero" 
-              size="xl" 
-              onClick={handleExportPDF}
-              disabled={isExporting}
-            >
+            <Button variant="hero" size="xl" onClick={handleExportPDF} disabled={isExporting}>
               {isExporting ? (
                 <>
                   <Loader2 className="w-5 h-5 mr-2 animate-spin" />
@@ -1886,9 +1960,9 @@ const Resultado = () => {
             <p className="text-muted-foreground mb-6">
               Precisa corrigir alguma classificação ou valor? Edite manualmente as contas e recalcule os resultados.
             </p>
-            <Button 
-              variant="outline" 
-              size="xl" 
+            <Button
+              variant="outline"
+              size="xl"
               onClick={() => setShowManualEdit(true)}
               className="border-primary/50 hover:bg-primary/10"
             >
@@ -1900,9 +1974,7 @@ const Resultado = () => {
 
         {/* CTA */}
         <div className="text-center">
-          <p className="text-muted-foreground mb-4">
-            Deseja analisar outro cliente?
-          </p>
+          <p className="text-muted-foreground mb-4">Deseja analisar outro cliente?</p>
           <Link to="/upload">
             <Button variant="hero" size="xl">
               <RefreshCw className="w-5 h-5 mr-2" />
@@ -1945,8 +2017,8 @@ const Resultado = () => {
         open={showHistoricoModal}
         onOpenChange={setShowHistoricoModal}
         currentPeriodo={balancetePeriodo}
-        existingPeriods={previousPeriods.map(p => p.ano)}
-        onPeriodAdded={(period) => setPreviousPeriods(prev => [...prev, period])}
+        existingPeriods={previousPeriods.map((p) => p.ano)}
+        onPeriodAdded={(period) => setPreviousPeriods((prev) => [...prev, period])}
       />
     </div>
   );
