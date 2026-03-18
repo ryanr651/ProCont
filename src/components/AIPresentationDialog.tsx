@@ -639,7 +639,7 @@ export function AIPresentationDialog({
       const opt = {
         margin: 0,
         filename: `apresentacao-${empresaNome.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
+        image: { type: 'jpeg' as const, quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
         pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
@@ -1043,7 +1043,6 @@ export function AIPresentationDialog({
             });
           }
         } else {
-         } else {
   // Content slides com card de fundo e layout profissional
   const items = slide.content.slice(0, 6); // máximo 6 itens por slide
   const cardPadding = 0.3;
@@ -1099,7 +1098,8 @@ export function AIPresentationDialog({
       });
     }
   });
-}
+        }
+      });
       // ========== CLOSING SLIDE ==========
       const closingSlide = pptx.addSlide();
       closingSlide.background = { fill: colors.darkBg };
