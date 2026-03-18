@@ -1709,7 +1709,7 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
 } else if (isInsideReceitaBrutaBlock) {
   const valorPeriodo = numericValues[0]?.value;
   classification = { grupo: valorPeriodo >= 0 ? "RECEITA_BRUTA" : "DEDUCOES", tipo: "normal", isGroupChange: false };
-    }
+}
     } else {
       classification = classificarLinhaDRE(descricao, currentGrupo);
     }
