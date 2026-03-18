@@ -1043,7 +1043,6 @@ export function AIPresentationDialog({
             });
           }
         } else {
-         } else {
   // Content slides com card de fundo e layout profissional
   const items = slide.content.slice(0, 6); // máximo 6 itens por slide
   const cardPadding = 0.3;
