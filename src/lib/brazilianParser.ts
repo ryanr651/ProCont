@@ -1704,12 +1704,11 @@ function parseDREFromXLS(rows: XLSRow[], filename: string): DREParseResult {
     if (!temValor) continue;
 
     let classification: DREClassificationResult;
-    if (isInsideCMVBlock) {
+if (isInsideCMVBlock) {
       classification = { grupo: "CMV", tipo: "normal", isGroupChange: false };
-} else if (isInsideReceitaBrutaBlock) {
-  const valorPeriodo = numericValues[0]?.value;
-  classification = { grupo: valorPeriodo >= 0 ? "RECEITA_BRUTA" : "DEDUCOES", tipo: "normal", isGroupChange: false };
-}
+    } else if (isInsideReceitaBrutaBlock) {
+      const valorPeriodo = numericValues[0]?.value;
+      classification = { grupo: valorPeriodo >= 0 ? "RECEITA_BRUTA" : "DESPESAS_OPERACIONAIS", tipo: "normal", isGroupChange: false };
     } else {
       classification = classificarLinhaDRE(descricao, currentGrupo);
     }
