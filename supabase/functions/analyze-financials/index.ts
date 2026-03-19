@@ -57,7 +57,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const { dre, balanco } = (await req.json()) as FinancialData;
+    const { dre, balanco, empresa } = (await req.json()) as FinancialData;
     
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
