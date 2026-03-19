@@ -1,0 +1,1 @@
+DELETE FROM public.classification_cache WHERE contexto_tipo = 'dre';
