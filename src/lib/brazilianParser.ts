@@ -490,9 +490,10 @@ async function parseDREFromXLSFile(file: File): Promise<DREParseResult> {
       }
 
       // === BLOCO RESULTADO FINANCEIRO ===
-      const isFinanceiroHeader = /DESPESAS?\s*FINANCEIRA|RECEITAS?\s*FINANCEIRA|RESULTADO\s*FINANCEIRO/i.test(
-        normalConta,
-      );
+      const isFinanceiroHeader =
+        /DESPESAS?\s*FINANCEIRA|RECEITAS?\s*FINANCEIRA|RESULTADO\s*FINANCEIRO|DESPESAS?\s*TRIBUTARIA/i.test(
+          normalConta,
+        );
 
       // Fechar bloco financeiro se encontrar outro título de seção (sem valor) OU subtotais principais (com valor)
       const isSubtotalPrincipal =
