@@ -555,28 +555,23 @@ ${JSON.stringify(accountList, null, 2)}`;
       };
     });
 
-    // Regra específica solicitada: "Material de Consumo"
-    // 1ª ocorrência => CMV | 2ª+ ocorrência => DESPESAS_OPERACIONAIS
+    // Regra: "Material de Consumo" respeita a flag dentro_do_bloco_CMV
     if (contexto_tipo === "dre") {
-      let materialConsumoCount = 0;
-
       for (let i = 0; i < normalizedEntries.length; i++) {
         const entry = normalizedEntries[i];
         if (!isMaterialConsumo(entry.descricao_normalized)) continue;
 
-        materialConsumoCount += 1;
-
-        if (materialConsumoCount === 1) {
+        if (entry.isCMV) {
           classifications[i] = {
             descricao: classifications[i].descricao,
             grupo: "CMV",
-            motivo: "1ª ocorrência de Material de Consumo classificada como CMV por regra de negócio.",
+            motivo: "Material de Consumo dentro do bloco CMV.",
           };
         } else {
           classifications[i] = {
             descricao: classifications[i].descricao,
             grupo: "DESPESAS_OPERACIONAIS",
-            motivo: "2ª+ ocorrência de Material de Consumo classificada como Despesa Operacional por regra de negócio.",
+            motivo: "Material de Consumo fora do bloco CMV = despesa operacional.",
           };
         }
       }
