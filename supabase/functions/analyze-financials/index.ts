@@ -88,7 +88,23 @@ serve(async (req) => {
       ? (dre.lucroLiquido / balanco.patrimonioLiquido) * 100
       : 0;
 
+    // Build empresa context section
+    const empresaSection = empresa
+      ? `\n## Dados da Empresa
+- Nome: ${empresa.nome}
+- CNPJ: ${empresa.cnpj}
+${empresa.cnae ? `- CNAE: ${empresa.cnae}` : ''}
+${empresa.regime_tributario ? `- Regime Tributário: ${empresa.regime_tributario}` : ''}
+${empresa.contexto ? `- Contexto/Setor: ${empresa.contexto}` : ''}\n`
+      : '';
+
     const systemPrompt = `Você é um especialista em análise financeira e contabilidade brasileira. Seu papel é analisar demonstrativos financeiros (DRE e Balanço Patrimonial) e fornecer insights estratégicos para empresas.
+
+${empresa ? `IMPORTANTE: Você tem acesso ao contexto da empresa (setor, CNAE, regime tributário). Use essas informações para:
+- Comparar margens e indicadores com benchmarks do setor (CNAE)
+- Considerar as particularidades do regime tributário nas recomendações
+- Contextualizar a análise ao segmento de atuação da empresa
+- Fazer recomendações específicas para o setor e porte da empresa` : ''}
 
 Responda SEMPRE em português brasileiro. Seja direto, profissional e forneça recomendações acionáveis.
 
@@ -98,8 +114,8 @@ Use formatação markdown para estruturar sua resposta:
 - Use listas com - para pontos importantes
 - Use > para citações ou alertas importantes`;
 
-    const userPrompt = `Analise os seguintes dados financeiros de uma empresa brasileira e forneça insights estratégicos detalhados:
-
+    const userPrompt = `Analise os seguintes dados financeiros e forneça insights estratégicos detalhados:
+${empresaSection}
 ## DRE (Demonstração do Resultado do Exercício)
 - Receita Bruta: ${formatCurrency(dre.receitaBruta)}
 - Receita Líquida: ${formatCurrency(dre.receitaLiquida)}
@@ -131,18 +147,18 @@ Use formatação markdown para estruturar sua resposta:
 Por favor, forneça uma análise completa incluindo:
 
 1. **Resumo Executivo**: Visão geral da saúde financeira da empresa (2-3 frases)
+${empresa ? `\n2. **Análise Setorial**: Compare os indicadores com benchmarks típicos do setor (CNAE: ${empresa.cnae}). Identifique se a empresa está acima ou abaixo da média do mercado.\n` : ''}
+${empresa ? '3' : '2'}. **Análise de Rentabilidade**: Avalie as margens e identifique pontos de atenção
 
-2. **Análise de Rentabilidade**: Avalie as margens e identifique pontos de atenção
+${empresa ? '4' : '3'}. **Análise de Liquidez e Solvência**: Avalie a capacidade de pagamento
 
-3. **Análise de Liquidez e Solvência**: Avalie a capacidade de pagamento
+${empresa ? '5' : '4'}. **Estrutura de Capital**: Analise o nível de endividamento e alavancagem
+${empresa?.regime_tributario ? `\n${empresa ? '6' : '5'}. **Considerações Tributárias**: Analise considerando o regime ${empresa.regime_tributario} e possíveis otimizações fiscais\n` : ''}
+${empresa ? '7' : '5'}. **Pontos Fortes**: Liste 2-3 aspectos positivos
 
-4. **Estrutura de Capital**: Analise o nível de endividamento e alavancagem
+${empresa ? '8' : '6'}. **Pontos de Atenção**: Liste 2-3 riscos ou áreas que precisam de melhoria
 
-5. **Pontos Fortes**: Liste 2-3 aspectos positivos
-
-6. **Pontos de Atenção**: Liste 2-3 riscos ou áreas que precisam de melhoria
-
-7. **Recomendações**: 3-5 ações estratégicas específicas que a empresa deveria considerar
+${empresa ? '9' : '7'}. **Recomendações**: 3-5 ações estratégicas específicas${empresa ? ' considerando o setor de atuação e regime tributário' : ''}
 
 Seja específico e use os números fornecidos para fundamentar suas análises.`;
 
