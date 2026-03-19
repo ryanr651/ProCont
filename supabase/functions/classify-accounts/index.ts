@@ -239,37 +239,144 @@ Se "Impostos" tem contexto_pai "ATIVO CIRCULANTE", são "Impostos a Recuperar" (
 8. Exemplos de contas redutoras: "(-) Depreciação Acumulada", "Depreciação Acum. Veículos", "Amortização Acumulada", "PDD", "Provisão p/ Perdas".
 
 Responda APENAS com o JSON array, sem markdown.`
-        : `Você é um contador brasileiro especialista em classificação de contas contábeis.
+        : `Você é um contador brasileiro sênior especialista em análise de Demonstrações do Resultado do Exercício (DRE).
 
-Sua tarefa: classificar cada conta contábil em um dos grupos abaixo.
+Sua única tarefa é classificar cada conta contábil de uma DRE em um dos grupos válidos abaixo.
 
-## Grupos válidos para DRE:
-- RECEITA_BRUTA: Receita operacional bruta, vendas, faturamento, prestação de serviços
-- DEDUCOES: Impostos sobre vendas, devoluções, abatimentos, simples nacional, deduções da receita bruta
-- RECEITA_LIQUIDA: Linha explícita de receita líquida (subtotal)
-- CMV: Custo da mercadoria vendida, CPV, custo dos produtos vendidos, custo dos serviços prestados, custo de produção. SOMENTE classifique como CMV se: (a) o nome contém explicitamente "Custo", "CMV", "CPV", ou (b) o campo "dentro_do_bloco_CMV" for true. Contas ambíguas como "Material de Consumo", "Material de Embalagem", "Fretes" NÃO devem ser classificadas como CMV apenas pelo nome — use SEMPRE a flag "dentro_do_bloco_CMV" para decidir. Se "dentro_do_bloco_CMV" for false, classifique como DESPESAS_OPERACIONAIS.
-- LUCRO_BRUTO: Linha explícita de lucro bruto ou resultado bruto (subtotal)
-- DESPESAS_OPERACIONAIS: Despesas administrativas, trabalhistas, salários, aluguel, honorários, depreciação, despesas gerais
-- LUCRO_OPERACIONAL: Linha explícita de lucro operacional ou resultado operacional (subtotal)
-- RESULTADO_FINANCEIRO: Receitas e despesas financeiras, juros, variação cambial, resultado financeiro
-- NAO_OPERACIONAL: Receitas e despesas não operacionais, alienação de ativos
-- CONTRIBUICAO_SOCIAL: CSLL, contribuição social sobre lucro líquido (NÃO confundir com contas que começam com "Resultado")
-- IR: IRPJ, imposto de renda pessoa jurídica (NÃO confundir com contas que começam com "Resultado")
-- PROVISOES: Provisões (contas que começam com "Provisão")
-- CONTAS_RESULTADO: Contas que começam com "Resultado" e são subtotais intermediários (ex: Resultado antes da contribuição social, Resultado antes do IR)
-- LUCRO_LIQUIDO: Lucro líquido do exercício, resultado do exercício, lucro do período (resultado final)
-- OUTROS: Contas que não se encaixam em nenhum grupo acima
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## REGRA ABSOLUTA Nº 1 — FLAG isCMV (dentro_do_bloco_CMV)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+O parser já detectou estruturalmente se a conta está entre a Receita Líquida e o Lucro Bruto.
+- Se dentro_do_bloco_CMV = true → classifique como CMV, SEMPRE, independente do nome.
+- Se dentro_do_bloco_CMV = false → NUNCA classifique como CMV apenas pelo nome da conta.
+  Contas como Salários, FGTS, Férias, 13º Salário, Pró-labore, Vale Refeição, Vale Transporte,
+  Gratificações, Aviso Prévio, Material de Expediente, Serviços de Terceiros, Donativos, etc.
+  são SEMPRE DESPESAS_OPERACIONAIS quando dentro_do_bloco_CMV = false.
 
-## Regras CRÍTICAS:
-1. **REGRA MAIS IMPORTANTE**: Se o campo "dentro_do_bloco_CMV" for true, a conta DEVE ser classificada como CMV, independentemente do nome. Contas como "Material de Consumo", "Frete sobre Vendas", "Embalagens", etc., podem aparecer tanto como CMV quanto como Despesa Operacional dependendo de onde estão posicionadas na DRE. Se "dentro_do_bloco_CMV" for true, significa que o parser detectou que a conta está entre a Receita Líquida e o Lucro Bruto, portanto faz parte do CMV. Se "dentro_do_bloco_CMV" for false, classifique normalmente pelo nome e contexto (provavelmente DESPESAS_OPERACIONAIS).
-2. Se a conta COMEÇA com "Resultado" (ex: "Resultado antes da contribuição social"), classifique como CONTAS_RESULTADO, NÃO como CONTRIBUICAO_SOCIAL ou IR
-3. Considere o SINAL do valor: receitas são positivas, despesas/custos são negativos
-4. Considere a POSIÇÃO da conta na demonstração: contas no topo são receita, no meio são custos/despesas, no final são impostos/resultado
-5. Subtotais (Receita Líquida, Lucro Bruto, etc.) devem ser classificados em seu grupo específico
-6. Retorne um JSON array com objetos {index, grupo, motivo}
-7. O campo "motivo" deve ser uma explicação BREVE (1 frase) de por que aquela classificação foi escolhida
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## REGRA ABSOLUTA Nº 2 — CONTAS TRABALHISTAS SÃO DESPESAS_OPERACIONAIS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+As seguintes contas são SEMPRE DESPESAS_OPERACIONAIS, sem exceção (a menos que dentro_do_bloco_CMV=true):
+Salários, Ordenados, Pró-labore, 13º Salário, Férias, FGTS, INSS patronal,
+Aviso Prévio, Rescisões, Gratificações, Adicional de Tempo de Serviço,
+Vale Refeição, Vale Alimentação, Vale Transporte, Plano de Saúde,
+Comissões, Bonificações, Horas Extras, Encargos Sociais, Provisão de Férias,
+Provisão de 13º Salário, Folha de Pagamento.
 
-Responda APENAS com o JSON array, sem markdown, sem explicações adicionais.`;
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## REGRA ABSOLUTA Nº 3 — CONTAS DE RESULTADO COMEÇAM COM "RESULTADO"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Qualquer conta cujo nome começa com a palavra "Resultado" (ex: "Resultado Operacional Líquido",
+"Resultado Antes do IR", "Resultado do Exercício") é CONTAS_RESULTADO, NUNCA IR ou CSLL.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## GRUPOS VÁLIDOS PARA DRE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**RECEITA_BRUTA**
+Receita operacional bruta, vendas de mercadorias, prestação de serviços, faturamento bruto.
+Exemplos: "Prestação de Serviços à Vista", "Vendas de Mercadorias", "Faturamento".
+Sinal: positivo.
+
+**DEDUCOES**
+Impostos e deduções incidentes sobre a receita bruta: Simples Nacional, ISS, ICMS, PIS, COFINS,
+devoluções de vendas, abatimentos, descontos incondicionais sobre vendas.
+Exemplos: "(-) Simples Nacional s/ Vendas", "(-) ICMS s/ Vendas", "Devoluções de Vendas".
+Sinal: negativo. Aparecem logo após a Receita Bruta, antes da Receita Líquida.
+
+**RECEITA_LIQUIDA**
+Linha de subtotal explícita: "Receita Líquida", "Receita Operacional Líquida".
+Sinal: positivo.
+
+**CMV**
+Custo da Mercadoria Vendida, Custo dos Produtos Vendidos, Custo dos Serviços Prestados.
+APENAS classifique como CMV se dentro_do_bloco_CMV = true OU se o nome contém
+explicitamente "CMV", "CPV", "Custo da Mercadoria", "Custo dos Produtos", "Custo dos Serviços".
+Exemplos CMV verdadeiros: "CMV", "CPV", "Custo das Mercadorias Vendidas", "Custo de Produção".
+Sinal: negativo.
+
+**LUCRO_BRUTO**
+Linha de subtotal explícita: "Lucro Bruto", "Resultado Bruto".
+Sinal: positivo.
+
+**DESPESAS_OPERACIONAIS**
+Todas as despesas do negócio que NÃO são CMV, financeiras ou tributárias de resultado.
+Inclui OBRIGATORIAMENTE: todas as despesas trabalhistas (salários, FGTS, férias, 13º, pró-labore,
+vale refeição, vale transporte, aviso prévio, rescisões, gratificações, encargos), despesas
+administrativas (aluguel, energia, água, telefone, material de escritório, material de expediente),
+honorários, serviços de terceiros, depreciação, amortização, despesas com TI, seguros, consultorias,
+marketing, publicidade, donativos e contribuições, associações de classe.
+Sinal: negativo.
+
+**LUCRO_OPERACIONAL**
+Linha de subtotal explícita: "Lucro Operacional", "Resultado Operacional", "Resultado Operacional Líquido".
+Sinal: positivo ou negativo.
+
+**RESULTADO_FINANCEIRO**
+Receitas e despesas de natureza estritamente financeira: juros recebidos, juros pagos,
+descontos obtidos, descontos concedidos, variação cambial, rendimentos de aplicações financeiras,
+despesas bancárias, IOF, tarifas bancárias, multas de mora financeiras, CPMF.
+Inclui também: impostos e taxas municipais (ISS retido, taxas de alvará), multas tributárias.
+Exemplos: "Juros de Mora", "Descontos Concedidos", "Rendimento de Aplicação", "Despesas de Cobrança",
+"Impostos e Taxas Municipais", "Multas de Mora".
+Sinal: pode ser positivo (receitas) ou negativo (despesas).
+
+**NAO_OPERACIONAL**
+Receitas e despesas fora da atividade principal: alienação de ativos, ganho/perda na venda
+de imobilizado, receitas não recorrentes não relacionadas à operação.
+Exemplos: "Ganho na Alienação de Bens", "Resultado Não Operacional".
+
+**CONTRIBUICAO_SOCIAL**
+Exclusivamente CSLL — Contribuição Social sobre o Lucro Líquido.
+ATENÇÃO: só use este grupo se o nome da conta for exatamente "CSLL" ou "Contribuição Social
+sobre o Lucro". Contas que começam com "Resultado" → use CONTAS_RESULTADO.
+
+**IR**
+Exclusivamente IRPJ — Imposto de Renda Pessoa Jurídica.
+ATENÇÃO: só use este grupo se o nome for "IRPJ", "Imposto de Renda PJ" ou similar.
+Contas que começam com "Resultado" → use CONTAS_RESULTADO.
+
+**PROVISOES**
+Contas de provisão que não se enquadram nas categorias acima:
+"Provisão para Contingências", "Provisão para Processos Judiciais".
+NÃO use para Provisão de Férias ou Provisão de 13º → essas são DESPESAS_OPERACIONAIS.
+
+**CONTAS_RESULTADO**
+Subtotais intermediários cujo nome começa com "Resultado":
+"Resultado Antes do IR", "Resultado Antes da CSLL", "Resultado Operacional Líquido",
+"Resultado Antes das Deduções", "Resultado do Exercício" (quando é subtotal).
+
+**LUCRO_LIQUIDO**
+A linha final do exercício: "Lucro Líquido do Exercício", "Prejuízo do Exercício",
+"Lucro do Período", "Resultado Líquido do Exercício".
+É SEMPRE a última linha da DRE.
+
+**OUTROS**
+Use apenas para contas que genuinamente não se encaixam em nenhum grupo acima.
+Evite ao máximo — menos de 2% das contas devem cair aqui.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## FLUXO LÓGICO DA DRE (sequência esperada)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. RECEITA_BRUTA (topo — valores positivos)
+2. DEDUCOES (negativos, logo após a receita bruta)
+3. RECEITA_LIQUIDA (subtotal)
+4. CMV (apenas se dentro_do_bloco_CMV=true)
+5. LUCRO_BRUTO (subtotal)
+6. DESPESAS_OPERACIONAIS (bloco maior — trabalhistas + gerais + admin)
+7. LUCRO_OPERACIONAL (subtotal)
+8. RESULTADO_FINANCEIRO (receitas e despesas financeiras)
+9. NAO_OPERACIONAL (se houver)
+10. CONTAS_RESULTADO (subtotais intermediários "Resultado Antes de...")
+11. IR / CONTRIBUICAO_SOCIAL (se regime tributário exigir)
+12. LUCRO_LIQUIDO (última linha)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## FORMATO DE RESPOSTA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Retorne APENAS um JSON array com objetos {index, grupo, motivo}.
+O campo "motivo" deve ter no máximo 10 palavras.
+Sem markdown, sem explicações fora do JSON.`;
 
       const userPrompt = `Classifique estas contas contábeis de uma ${contexto_tipo.toUpperCase()}:
 
@@ -448,28 +555,23 @@ ${JSON.stringify(accountList, null, 2)}`;
       };
     });
 
-    // Regra específica solicitada: "Material de Consumo"
-    // 1ª ocorrência => CMV | 2ª+ ocorrência => DESPESAS_OPERACIONAIS
+    // Regra: "Material de Consumo" respeita a flag dentro_do_bloco_CMV
     if (contexto_tipo === "dre") {
-      let materialConsumoCount = 0;
-
       for (let i = 0; i < normalizedEntries.length; i++) {
         const entry = normalizedEntries[i];
         if (!isMaterialConsumo(entry.descricao_normalized)) continue;
 
-        materialConsumoCount += 1;
-
-        if (materialConsumoCount === 1) {
+        if (entry.isCMV) {
           classifications[i] = {
             descricao: classifications[i].descricao,
             grupo: "CMV",
-            motivo: "1ª ocorrência de Material de Consumo classificada como CMV por regra de negócio.",
+            motivo: "Material de Consumo dentro do bloco CMV.",
           };
         } else {
           classifications[i] = {
             descricao: classifications[i].descricao,
             grupo: "DESPESAS_OPERACIONAIS",
-            motivo: "2ª+ ocorrência de Material de Consumo classificada como Despesa Operacional por regra de negócio.",
+            motivo: "Material de Consumo fora do bloco CMV = despesa operacional.",
           };
         }
       }
