@@ -29,11 +29,20 @@ interface CalculatedBalanco {
   patrimonioLiquido: number;
 }
 
+interface EmpresaContext {
+  nome: string;
+  cnpj: string;
+  cnae: string;
+  regime_tributario: string;
+  contexto: string | null;
+}
+
 interface AIAnalysisDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   dreData: CalculatedDRE | null;
   balancoData: CalculatedBalanco | null;
+  empresa?: EmpresaContext;
 }
 
 export function AIAnalysisDialog({
@@ -41,6 +50,7 @@ export function AIAnalysisDialog({
   onOpenChange,
   dreData,
   balancoData,
+  empresa,
 }: AIAnalysisDialogProps) {
   const [analysis, setAnalysis] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
@@ -72,6 +82,7 @@ export function AIAnalysisDialog({
           body: JSON.stringify({
             dre: dreData,
             balanco: balancoData,
+            empresa,
           }),
         }
       );

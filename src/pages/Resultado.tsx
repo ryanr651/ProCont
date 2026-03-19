@@ -2000,6 +2000,13 @@ const Resultado = () => {
         onOpenChange={setShowAIAnalysis}
         dreData={dreData}
         balancoData={balancoData}
+        empresa={selectedEmpresa ? {
+          nome: selectedEmpresa.nome,
+          cnpj: selectedEmpresa.cnpj,
+          cnae: selectedEmpresa.cnae,
+          regime_tributario: selectedEmpresa.regime_tributario,
+          contexto: selectedEmpresa.contexto,
+        } : undefined}
       />
 
       {/* AI Presentation Dialog */}
