@@ -82,6 +82,7 @@ export function AIAnalysisDialog({
           body: JSON.stringify({
             dre: dreData,
             balanco: balancoData,
+            empresa,
           }),
         }
       );

@@ -5,6 +5,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+interface EmpresaContext {
+  nome: string;
+  cnpj: string;
+  cnae: string;
+  regime_tributario: string;
+  contexto: string | null;
+}
+
 interface FinancialData {
   dre: {
     receitaBruta: number;
@@ -28,6 +36,7 @@ interface FinancialData {
     passivoTotal: number;
     patrimonioLiquido: number;
   };
+  empresa?: EmpresaContext;
 }
 
 serve(async (req) => {
