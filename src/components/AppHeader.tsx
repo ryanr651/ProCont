@@ -16,24 +16,25 @@ import {
 } from "lucide-react";
 
 export function AppHeader() {
-  const { signOut } = useAuth();
+  const { user, signOut } = useAuth();
   const { branding, isMaster } = useBranding();
   const location = useLocation();
 
   const isActive = (path: string) => location.pathname === path;
 
   const navItems = [
-    { path: "/", label: "Início", icon: Home, roles: ["master", "funcionario"] },
-    { path: "/empresas", label: "Empresas", icon: Building2, roles: ["master", "funcionario"] },
-    { path: "/upload", label: "Upload", icon: Upload, roles: ["master", "funcionario"] },
-    { path: "/perfil-empresa", label: "Perfil Empresa", icon: Settings, roles: ["master"] },
-    { path: "/gerenciar-usuarios", label: "Usuários", icon: Users, roles: ["master"] },
-    { path: "/planos", label: "Planos", icon: Crown, roles: ["master", "funcionario"] },
+    { path: "/", label: "Início", icon: Home, roles: ["master", "funcionario"], public: true },
+    { path: "/empresas", label: "Empresas", icon: Building2, roles: ["master", "funcionario"], public: false },
+    { path: "/upload", label: "Upload", icon: Upload, roles: ["master", "funcionario"], public: false },
+    { path: "/perfil-empresa", label: "Perfil Empresa", icon: Settings, roles: ["master"], public: false },
+    { path: "/gerenciar-usuarios", label: "Usuários", icon: Users, roles: ["master"], public: false },
+    { path: "/planos", label: "Planos", icon: Crown, roles: ["master", "funcionario"], public: true },
   ];
 
-  const visibleItems = navItems.filter((item) =>
-    isMaster ? true : item.roles.includes("funcionario")
-  );
+  const visibleItems = navItems.filter((item) => {
+    if (!user) return item.public;
+    return isMaster ? true : item.roles.includes("funcionario");
+  });
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border/50">
@@ -76,13 +77,21 @@ export function AppHeader() {
           ))}
         </div>
 
-        {/* Right: Theme + Logout */}
+        {/* Right: Theme + Auth */}
         <div className="flex items-center gap-2">
           <ThemeToggle />
-          <Button variant="ghost" size="sm" onClick={signOut}>
-            <LogOut className="w-4 h-4 mr-1.5" />
-            <span className="hidden sm:inline">Sair</span>
-          </Button>
+          {user ? (
+            <Button variant="ghost" size="sm" onClick={signOut}>
+              <LogOut className="w-4 h-4 mr-1.5" />
+              <span className="hidden sm:inline">Sair</span>
+            </Button>
+          ) : (
+            <Link to="/auth">
+              <Button variant="default" size="sm">
+                Entrar
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
     </nav>
