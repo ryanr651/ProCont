@@ -19,7 +19,7 @@ const PLANS = {
     discount: null,
   },
   quarterly: {
-    priceId: "price_1TE6lSFAXSHGgoPGEk6FmUBd",
+    priceId: "price_1TEF3wFAXSHGgoPGO64QLMk7",
     label: "Trimestral",
     price: 284.70,
     perMonth: 94.90,
