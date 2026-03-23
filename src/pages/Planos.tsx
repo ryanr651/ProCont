@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { AppHeader } from "@/components/AppHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -53,6 +53,7 @@ const FEATURES = [
 
 export default function Planos() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [selectedPlan, setSelectedPlan] = useState<PlanKey>("quarterly");
   const [loading, setLoading] = useState(false);
@@ -98,6 +99,11 @@ export default function Planos() {
   }, [searchParams]);
 
   const handleCheckout = async (planKey: PlanKey) => {
+    if (!user) {
+      toast.info("Faça login para assinar um plano.");
+      navigate("/auth");
+      return;
+    }
     setLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();

@@ -89,11 +89,7 @@ const App = () => (
                 />
                 <Route 
                   path="/planos" 
-                  element={
-                    <ProtectedRoute>
-                      <Planos />
-                    </ProtectedRoute>
-                  } 
+                  element={<Planos />} 
                 />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
