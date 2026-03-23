@@ -16,6 +16,7 @@ import CadastroEmpresa from "./pages/CadastroEmpresa";
 import Empresas from "./pages/Empresas";
 import PerfilEmpresa from "./pages/PerfilEmpresa";
 import GerenciarUsuarios from "./pages/GerenciarUsuarios";
+import Planos from "./pages/Planos";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
