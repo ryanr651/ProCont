@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Logo } from "@/components/Logo";
@@ -31,6 +31,7 @@ import {
 
 const Index = () => {
   const { user, signOut } = useAuth();
+  const navigate = useNavigate();
 
   const handleLogout = async () => {
     await signOut();
@@ -385,6 +386,7 @@ const Index = () => {
                   <Button
                     variant={plan.highlighted ? "hero" : "outline"}
                     className="w-full mt-6"
+                    onClick={() => navigate("/planos")}
                   >
                     Saiba Mais
                   </Button>
