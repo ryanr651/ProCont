@@ -246,7 +246,7 @@ export default function Planos() {
                 </p>
               )}
               {PLANS[selectedPlan].discount && (
-                <Badge className="mt-3 bg-green-500/20 text-green-400 border-green-500/30">
+                <Badge className="mt-3 bg-primary/20 text-primary border-primary/30">
                   Economia de {PLANS[selectedPlan].discount}
                 </Badge>
               )}
