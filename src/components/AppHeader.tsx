@@ -12,6 +12,7 @@ import {
   Users,
   BarChart3,
   Home,
+  Crown,
 } from "lucide-react";
 
 export function AppHeader() {
