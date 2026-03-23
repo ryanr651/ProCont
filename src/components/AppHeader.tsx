@@ -28,6 +28,7 @@ export function AppHeader() {
     { path: "/upload", label: "Upload", icon: Upload, roles: ["master", "funcionario"] },
     { path: "/perfil-empresa", label: "Perfil Empresa", icon: Settings, roles: ["master"] },
     { path: "/gerenciar-usuarios", label: "Usuários", icon: Users, roles: ["master"] },
+    { path: "/planos", label: "Planos", icon: Crown, roles: ["master", "funcionario"] },
   ];
 
   const visibleItems = navItems.filter((item) =>
