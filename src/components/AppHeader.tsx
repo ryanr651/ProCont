@@ -1,26 +1,68 @@
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranding } from "@/contexts/BrandingContext";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import {
   LogOut,
   Upload,
   Building2,
   Settings,
   Users,
-  BarChart3,
   Home,
   Crown,
+  CreditCard,
 } from "lucide-react";
 
 export function AppHeader() {
   const { user, signOut } = useAuth();
   const { branding, isMaster } = useBranding();
   const location = useLocation();
+  const [subscribed, setSubscribed] = useState(false);
+  const [portalLoading, setPortalLoading] = useState(false);
 
   const isActive = (path: string) => location.pathname === path;
+
+  useEffect(() => {
+    if (!user) {
+      setSubscribed(false);
+      return;
+    }
+    const checkSub = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) return;
+        const { data } = await supabase.functions.invoke("check-subscription", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        setSubscribed(data?.subscribed === true);
+      } catch {
+        // silently fail
+      }
+    };
+    checkSub();
+  }, [user]);
+
+  const handleManageSubscription = async () => {
+    setPortalLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error("Sessão expirada");
+      const { data, error } = await supabase.functions.invoke("customer-portal", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (error) throw error;
+      if (data?.url) window.open(data.url, "_blank");
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao abrir portal de assinatura");
+    } finally {
+      setPortalLoading(false);
+    }
+  };
 
   const navItems = [
     { path: "/", label: "Início", icon: Home, roles: ["master", "funcionario"], public: true },
@@ -77,8 +119,20 @@ export function AppHeader() {
           ))}
         </div>
 
-        {/* Right: Theme + Auth */}
+        {/* Right: Theme + Manage + Auth */}
         <div className="flex items-center gap-2">
+          {user && subscribed && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs"
+              onClick={handleManageSubscription}
+              disabled={portalLoading}
+            >
+              <CreditCard className="w-3.5 h-3.5 mr-1.5" />
+              <span className="hidden sm:inline">Gerenciar Assinatura</span>
+            </Button>
+          )}
           <ThemeToggle />
           {user ? (
             <Button variant="ghost" size="sm" onClick={signOut}>
