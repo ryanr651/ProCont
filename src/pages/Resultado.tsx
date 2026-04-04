@@ -768,10 +768,15 @@ const Resultado = () => {
         desc.includes("RESULTADO LIQUIDO") ||
         desc.includes("LUCRO DO EXERCICIO") ||
         desc.includes("RESULTADO DO EXERCICIO") ||
-        desc.includes("LUCRO DO PERIODO")
+        desc.includes("LUCRO DO PERIODO") ||
+        desc.includes("PREJUIZO DO EXERCICIO") ||
+        desc.includes("PREJUIZO DO PERIODO") ||
+        desc.includes("PREJUIZO LIQUIDO")
       ) {
         if (!foundLucroLiq) {
-          metrics.lucroLiquido = valorAbs;
+          // Prejuízo deve ser negativo; lucro positivo
+          const isPrejuizo = desc.includes("PREJUIZO");
+          metrics.lucroLiquido = isPrejuizo ? -valorAbs : valorAbs;
           metrics.lucroLiquidoOrigem = "linha_explicita";
           foundLucroLiq = true;
         }
