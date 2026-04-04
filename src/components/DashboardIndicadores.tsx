@@ -163,12 +163,15 @@ export function DashboardIndicadores({
     ? (balancoData.passivoCirculante / (balancoData.passivoCirculante + balancoData.passivoNaoCirculante)) * 100
     : 0;
 
+  // Para fórmulas derivadas, lucro líquido negativo é tratado como 0
+  const lucroLiquidoParaFormulas = Math.max(0, dreData.lucroLiquido);
+
   const roe = balancoData.patrimonioLiquido > 0
-    ? (dreData.lucroLiquido / balancoData.patrimonioLiquido) * 100
+    ? (lucroLiquidoParaFormulas / balancoData.patrimonioLiquido) * 100
     : 0;
 
   const roa = balancoData.ativoTotal > 0
-    ? (dreData.lucroLiquido / balancoData.ativoTotal) * 100
+    ? (lucroLiquidoParaFormulas / balancoData.ativoTotal) * 100
     : 0;
 
   // DRE Indicators
