@@ -528,9 +528,12 @@ const Resultado = () => {
       desc.includes("RESULTADO LIQUIDO") ||
       desc.includes("LUCRO DO EXERCICIO") ||
       desc.includes("RESULTADO DO EXERCICIO") ||
-      desc.includes("LUCRO DO PERIODO")
+      desc.includes("LUCRO DO PERIODO") ||
+      desc.includes("PREJUIZO DO EXERCICIO") ||
+      desc.includes("PREJUIZO DO PERIODO") ||
+      desc.includes("PREJUIZO LIQUIDO")
     ) {
-      return { grupo: "lucro_liquido", isExplicit: true, motivo: "Linha explícita de Lucro Líquido" };
+      return { grupo: "lucro_liquido", isExplicit: true, motivo: "Linha explícita de Lucro Líquido / Prejuízo" };
     }
 
     // ===== CONTAS QUE COMEÇAM COM "IMPOSTOS", "MULTAS" ou "TAXAS" → DESPESAS TRIBUTÁRIAS =====
@@ -768,10 +771,15 @@ const Resultado = () => {
         desc.includes("RESULTADO LIQUIDO") ||
         desc.includes("LUCRO DO EXERCICIO") ||
         desc.includes("RESULTADO DO EXERCICIO") ||
-        desc.includes("LUCRO DO PERIODO")
+        desc.includes("LUCRO DO PERIODO") ||
+        desc.includes("PREJUIZO DO EXERCICIO") ||
+        desc.includes("PREJUIZO DO PERIODO") ||
+        desc.includes("PREJUIZO LIQUIDO")
       ) {
         if (!foundLucroLiq) {
-          metrics.lucroLiquido = valorAbs;
+          // Prejuízo deve ser negativo; lucro positivo
+          const isPrejuizo = desc.includes("PREJUIZO");
+          metrics.lucroLiquido = isPrejuizo ? -valorAbs : valorAbs;
           metrics.lucroLiquidoOrigem = "linha_explicita";
           foundLucroLiq = true;
         }
@@ -1287,7 +1295,8 @@ const Resultado = () => {
           break;
         case "lucro_liquido":
           if (metrics.lucroLiquido === 0) {
-            metrics.lucroLiquido = valorAbs;
+            // Preservar sinal negativo para prejuízo
+            metrics.lucroLiquido = entry.valor < 0 ? entry.valor : valorAbs;
             metrics.lucroLiquidoOrigem = "linha_explicita";
           }
           break;
