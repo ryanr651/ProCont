@@ -1292,7 +1292,8 @@ const Resultado = () => {
           break;
         case "lucro_liquido":
           if (metrics.lucroLiquido === 0) {
-            metrics.lucroLiquido = valorAbs;
+            // Preservar sinal negativo para prejuízo
+            metrics.lucroLiquido = entry.valor < 0 ? entry.valor : valorAbs;
             metrics.lucroLiquidoOrigem = "linha_explicita";
           }
           break;
