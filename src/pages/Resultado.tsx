@@ -528,9 +528,12 @@ const Resultado = () => {
       desc.includes("RESULTADO LIQUIDO") ||
       desc.includes("LUCRO DO EXERCICIO") ||
       desc.includes("RESULTADO DO EXERCICIO") ||
-      desc.includes("LUCRO DO PERIODO")
+      desc.includes("LUCRO DO PERIODO") ||
+      desc.includes("PREJUIZO DO EXERCICIO") ||
+      desc.includes("PREJUIZO DO PERIODO") ||
+      desc.includes("PREJUIZO LIQUIDO")
     ) {
-      return { grupo: "lucro_liquido", isExplicit: true, motivo: "Linha explícita de Lucro Líquido" };
+      return { grupo: "lucro_liquido", isExplicit: true, motivo: "Linha explícita de Lucro Líquido / Prejuízo" };
     }
 
     // ===== CONTAS QUE COMEÇAM COM "IMPOSTOS", "MULTAS" ou "TAXAS" → DESPESAS TRIBUTÁRIAS =====
