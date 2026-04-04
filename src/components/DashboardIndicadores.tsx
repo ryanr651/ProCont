@@ -163,12 +163,15 @@ export function DashboardIndicadores({
     ? (balancoData.passivoCirculante / (balancoData.passivoCirculante + balancoData.passivoNaoCirculante)) * 100
     : 0;
 
+  // Para fórmulas derivadas, lucro líquido negativo é tratado como 0
+  const lucroLiquidoParaFormulas = Math.max(0, dreData.lucroLiquido);
+
   const roe = balancoData.patrimonioLiquido > 0
-    ? (dreData.lucroLiquido / balancoData.patrimonioLiquido) * 100
+    ? (lucroLiquidoParaFormulas / balancoData.patrimonioLiquido) * 100
     : 0;
 
   const roa = balancoData.ativoTotal > 0
-    ? (dreData.lucroLiquido / balancoData.ativoTotal) * 100
+    ? (lucroLiquidoParaFormulas / balancoData.ativoTotal) * 100
     : 0;
 
   // DRE Indicators
@@ -295,17 +298,17 @@ export function DashboardIndicadores({
     },
     {
       title: "Margem Líquida",
-      value: dreData.margemLiquida,
+      value: dreData.lucroLiquido >= 0 ? dreData.margemLiquida : 0,
       format: "percentage",
       icon: Percent,
-      variant: dreData.margemLiquida >= 10 ? "success" : dreData.margemLiquida >= 3 ? "warning" : "danger",
+      variant: dreData.lucroLiquido < 0 ? "danger" : dreData.margemLiquida >= 10 ? "success" : dreData.margemLiquida >= 3 ? "warning" : "danger",
       formula: "(Lucro Líquido ÷ Receita Líquida) × 100",
-      formulaDescription: "Percentual final que efetivamente vira lucro para os sócios.",
+      formulaDescription: "Percentual final que efetivamente vira lucro para os sócios. Quando o Lucro Líquido é negativo, a margem é exibida como 0%.",
       accounts: [
-        { descricao: "Lucro Líquido", valor: dreData.lucroLiquido, motivo: "Numerador" },
+        { descricao: "Lucro Líquido", valor: dreData.lucroLiquido, motivo: "Numerador (negativo → 0)" },
         { descricao: "Receita Líquida", valor: dreData.receitaLiquida, motivo: "Denominador" },
       ],
-      trend: dreData.margemLiquida >= 10 ? "up" : dreData.margemLiquida < 3 ? "down" : "neutral",
+      trend: dreData.lucroLiquido < 0 ? "down" : dreData.margemLiquida >= 10 ? "up" : dreData.margemLiquida < 3 ? "down" : "neutral",
     },
     {
       title: "Margem EBITDA",
