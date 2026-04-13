@@ -237,9 +237,13 @@ export type Database = {
         Row: {
           cnpj_empresa: string | null
           created_at: string
+          email_empresa: string | null
+          email_responsavel: string | null
+          endereco: string | null
           id: string
           logo_url: string | null
           nome_empresa: string | null
+          nome_responsavel: string | null
           telefone_fixo: string | null
           updated_at: string
           user_id: string
@@ -247,9 +251,13 @@ export type Database = {
         Insert: {
           cnpj_empresa?: string | null
           created_at?: string
+          email_empresa?: string | null
+          email_responsavel?: string | null
+          endereco?: string | null
           id?: string
           logo_url?: string | null
           nome_empresa?: string | null
+          nome_responsavel?: string | null
           telefone_fixo?: string | null
           updated_at?: string
           user_id: string
@@ -257,9 +265,13 @@ export type Database = {
         Update: {
           cnpj_empresa?: string | null
           created_at?: string
+          email_empresa?: string | null
+          email_responsavel?: string | null
+          endereco?: string | null
           id?: string
           logo_url?: string | null
           nome_empresa?: string | null
+          nome_responsavel?: string | null
           telefone_fixo?: string | null
           updated_at?: string
           user_id?: string
