@@ -7,6 +7,10 @@ interface BrandingData {
   cnpj_empresa: string | null;
   logo_url: string | null;
   telefone_fixo: string | null;
+  email_empresa: string | null;
+  endereco: string | null;
+  nome_responsavel: string | null;
+  email_responsavel: string | null;
 }
 
 interface UserRole {
@@ -65,7 +69,7 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
 
       const { data: brandingData } = await supabase
         .from('master_branding')
-        .select('nome_empresa, cnpj_empresa, logo_url, telefone_fixo')
+        .select('nome_empresa, cnpj_empresa, logo_url, telefone_fixo, email_empresa, endereco, nome_responsavel, email_responsavel')
         .eq('user_id', brandingUserId)
         .single();
 
