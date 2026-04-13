@@ -18,8 +18,12 @@ const PerfilEmpresa = () => {
   const navigate = useNavigate();
 
   const [nomeEmpresa, setNomeEmpresa] = useState("");
+  const [emailEmpresa, setEmailEmpresa] = useState("");
+  const [endereco, setEndereco] = useState("");
   const [cnpjEmpresa, setCnpjEmpresa] = useState("");
   const [telefoneFixo, setTelefoneFixo] = useState("");
+  const [nomeResponsavel, setNomeResponsavel] = useState("");
+  const [emailResponsavel, setEmailResponsavel] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -32,8 +36,12 @@ const PerfilEmpresa = () => {
     }
     if (branding) {
       setNomeEmpresa(branding.nome_empresa || "");
+      setEmailEmpresa(branding.email_empresa || "");
+      setEndereco(branding.endereco || "");
       setCnpjEmpresa(branding.cnpj_empresa || "");
       setTelefoneFixo(branding.telefone_fixo || "");
+      setNomeResponsavel(branding.nome_responsavel || "");
+      setEmailResponsavel(branding.email_responsavel || "");
       setLogoUrl(branding.logo_url || "");
       setLogoPreview(branding.logo_url || null);
     }
@@ -73,8 +81,12 @@ const PerfilEmpresa = () => {
         .from("master_branding")
         .update({
           nome_empresa: nomeEmpresa || null,
+          email_empresa: emailEmpresa || null,
+          endereco: endereco || null,
           cnpj_empresa: cnpjEmpresa || null,
           telefone_fixo: telefoneFixo || null,
+          nome_responsavel: nomeResponsavel || null,
+          email_responsavel: emailResponsavel || null,
           logo_url: finalLogoUrl || null,
         })
         .eq("user_id", user.id);
@@ -141,6 +153,29 @@ const PerfilEmpresa = () => {
             />
           </div>
 
+          {/* Email da Empresa */}
+          <div className="space-y-2">
+            <Label htmlFor="emailEmpresa">Email da Empresa</Label>
+            <Input
+              id="emailEmpresa"
+              type="email"
+              value={emailEmpresa}
+              onChange={(e) => setEmailEmpresa(e.target.value)}
+              placeholder="contato@empresa.com.br"
+            />
+          </div>
+
+          {/* Endereço */}
+          <div className="space-y-2">
+            <Label htmlFor="endereco">Endereço</Label>
+            <Input
+              id="endereco"
+              value={endereco}
+              onChange={(e) => setEndereco(e.target.value)}
+              placeholder="Rua, número, bairro, cidade - UF"
+            />
+          </div>
+
           {/* CNPJ */}
           <div className="space-y-2">
             <Label htmlFor="cnpj">CNPJ</Label>
@@ -160,6 +195,29 @@ const PerfilEmpresa = () => {
               value={telefoneFixo}
               onChange={(e) => setTelefoneFixo(e.target.value)}
               placeholder="(00) 0000-0000"
+            />
+          </div>
+
+          {/* Nome do Responsável */}
+          <div className="space-y-2">
+            <Label htmlFor="nomeResponsavel">Nome do Responsável</Label>
+            <Input
+              id="nomeResponsavel"
+              value={nomeResponsavel}
+              onChange={(e) => setNomeResponsavel(e.target.value)}
+              placeholder="Nome completo do responsável"
+            />
+          </div>
+
+          {/* Email do Responsável */}
+          <div className="space-y-2">
+            <Label htmlFor="emailResponsavel">Email do Responsável</Label>
+            <Input
+              id="emailResponsavel"
+              type="email"
+              value={emailResponsavel}
+              onChange={(e) => setEmailResponsavel(e.target.value)}
+              placeholder="responsavel@empresa.com.br"
             />
           </div>
 
