@@ -1788,6 +1788,12 @@ const Resultado = () => {
             </section>
           </>
         )}
+
+        {/* Faturamento Analysis Section */}
+        {faturamentoData.length > 0 && (
+          <FaturamentoAnalysis data={faturamentoData} />
+        )}
+
         {diagnosticLines.length > 0 && (
           <section className="mb-12">
             <h2 className="font-display text-2xl font-bold mb-6 flex items-center gap-3">
