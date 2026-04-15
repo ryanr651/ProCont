@@ -278,7 +278,8 @@ export async function uploadAndProcessFiles(
   userId: string,
   empresaId?: string,
   onProgress?: (stage: string) => void,
-  balanceteFile?: File | null
+  balanceteFile?: File | null,
+  faturamentoFile?: File | null
 ): Promise<UploadResult> {
   const errors: string[] = [];
 
@@ -289,10 +290,12 @@ export async function uploadAndProcessFiles(
       await supabase.from("dre_entries").delete().eq("user_id", userId).eq("empresa_id", empresaId);
       await supabase.from("balanco_entries").delete().eq("user_id", userId).eq("empresa_id", empresaId);
       await supabase.from("balancete_entries").delete().eq("user_id", userId).eq("empresa_id", empresaId);
+      await supabase.from("faturamento_entries").delete().eq("user_id", userId).eq("empresa_id", empresaId);
     } else {
       await supabase.from("dre_entries").delete().eq("user_id", userId);
       await supabase.from("balanco_entries").delete().eq("user_id", userId);
       await supabase.from("balancete_entries").delete().eq("user_id", userId);
+      await supabase.from("faturamento_entries").delete().eq("user_id", userId);
     }
 
     let dreResult: Awaited<ReturnType<typeof parseDREFileAuto>> | null = null;
