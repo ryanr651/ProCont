@@ -136,7 +136,7 @@ const Upload = () => {
 
       toast({
         title: "Processamento concluído",
-        description: `DRE: ${result.inserted_dre} · Balanço: ${result.inserted_balanco} · Balancete: ${result.inserted_balancete} linhas`,
+        description: `DRE: ${result.inserted_dre} · Balanço: ${result.inserted_balanco} · Balancete: ${result.inserted_balancete} · Faturamento: ${result.inserted_faturamento} linhas`,
       });
 
       navigate(`/resultado?empresa_id=${selectedEmpresa}`);
