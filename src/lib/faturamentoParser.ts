@@ -186,27 +186,23 @@ function parseFaturamentoRows(rows: string[][], errors: string[]): FaturamentoPa
   const entries: FaturamentoEntry[] = [];
   let periodo = "";
 
-  // Find periodo
   for (const row of rows) {
     const rowText = row.join(" ");
-    const periodoMatch = rowText.match(/Per[íi]odo[:\s]+(\d{2}\/\d{2}\/\d{4})\s*a\s*(\d{2}\/\d{2}\/\d{4})/i);
+    const periodoMatch = rowText.match(/Per[íi]odo[:\s]+(\d{2}\/\d{2}\/\d{4})\s*a?\s*(\d{2}\/\d{2}\/\d{4})/i);
     if (periodoMatch) {
       periodo = `${periodoMatch[1]} a ${periodoMatch[2]}`;
       break;
     }
   }
 
-  // Parse data rows
   for (const row of rows) {
-    const cells = row.map(c => String(c).trim());
-    if (cells.length < 4) continue;
+    const cells = row.map((c) => String(c).trim()).filter(Boolean);
+    if (cells.length === 0) continue;
 
-    // Find month name in first meaningful cell
     const firstCell = cells[0].toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    
-    if (firstCell === "TOTAIS" || firstCell === "TOTAL") continue;
+    if (firstCell === "TOTAIS" || firstCell === "TOTAL" || firstCell.startsWith("TOTAIS ")) continue;
 
-    const mesMatch = MESES_VALIDOS.find(m => {
+    const mesMatch = MESES_VALIDOS.find((m) => {
       const norm = m.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       return firstCell === norm || firstCell.startsWith(norm);
     });
@@ -215,46 +211,60 @@ function parseFaturamentoRows(rows: string[][], errors: string[]): FaturamentoPa
 
     const mesNormalizado = MESES_NORMALIZADOS[mesMatch] || mesMatch;
 
-    // Find numeric cells
-    const numericCells = cells.slice(1).map(parseBRNumber);
-    
-    // Expected: ano, saidas, servicos, outros, total
-    // Or just: saidas, servicos, outros, total (without year column)
-    let ano = 0;
-    let saidas = 0, servicos = 0, outros = 0, total = 0;
+    const rowText = cells.join(" ");
+    const anoFromRow = rowText.match(/\b(20\d{2})\b/);
+    let ano = anoFromRow ? parseInt(anoFromRow[1], 10) : 0;
 
-    if (numericCells.length >= 5) {
-      // ano, saidas, servicos, outros, total
-      ano = Math.round(numericCells[0]);
-      saidas = numericCells[1];
-      servicos = numericCells[2];
-      outros = numericCells[3];
-      total = numericCells[4];
-    } else if (numericCells.length >= 4) {
-      // Check if first numeric is a year
-      if (numericCells[0] >= 2000 && numericCells[0] <= 2100) {
-        ano = Math.round(numericCells[0]);
-        saidas = numericCells[1];
-        servicos = numericCells[2];
-        total = numericCells[3];
-      } else {
-        saidas = numericCells[0];
-        servicos = numericCells[1];
-        outros = numericCells[2];
-        total = numericCells[3];
+    const numericSource = cells.length > 1 ? cells.slice(1).join(" ") : rowText.replace(cells[0], "").trim();
+    const brNumberMatches = numericSource.match(/-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+(?:,\d{2})?/g) ?? [];
+    const numericCells = brNumberMatches.map(parseBRNumber);
+
+    let saidas = 0;
+    let servicos = 0;
+    let outros = 0;
+    let total = 0;
+
+    if (numericCells.length >= 4) {
+      saidas = numericCells[0];
+      servicos = numericCells[1];
+      outros = numericCells[2];
+      total = numericCells[3];
+    } else {
+      const legacyNumericCells = cells.slice(1).map(parseBRNumber);
+      if (legacyNumericCells.length >= 5) {
+        if (!ano && legacyNumericCells[0] >= 2000 && legacyNumericCells[0] <= 2100) {
+          ano = Math.round(legacyNumericCells[0]);
+        }
+        saidas = legacyNumericCells[1];
+        servicos = legacyNumericCells[2];
+        outros = legacyNumericCells[3];
+        total = legacyNumericCells[4];
+      } else if (legacyNumericCells.length >= 4) {
+        if (!ano && legacyNumericCells[0] >= 2000 && legacyNumericCells[0] <= 2100) {
+          ano = Math.round(legacyNumericCells[0]);
+          saidas = legacyNumericCells[1];
+          servicos = legacyNumericCells[2];
+          total = legacyNumericCells[3];
+        } else {
+          saidas = legacyNumericCells[0];
+          servicos = legacyNumericCells[1];
+          outros = legacyNumericCells[2];
+          total = legacyNumericCells[3];
+        }
       }
     }
 
-    if (total === 0 && saidas > 0) {
+    if (total === 0 && (saidas > 0 || servicos > 0 || outros > 0)) {
       total = saidas + servicos + outros;
     }
 
     if (ano === 0) {
-      // Try to extract year from periodo
       const yearMatch = periodo.match(/(\d{4})/);
-      if (yearMatch) ano = parseInt(yearMatch[1]);
+      if (yearMatch) ano = parseInt(yearMatch[1], 10);
       else ano = new Date().getFullYear();
     }
+
+    if (saidas === 0 && servicos === 0 && outros === 0 && total === 0) continue;
 
     entries.push({ mes: mesNormalizado, ano, saidas, servicos, outros, total });
   }
@@ -263,5 +273,10 @@ function parseFaturamentoRows(rows: string[][], errors: string[]): FaturamentoPa
     errors.push("Nenhum dado de faturamento encontrado no arquivo.");
   }
 
-  return { entries, periodo: periodo || `${entries[0]?.ano || new Date().getFullYear()}`, errors, parsed: entries.length > 0 };
+  return {
+    entries,
+    periodo: periodo || `${entries[0]?.ano || new Date().getFullYear()}`,
+    errors,
+    parsed: entries.length > 0,
+  };
 }
