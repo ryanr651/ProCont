@@ -297,7 +297,7 @@ const Resultado = () => {
       }
 
       // Load Faturamento entries
-      const { data: faturamentoData: fatData, error: fatError } = await faturamentoQuery;
+      const { data: fatData, error: fatError } = await faturamentoQuery;
       if (!fatError && fatData && fatData.length > 0) {
         setFaturamentoData(fatData.map((e: any) => ({
           mes: e.mes,
