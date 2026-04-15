@@ -233,6 +233,56 @@ export type Database = {
         }
         Relationships: []
       }
+      faturamento_entries: {
+        Row: {
+          ano: number
+          created_at: string
+          empresa_id: string | null
+          id: string
+          mes: string
+          outros: number
+          periodo: string
+          saidas: number
+          servicos: number
+          total: number
+          user_id: string
+        }
+        Insert: {
+          ano: number
+          created_at?: string
+          empresa_id?: string | null
+          id?: string
+          mes: string
+          outros?: number
+          periodo: string
+          saidas?: number
+          servicos?: number
+          total?: number
+          user_id: string
+        }
+        Update: {
+          ano?: number
+          created_at?: string
+          empresa_id?: string | null
+          id?: string
+          mes?: string
+          outros?: number
+          periodo?: string
+          saidas?: number
+          servicos?: number
+          total?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "faturamento_entries_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       master_branding: {
         Row: {
           cnpj_empresa: string | null
