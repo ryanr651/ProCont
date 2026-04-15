@@ -9,7 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { AppHeader } from "@/components/AppHeader";
 import { Loader2, Save, Upload, Building2 } from "lucide-react";
-import { formatCNPJ } from "@/lib/cnpjMask";
+import { formatCNPJ, formatPhone, isValidEmail } from "@/lib/cnpjMask";
 
 const PerfilEmpresa = () => {
   const { user } = useAuth();
@@ -28,6 +28,7 @@ const PerfilEmpresa = () => {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!isMaster) {
@@ -57,6 +58,27 @@ const PerfilEmpresa = () => {
 
   const handleSave = async () => {
     if (!user) return;
+    
+    // Validate emails
+    const newErrors: Record<string, string> = {};
+    if (emailEmpresa && !isValidEmail(emailEmpresa)) {
+      newErrors.emailEmpresa = "Email inválido";
+    }
+    if (emailResponsavel && !isValidEmail(emailResponsavel)) {
+      newErrors.emailResponsavel = "Email inválido";
+    }
+    
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      toast({
+        title: "Erro de validação",
+        description: "Por favor, corrija os campos destacados.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setErrors({});
     setSaving(true);
 
     try {
@@ -160,9 +182,18 @@ const PerfilEmpresa = () => {
               id="emailEmpresa"
               type="email"
               value={emailEmpresa}
-              onChange={(e) => setEmailEmpresa(e.target.value)}
+              onChange={(e) => {
+                setEmailEmpresa(e.target.value);
+                if (errors.emailEmpresa) {
+                  setErrors(prev => ({ ...prev, emailEmpresa: '' }));
+                }
+              }}
               placeholder="contato@empresa.com.br"
+              className={errors.emailEmpresa ? "border-destructive" : ""}
             />
+            {errors.emailEmpresa && (
+              <p className="text-sm text-destructive">{errors.emailEmpresa}</p>
+            )}
           </div>
 
           {/* Endereço */}
@@ -193,7 +224,7 @@ const PerfilEmpresa = () => {
             <Input
               id="telefone"
               value={telefoneFixo}
-              onChange={(e) => setTelefoneFixo(e.target.value)}
+              onChange={(e) => setTelefoneFixo(formatPhone(e.target.value))}
               placeholder="(00) 0000-0000"
             />
           </div>
@@ -216,9 +247,18 @@ const PerfilEmpresa = () => {
               id="emailResponsavel"
               type="email"
               value={emailResponsavel}
-              onChange={(e) => setEmailResponsavel(e.target.value)}
+              onChange={(e) => {
+                setEmailResponsavel(e.target.value);
+                if (errors.emailResponsavel) {
+                  setErrors(prev => ({ ...prev, emailResponsavel: '' }));
+                }
+              }}
               placeholder="responsavel@empresa.com.br"
+              className={errors.emailResponsavel ? "border-destructive" : ""}
             />
+            {errors.emailResponsavel && (
+              <p className="text-sm text-destructive">{errors.emailResponsavel}</p>
+            )}
           </div>
 
           <Button
