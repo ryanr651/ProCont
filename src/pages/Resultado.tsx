@@ -12,6 +12,7 @@ import { DashboardIndicadores } from "@/components/DashboardIndicadores";
 import { DashboardBalancete, type BalanceteClassifiedEntry } from "@/components/DashboardBalancete";
 import { BalanceteHistoricoModal, type PreviousPeriodBalancete } from "@/components/BalanceteHistoricoModal";
 import { BalanceteComparativo } from "@/components/BalanceteComparativo";
+import { FaturamentoAnalysis, type FaturamentoRow } from "@/components/FaturamentoAnalysis";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranding } from "@/contexts/BrandingContext";
@@ -206,6 +207,9 @@ const Resultado = () => {
   const [balancetePeriodo, setBalancetePeriodo] = useState<string>("");
   const [previousPeriods, setPreviousPeriods] = useState<PreviousPeriodBalancete[]>([]);
   const [showHistoricoModal, setShowHistoricoModal] = useState(false);
+
+  // Faturamento state
+  const [faturamentoData, setFaturamentoData] = useState<FaturamentoRow[]>([]);
 
   // Empresa context
   const [selectedEmpresa, setSelectedEmpresa] = useState<EmpresaData | null>(null);
