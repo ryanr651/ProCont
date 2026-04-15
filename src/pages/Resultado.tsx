@@ -237,11 +237,13 @@ const Resultado = () => {
       let dreQuery = supabase.from("dre_entries").select("*").eq("user_id", user.id);
       let balancoQuery = supabase.from("balanco_entries").select("*").eq("user_id", user.id);
       let balanceteQuery = supabase.from("balancete_entries").select("*").eq("user_id", user.id);
+      let faturamentoQuery = (supabase.from("faturamento_entries") as any).select("*").eq("user_id", user.id);
 
       if (empresaIdParam) {
         dreQuery = dreQuery.eq("empresa_id", empresaIdParam);
         balancoQuery = balancoQuery.eq("empresa_id", empresaIdParam);
         balanceteQuery = balanceteQuery.eq("empresa_id", empresaIdParam);
+        faturamentoQuery = faturamentoQuery.eq("empresa_id", empresaIdParam);
       }
 
       // Load DRE entries
