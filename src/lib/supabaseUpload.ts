@@ -569,6 +569,33 @@ export async function uploadAndProcessFiles(
       }
     }
 
+    // Step 7: Insert Faturamento entries
+    let insertedFaturamento = 0;
+    if (faturamentoResult && faturamentoResult.entries.length > 0) {
+      onProgress?.("Salvando dados de faturamento...");
+      const fatBatches = chunkArray(faturamentoResult.entries, 500);
+      for (const batch of fatBatches) {
+        const { error } = await (supabase.from("faturamento_entries") as any).insert(
+          batch.map((entry) => ({
+            user_id: userId,
+            empresa_id: empresaId || null,
+            periodo: faturamentoResult!.periodo,
+            mes: entry.mes,
+            ano: entry.ano,
+            saidas: entry.saidas,
+            servicos: entry.servicos,
+            outros: entry.outros,
+            total: entry.total,
+          }))
+        );
+        if (error) {
+          errors.push(`Erro ao inserir Faturamento: ${error.message}`);
+        } else {
+          insertedFaturamento += batch.length;
+        }
+      }
+    }
+
     if (dreParsed && insertedDre === 0) {
       errors.push("DRE foi lido, mas nenhuma linha foi materializada para persistência (entries=0).");
     }
@@ -593,14 +620,16 @@ export async function uploadAndProcessFiles(
     onProgress?.("Concluído!");
 
     return {
-      success: dreParsed || balancoParsed || balanceteParsed,
+      success: dreParsed || balancoParsed || balanceteParsed || faturamentoParsed,
       inserted_dre: insertedDre,
       inserted_balanco: insertedBalanco,
       inserted_balancete: insertedBalancete,
+      inserted_faturamento: insertedFaturamento,
       errors,
       dre_entries: dreResult?.entries,
       balanco_entries: balancoResult?.entries,
       balancete_entries: balanceteResult?.entries,
+      faturamento_entries: faturamentoResult?.entries,
       balanco_metrics: balancoResult?.metrics,
       balanco_validation: balancoResult?.validationRows,
       ai_stats: aiStats,
@@ -611,6 +640,7 @@ export async function uploadAndProcessFiles(
       inserted_dre: 0,
       inserted_balanco: 0,
       inserted_balancete: 0,
+      inserted_faturamento: 0,
       errors: [error instanceof Error ? error.message : "Erro desconhecido ao processar arquivos."],
     };
   }
