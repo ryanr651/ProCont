@@ -296,7 +296,20 @@ const Resultado = () => {
         );
       }
 
-      if (!dreEntries?.length && !balancoEntries?.length && !balanceteData?.length) {
+      // Load Faturamento entries
+      const { data: faturamentoData: fatData, error: fatError } = await faturamentoQuery;
+      if (!fatError && fatData && fatData.length > 0) {
+        setFaturamentoData(fatData.map((e: any) => ({
+          mes: e.mes,
+          ano: Number(e.ano),
+          saidas: Number(e.saidas) || 0,
+          servicos: Number(e.servicos) || 0,
+          outros: Number(e.outros) || 0,
+          total: Number(e.total) || 0,
+        })));
+      }
+
+      if (!dreEntries?.length && !balancoEntries?.length && !balanceteData?.length && !fatData?.length) {
         navigate("/upload");
         return;
       }
