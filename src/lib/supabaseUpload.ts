@@ -384,14 +384,32 @@ export async function uploadAndProcessFiles(
       }
     }
 
+    // Parse Faturamento file
+    let faturamentoResult: Awaited<ReturnType<typeof parseFaturamentoFile>> | null = null;
+    if (faturamentoFile) {
+      onProgress?.("Lendo arquivo de faturamento...");
+      if (isPDF(faturamentoFile)) {
+        const { extractTextFromPDF } = await import("./pdfParser");
+        const extraction = await extractTextFromPDF(faturamentoFile);
+        if (extraction.text) {
+          faturamentoResult = parseFaturamentoFromText(extraction.text);
+        }
+      } else {
+        faturamentoResult = await parseFaturamentoFile(faturamentoFile);
+      }
+      if (faturamentoResult) errors.push(...faturamentoResult.errors);
+    }
+
     const dreParsed = !!dreResult?.parsed;
     const balancoParsed = !!balancoResult?.parsed || (balancoResult?.metrics?.ativoTotal ?? 0) !== 0;
     const balanceteParsed = !!balanceteResult?.parsed;
+    const faturamentoParsed = !!faturamentoResult?.parsed;
 
     const hasAnyValidData =
       dreParsed ||
       balancoParsed ||
       balanceteParsed ||
+      faturamentoParsed ||
       (dreResult?.entries?.length ?? 0) > 0 ||
       (balancoResult?.entries?.length ?? 0) > 0 ||
       (balanceteResult?.entries?.length ?? 0) > 0;
@@ -402,6 +420,7 @@ export async function uploadAndProcessFiles(
         inserted_dre: 0,
         inserted_balanco: 0,
         inserted_balancete: 0,
+        inserted_faturamento: 0,
         errors: [
           "Não foi possível interpretar a estrutura dos arquivos enviados. Verifique se são arquivos válidos da contabilidade.",
         ],
