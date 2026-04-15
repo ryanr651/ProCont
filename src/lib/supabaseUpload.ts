@@ -10,6 +10,7 @@ import {
   ValidationRow,
 } from "./brazilianParser";
 import { extractTextFromPDF } from "./pdfParser";
+import { parseFaturamentoFile, parseFaturamentoFromText, type FaturamentoEntry } from "./faturamentoParser";
 import type { UploadedFile } from "@/components/MultiFileUpload";
 
 export interface UploadResult {
@@ -17,10 +18,12 @@ export interface UploadResult {
   inserted_dre: number;
   inserted_balanco: number;
   inserted_balancete: number;
+  inserted_faturamento: number;
   errors: string[];
   dre_entries?: ParsedDREEntry[];
   balanco_entries?: ParsedBalancoEntry[];
   balancete_entries?: ParsedBalanceteEntry[];
+  faturamento_entries?: FaturamentoEntry[];
   balanco_metrics?: BalancoMetrics;
   balanco_validation?: ValidationRow[];
   ai_stats?: { total: number; from_cache: number; from_ai: number };
@@ -235,22 +238,25 @@ export async function uploadAndProcessMultipleFiles(
 ): Promise<UploadResult> {
   const errors: string[] = [];
 
-  // Find DRE, Balanço and Balancete files
+  // Find DRE, Balanço, Balancete and Faturamento files
   const dreType = fileTypes.find((ft) => ft.tipo === "DRE");
   const balancoType = fileTypes.find((ft) => ft.tipo === "BALANCO_PATRIMONIAL");
   const balanceteType = fileTypes.find((ft) => ft.tipo === "BALANCETE");
+  const faturamentoType = fileTypes.find((ft) => ft.tipo === "FATURAMENTO");
 
   const dreFile = dreType ? files.find((f) => f.file.name === dreType.filename) : undefined;
   const balancoFile = balancoType ? files.find((f) => f.file.name === balancoType.filename) : undefined;
   const balanceteFile = balanceteType ? files.find((f) => f.file.name === balanceteType.filename) : undefined;
+  const faturamentoFile = faturamentoType ? files.find((f) => f.file.name === faturamentoType.filename) : undefined;
 
-  if (!dreFile && !balancoFile && !balanceteFile) {
+  if (!dreFile && !balancoFile && !balanceteFile && !faturamentoFile) {
     return {
       success: false,
       inserted_dre: 0,
       inserted_balanco: 0,
       inserted_balancete: 0,
-      errors: ["Nenhum arquivo foi identificado como DRE, Balanço Patrimonial ou Balancete. Verifique os arquivos enviados."],
+      inserted_faturamento: 0,
+      errors: ["Nenhum arquivo foi identificado como DRE, Balanço Patrimonial, Balancete ou Faturamento. Verifique os arquivos enviados."],
       fileTypes: fileTypes as any,
     };
   }
@@ -261,7 +267,8 @@ export async function uploadAndProcessMultipleFiles(
     userId,
     empresaId,
     onProgress,
-    balanceteFile?.file || null
+    balanceteFile?.file || null,
+    faturamentoFile?.file || null
   );
 }
 
