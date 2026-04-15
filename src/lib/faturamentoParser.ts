@@ -76,8 +76,110 @@ export async function parseFaturamentoFile(file: File): Promise<FaturamentoParse
 
 export function parseFaturamentoFromText(text: string): FaturamentoParseResult {
   const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
-  const rows = lines.map(l => l.split(/\s{2,}|\t/));
-  return parseFaturamentoRows(rows, []);
+
+  // Try tabular rows first (XLS-like with tabs or multiple spaces)
+  const tabulatedRows = lines.map(l => l.split(/\s{2,}|\t/));
+  const tabResult = parseFaturamentoRows(tabulatedRows, []);
+  if (tabResult.parsed) return tabResult;
+
+  // Fallback: PDF vertical format where each field is on its own line
+  // Pattern: ANO (2025) → MÊS (Janeiro) → Saídas → Serviços → Outros → Total
+  return parseFaturamentoVerticalLines(lines);
+}
+
+function parseFaturamentoVerticalLines(lines: string[]): FaturamentoParseResult {
+  const entries: FaturamentoEntry[] = [];
+  const errors: string[] = [];
+  let periodo = "";
+
+  // Find periodo by scanning consecutive lines
+  for (let i = 0; i < lines.length - 2; i++) {
+    if (/per[íi]odo/i.test(lines[i])) {
+      // Periodo might be split across lines: "Período:" "01/01/2025" "31/12/2025" with optional "a"
+      const dateLines = lines.slice(i, i + 5).join(" ");
+      const periodoMatch = dateLines.match(/(\d{2}\/\d{2}\/\d{4})\s*a?\s*(\d{2}\/\d{2}\/\d{4})/);
+      if (periodoMatch) {
+        periodo = `${periodoMatch[1]} a ${periodoMatch[2]}`;
+      }
+      break;
+    }
+  }
+
+  // Scan for pattern: year line → month line → 4 numeric lines (saidas, servicos, outros, total)
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const lineUpper = line.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+    // Skip "Totais" row
+    if (lineUpper === "TOTAIS" || lineUpper === "TOTAL") {
+      i++;
+      continue;
+    }
+
+    // Check if this line is a month name
+    const mesMatch = MESES_VALIDOS.find(m => {
+      const norm = m.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      return lineUpper === norm || lineUpper.startsWith(norm);
+    });
+
+    if (mesMatch) {
+      const mesNormalizado = MESES_NORMALIZADOS[mesMatch] || mesMatch;
+
+      // Look backwards for year (the line before the month might be the year)
+      let ano = 0;
+      if (i > 0) {
+        const prevVal = parseInt(lines[i - 1]);
+        if (prevVal >= 2000 && prevVal <= 2100) {
+          ano = prevVal;
+        }
+      }
+
+      // Look forward for 4 numeric values: saidas, servicos, outros, total
+      const numericValues: number[] = [];
+      let j = i + 1;
+      while (j < lines.length && numericValues.length < 4) {
+        const val = parseBRNumber(lines[j]);
+        const isNumericLine = /^[\d.,\-()R$\s]+$/.test(lines[j].trim());
+        if (isNumericLine || val !== 0 || lines[j].trim() === "0,00" || lines[j].trim() === "0") {
+          numericValues.push(val);
+          j++;
+        } else {
+          break;
+        }
+      }
+
+      if (numericValues.length >= 4) {
+        const saidas = numericValues[0];
+        const servicos = numericValues[1];
+        const outros = numericValues[2];
+        const total = numericValues[3];
+
+        if (ano === 0) {
+          const yearMatch = periodo.match(/(\d{4})/);
+          if (yearMatch) ano = parseInt(yearMatch[1]);
+          else ano = new Date().getFullYear();
+        }
+
+        entries.push({ mes: mesNormalizado, ano, saidas, servicos, outros, total });
+        i = j; // Skip past the consumed numeric lines
+        continue;
+      }
+    }
+
+    i++;
+  }
+
+  if (entries.length === 0) {
+    errors.push("Nenhum dado de faturamento encontrado no arquivo.");
+  }
+
+  return {
+    entries,
+    periodo: periodo || `${entries[0]?.ano || new Date().getFullYear()}`,
+    errors,
+    parsed: entries.length > 0,
+  };
 }
 
 function parseFaturamentoRows(rows: string[][], errors: string[]): FaturamentoParseResult {
