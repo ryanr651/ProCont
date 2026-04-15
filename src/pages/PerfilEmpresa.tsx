@@ -9,7 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { AppHeader } from "@/components/AppHeader";
 import { Loader2, Save, Upload, Building2 } from "lucide-react";
-import { formatCNPJ } from "@/lib/cnpjMask";
+import { formatCNPJ, formatPhone, isValidEmail } from "@/lib/cnpjMask";
 
 const PerfilEmpresa = () => {
   const { user } = useAuth();
