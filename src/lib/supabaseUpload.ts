@@ -10,6 +10,7 @@ import {
   ValidationRow,
 } from "./brazilianParser";
 import { extractTextFromPDF } from "./pdfParser";
+import { parseFaturamentoFile, parseFaturamentoFromText, type FaturamentoEntry } from "./faturamentoParser";
 import type { UploadedFile } from "@/components/MultiFileUpload";
 
 export interface UploadResult {
@@ -17,10 +18,12 @@ export interface UploadResult {
   inserted_dre: number;
   inserted_balanco: number;
   inserted_balancete: number;
+  inserted_faturamento: number;
   errors: string[];
   dre_entries?: ParsedDREEntry[];
   balanco_entries?: ParsedBalancoEntry[];
   balancete_entries?: ParsedBalanceteEntry[];
+  faturamento_entries?: FaturamentoEntry[];
   balanco_metrics?: BalancoMetrics;
   balanco_validation?: ValidationRow[];
   ai_stats?: { total: number; from_cache: number; from_ai: number };
@@ -235,22 +238,25 @@ export async function uploadAndProcessMultipleFiles(
 ): Promise<UploadResult> {
   const errors: string[] = [];
 
-  // Find DRE, Balanço and Balancete files
+  // Find DRE, Balanço, Balancete and Faturamento files
   const dreType = fileTypes.find((ft) => ft.tipo === "DRE");
   const balancoType = fileTypes.find((ft) => ft.tipo === "BALANCO_PATRIMONIAL");
   const balanceteType = fileTypes.find((ft) => ft.tipo === "BALANCETE");
+  const faturamentoType = fileTypes.find((ft) => ft.tipo === "FATURAMENTO");
 
   const dreFile = dreType ? files.find((f) => f.file.name === dreType.filename) : undefined;
   const balancoFile = balancoType ? files.find((f) => f.file.name === balancoType.filename) : undefined;
   const balanceteFile = balanceteType ? files.find((f) => f.file.name === balanceteType.filename) : undefined;
+  const faturamentoFile = faturamentoType ? files.find((f) => f.file.name === faturamentoType.filename) : undefined;
 
-  if (!dreFile && !balancoFile && !balanceteFile) {
+  if (!dreFile && !balancoFile && !balanceteFile && !faturamentoFile) {
     return {
       success: false,
       inserted_dre: 0,
       inserted_balanco: 0,
       inserted_balancete: 0,
-      errors: ["Nenhum arquivo foi identificado como DRE, Balanço Patrimonial ou Balancete. Verifique os arquivos enviados."],
+      inserted_faturamento: 0,
+      errors: ["Nenhum arquivo foi identificado como DRE, Balanço Patrimonial, Balancete ou Faturamento. Verifique os arquivos enviados."],
       fileTypes: fileTypes as any,
     };
   }
@@ -261,7 +267,8 @@ export async function uploadAndProcessMultipleFiles(
     userId,
     empresaId,
     onProgress,
-    balanceteFile?.file || null
+    balanceteFile?.file || null,
+    faturamentoFile?.file || null
   );
 }
 
@@ -271,7 +278,8 @@ export async function uploadAndProcessFiles(
   userId: string,
   empresaId?: string,
   onProgress?: (stage: string) => void,
-  balanceteFile?: File | null
+  balanceteFile?: File | null,
+  faturamentoFile?: File | null
 ): Promise<UploadResult> {
   const errors: string[] = [];
 
@@ -282,10 +290,12 @@ export async function uploadAndProcessFiles(
       await supabase.from("dre_entries").delete().eq("user_id", userId).eq("empresa_id", empresaId);
       await supabase.from("balanco_entries").delete().eq("user_id", userId).eq("empresa_id", empresaId);
       await supabase.from("balancete_entries").delete().eq("user_id", userId).eq("empresa_id", empresaId);
+      await supabase.from("faturamento_entries").delete().eq("user_id", userId).eq("empresa_id", empresaId);
     } else {
       await supabase.from("dre_entries").delete().eq("user_id", userId);
       await supabase.from("balanco_entries").delete().eq("user_id", userId);
       await supabase.from("balancete_entries").delete().eq("user_id", userId);
+      await supabase.from("faturamento_entries").delete().eq("user_id", userId);
     }
 
     let dreResult: Awaited<ReturnType<typeof parseDREFileAuto>> | null = null;
@@ -374,14 +384,32 @@ export async function uploadAndProcessFiles(
       }
     }
 
+    // Parse Faturamento file
+    let faturamentoResult: Awaited<ReturnType<typeof parseFaturamentoFile>> | null = null;
+    if (faturamentoFile) {
+      onProgress?.("Lendo arquivo de faturamento...");
+      if (isPDF(faturamentoFile)) {
+        const { extractTextFromPDF } = await import("./pdfParser");
+        const extraction = await extractTextFromPDF(faturamentoFile);
+        if (extraction.text) {
+          faturamentoResult = parseFaturamentoFromText(extraction.text);
+        }
+      } else {
+        faturamentoResult = await parseFaturamentoFile(faturamentoFile);
+      }
+      if (faturamentoResult) errors.push(...faturamentoResult.errors);
+    }
+
     const dreParsed = !!dreResult?.parsed;
     const balancoParsed = !!balancoResult?.parsed || (balancoResult?.metrics?.ativoTotal ?? 0) !== 0;
     const balanceteParsed = !!balanceteResult?.parsed;
+    const faturamentoParsed = !!faturamentoResult?.parsed;
 
     const hasAnyValidData =
       dreParsed ||
       balancoParsed ||
       balanceteParsed ||
+      faturamentoParsed ||
       (dreResult?.entries?.length ?? 0) > 0 ||
       (balancoResult?.entries?.length ?? 0) > 0 ||
       (balanceteResult?.entries?.length ?? 0) > 0;
@@ -392,6 +420,7 @@ export async function uploadAndProcessFiles(
         inserted_dre: 0,
         inserted_balanco: 0,
         inserted_balancete: 0,
+        inserted_faturamento: 0,
         errors: [
           "Não foi possível interpretar a estrutura dos arquivos enviados. Verifique se são arquivos válidos da contabilidade.",
         ],
@@ -540,6 +569,33 @@ export async function uploadAndProcessFiles(
       }
     }
 
+    // Step 7: Insert Faturamento entries
+    let insertedFaturamento = 0;
+    if (faturamentoResult && faturamentoResult.entries.length > 0) {
+      onProgress?.("Salvando dados de faturamento...");
+      const fatBatches = chunkArray(faturamentoResult.entries, 500);
+      for (const batch of fatBatches) {
+        const { error } = await (supabase.from("faturamento_entries") as any).insert(
+          batch.map((entry) => ({
+            user_id: userId,
+            empresa_id: empresaId || null,
+            periodo: faturamentoResult!.periodo,
+            mes: entry.mes,
+            ano: entry.ano,
+            saidas: entry.saidas,
+            servicos: entry.servicos,
+            outros: entry.outros,
+            total: entry.total,
+          }))
+        );
+        if (error) {
+          errors.push(`Erro ao inserir Faturamento: ${error.message}`);
+        } else {
+          insertedFaturamento += batch.length;
+        }
+      }
+    }
+
     if (dreParsed && insertedDre === 0) {
       errors.push("DRE foi lido, mas nenhuma linha foi materializada para persistência (entries=0).");
     }
@@ -564,14 +620,16 @@ export async function uploadAndProcessFiles(
     onProgress?.("Concluído!");
 
     return {
-      success: dreParsed || balancoParsed || balanceteParsed,
+      success: dreParsed || balancoParsed || balanceteParsed || faturamentoParsed,
       inserted_dre: insertedDre,
       inserted_balanco: insertedBalanco,
       inserted_balancete: insertedBalancete,
+      inserted_faturamento: insertedFaturamento,
       errors,
       dre_entries: dreResult?.entries,
       balanco_entries: balancoResult?.entries,
       balancete_entries: balanceteResult?.entries,
+      faturamento_entries: faturamentoResult?.entries,
       balanco_metrics: balancoResult?.metrics,
       balanco_validation: balancoResult?.validationRows,
       ai_stats: aiStats,
@@ -582,6 +640,7 @@ export async function uploadAndProcessFiles(
       inserted_dre: 0,
       inserted_balanco: 0,
       inserted_balancete: 0,
+      inserted_faturamento: 0,
       errors: [error instanceof Error ? error.message : "Erro desconhecido ao processar arquivos."],
     };
   }

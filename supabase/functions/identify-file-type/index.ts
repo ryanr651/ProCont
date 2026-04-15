@@ -13,6 +13,7 @@ const VALID_TYPES = [
   "FLUXO_CAIXA",
   "BALANCETE",
   "DRA",
+  "FATURAMENTO",
   "DESCONHECIDO",
 ];
 
@@ -59,16 +60,18 @@ Sua tarefa: identificar o TIPO de demonstração contábil a partir do nome do a
 - FLUXO_CAIXA: Demonstração de Fluxo de Caixa (DFC) (contém atividades operacionais, investimento, financiamento)
 - BALANCETE: Balancete de verificação (lista de contas com saldos devedores e credores)
 - DRA: Demonstração do Resultado Abrangente
+- FATURAMENTO: Relatório de Faturamento (contém meses, saídas, serviços, totais mensais)
 - DESCONHECIDO: Não foi possível identificar
 
 ## Regras:
 1. Analise o nome do arquivo E o conteúdo das primeiras linhas
-2. Se o nome contiver "dre" ou "demonstracao resultado" → provavelmente DRE
-3. Se o nome contiver "balanco" ou "balanço" → provavelmente BALANCO_PATRIMONIAL
-4. Se as linhas contiverem "ativo", "passivo", "patrimônio líquido" → BALANCO_PATRIMONIAL
-5. Se as linhas contiverem "receita", "custo", "lucro bruto", "despesas" → DRE
-6. Se contiver "mutações" ou "DMPL" → DMPL
-7. Se contiver "fluxo de caixa" ou "atividades operacionais" → FLUXO_CAIXA
+2. Se o nome contiver "faturamento" ou as linhas contiverem "RELATÓRIO DE FATURAMENTO" ou colunas "Saídas R$", "Serviços R$", "Total R$" → FATURAMENTO
+3. Se o nome contiver "dre" ou "demonstracao resultado" → provavelmente DRE
+4. Se o nome contiver "balanco" ou "balanço" → provavelmente BALANCO_PATRIMONIAL
+5. Se as linhas contiverem "ativo", "passivo", "patrimônio líquido" → BALANCO_PATRIMONIAL
+6. Se as linhas contiverem "receita", "custo", "lucro bruto", "despesas" → DRE
+7. Se contiver "mutações" ou "DMPL" → DMPL
+8. Se contiver "fluxo de caixa" ou "atividades operacionais" → FLUXO_CAIXA
 
 Responda APENAS com um JSON array no formato: [{"index": 0, "tipo": "DRE", "confianca": "alta"}]
 Sem markdown, sem explicações.`;

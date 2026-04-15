@@ -12,6 +12,7 @@ import { DashboardIndicadores } from "@/components/DashboardIndicadores";
 import { DashboardBalancete, type BalanceteClassifiedEntry } from "@/components/DashboardBalancete";
 import { BalanceteHistoricoModal, type PreviousPeriodBalancete } from "@/components/BalanceteHistoricoModal";
 import { BalanceteComparativo } from "@/components/BalanceteComparativo";
+import { FaturamentoAnalysis, type FaturamentoRow } from "@/components/FaturamentoAnalysis";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranding } from "@/contexts/BrandingContext";
@@ -207,6 +208,9 @@ const Resultado = () => {
   const [previousPeriods, setPreviousPeriods] = useState<PreviousPeriodBalancete[]>([]);
   const [showHistoricoModal, setShowHistoricoModal] = useState(false);
 
+  // Faturamento state
+  const [faturamentoData, setFaturamentoData] = useState<FaturamentoRow[]>([]);
+
   // Empresa context
   const [selectedEmpresa, setSelectedEmpresa] = useState<EmpresaData | null>(null);
 
@@ -233,11 +237,13 @@ const Resultado = () => {
       let dreQuery = supabase.from("dre_entries").select("*").eq("user_id", user.id);
       let balancoQuery = supabase.from("balanco_entries").select("*").eq("user_id", user.id);
       let balanceteQuery = supabase.from("balancete_entries").select("*").eq("user_id", user.id);
+      let faturamentoQuery = (supabase.from("faturamento_entries") as any).select("*").eq("user_id", user.id);
 
       if (empresaIdParam) {
         dreQuery = dreQuery.eq("empresa_id", empresaIdParam);
         balancoQuery = balancoQuery.eq("empresa_id", empresaIdParam);
         balanceteQuery = balanceteQuery.eq("empresa_id", empresaIdParam);
+        faturamentoQuery = faturamentoQuery.eq("empresa_id", empresaIdParam);
       }
 
       // Load DRE entries
@@ -290,7 +296,20 @@ const Resultado = () => {
         );
       }
 
-      if (!dreEntries?.length && !balancoEntries?.length && !balanceteData?.length) {
+      // Load Faturamento entries
+      const { data: fatData, error: fatError } = await faturamentoQuery;
+      if (!fatError && fatData && fatData.length > 0) {
+        setFaturamentoData(fatData.map((e: any) => ({
+          mes: e.mes,
+          ano: Number(e.ano),
+          saidas: Number(e.saidas) || 0,
+          servicos: Number(e.servicos) || 0,
+          outros: Number(e.outros) || 0,
+          total: Number(e.total) || 0,
+        })));
+      }
+
+      if (!dreEntries?.length && !balancoEntries?.length && !balanceteData?.length && !fatData?.length) {
         navigate("/upload");
         return;
       }
@@ -1769,6 +1788,12 @@ const Resultado = () => {
             </section>
           </>
         )}
+
+        {/* Faturamento Analysis Section */}
+        {faturamentoData.length > 0 && (
+          <FaturamentoAnalysis data={faturamentoData} />
+        )}
+
         {diagnosticLines.length > 0 && (
           <section className="mb-12">
             <h2 className="font-display text-2xl font-bold mb-6 flex items-center gap-3">
