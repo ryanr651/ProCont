@@ -215,7 +215,9 @@ function parseFaturamentoRows(rows: string[][], errors: string[]): FaturamentoPa
     const anoFromRow = rowText.match(/\b(20\d{2})\b/);
     let ano = anoFromRow ? parseInt(anoFromRow[1], 10) : 0;
 
-    const numericSource = cells.length > 1 ? cells.slice(1).join(" ") : rowText.replace(cells[0], "").trim();
+    // Extract numeric portion: skip the month name from the first cell
+    const monthNamePattern = new RegExp(`^${mesMatch}\\s*`, "i");
+    const numericSource = cells.length > 1 ? cells.slice(1).join(" ") : cells[0].replace(monthNamePattern, "").trim();
     const brNumberMatches = numericSource.match(/-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+(?:,\d{2})?/g) ?? [];
     let numericCells = brNumberMatches.map(parseBRNumber);
 
