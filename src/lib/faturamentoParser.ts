@@ -224,7 +224,14 @@ function parseFaturamentoRows(rows: string[][], errors: string[]): FaturamentoPa
     let outros = 0;
     let total = 0;
 
-    if (numericCells.length >= 4) {
+    if (numericCells.length >= 5 && !ano && numericCells[0] >= 2000 && numericCells[0] <= 2100) {
+      // First numeric is the year (e.g. "Janeiro 2025 525.614,08 4.880,00 0,00 530.494,08")
+      ano = Math.round(numericCells[0]);
+      saidas = numericCells[1];
+      servicos = numericCells[2];
+      outros = numericCells[3];
+      total = numericCells[4];
+    } else if (numericCells.length >= 4) {
       saidas = numericCells[0];
       servicos = numericCells[1];
       outros = numericCells[2];
