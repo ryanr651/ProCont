@@ -118,13 +118,6 @@ export function IndicatorCard({ config }: { config: IndicatorConfig }) {
           )}
         </div>
 
-        {value < 0 && (
-          <div className="mt-2">
-            <span className="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-500 font-medium">
-              ❌ Negativo
-            </span>
-          </div>
-        )}
 
         {subtitle && (
           <p className="text-xs text-muted-foreground mt-2">{subtitle}</p>
