@@ -1222,8 +1222,8 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         debugLog("PASSIVO CIRCULANTE (explícito):", metrics.passivoCirculante);
       }
     } else if (
-      normalConta.includes("ATIVO NAO CIRCULANTE") ||
-      (normalConta.includes("NAO CIRCULANTE") && currentSection === "ATIVO" && foundAtivoCirculante)
+      normalConta === "ATIVO NAO CIRCULANTE" ||
+      (normalConta === "NAO CIRCULANTE" && currentSection === "ATIVO")
     ) {
       currentTipo = "ATIVO_NAO_CIRCULANTE";
       tipoEntry = "ATIVO_NAO_CIRCULANTE";
@@ -1233,37 +1233,20 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         debugLog("ATIVO NAO CIRCULANTE (do arquivo):", metrics.ativoNaoCirculante);
       }
     } else if (
-      normalConta.includes("PASSIVO NAO CIRCULANTE") ||
-      (normalConta.includes("NAO CIRCULANTE") && currentSection === "PASSIVO" && foundPassivoCirculante)
+      normalConta === "PASSIVO NAO CIRCULANTE" ||
+      (normalConta === "NAO CIRCULANTE" && currentSection === "PASSIVO")
     ) {
       currentTipo = "PASSIVO_NAO_CIRCULANTE";
       tipoEntry = "PASSIVO_NAO_CIRCULANTE";
-
-      console.log("=== PASSIVO NAO CIRCULANTE DETECTADO ===", {
-        conta,
-        normalConta,
-        valor,
-        currentSection,
-      });
 
       if (valor !== 0) {
         metrics.passivoNaoCirculante = roundTo2Decimals(Math.abs(valor));
         debugLog("PASSIVO NAO CIRCULANTE (do arquivo):", metrics.passivoNaoCirculante);
       }
-    } else if (
-      normalConta === "PATRIMONIO LIQUIDO" ||
-      normalConta.includes("PATRIMONIO LIQUIDO") ||
-      normalConta.includes("PATRIMÔNIO")
-    ) {
+    } else if (normalConta === "PATRIMONIO LIQUIDO" || normalConta.includes("PATRIMONIO LIQUIDO")) {
       currentSection = "PL";
       currentTipo = "PATRIMONIO_LIQUIDO";
       tipoEntry = "PATRIMONIO_LIQUIDO";
-
-      console.log("=== PATRIMONIO LIQUIDO DETECTADO ===", {
-        conta,
-        normalConta,
-        valor,
-      });
 
       if (valor !== 0) {
         metrics.patrimonioLiquido = roundTo2Decimals(Math.abs(valor));
@@ -1437,20 +1420,20 @@ function parseBalancoFromCSV(rows: string[][], filename: string): BalancoParseRe
       foundPassivoCirculante = true;
       if (valor !== 0) metrics.passivoCirculante = roundTo2Decimals(Math.abs(valor));
     } else if (
-      normalConta.includes("ATIVO NAO CIRCULANTE") ||
-      (normalConta.includes("NAO CIRCULANTE") && currentSection === "ATIVO" && foundAtivoCirculante)
+      normalConta === "ATIVO NAO CIRCULANTE" ||
+      (normalConta === "NAO CIRCULANTE" && currentSection === "ATIVO")
     ) {
       currentTipo = "ATIVO_NAO_CIRCULANTE";
       tipoEntry = "ATIVO_NAO_CIRCULANTE";
       if (valor !== 0) metrics.ativoNaoCirculante = roundTo2Decimals(Math.abs(valor));
     } else if (
-      normalConta.includes("PASSIVO NAO CIRCULANTE") ||
-      (normalConta.includes("NAO CIRCULANTE") && currentSection === "PASSIVO" && foundPassivoCirculante)
+      normalConta === "PASSIVO NAO CIRCULANTE" ||
+      (normalConta === "NAO CIRCULANTE" && currentSection === "PASSIVO")
     ) {
       currentTipo = "PASSIVO_NAO_CIRCULANTE";
       tipoEntry = "PASSIVO_NAO_CIRCULANTE";
       if (valor !== 0) metrics.passivoNaoCirculante = roundTo2Decimals(Math.abs(valor));
-    } else if (normalConta.includes("PATRIMONIO LIQUIDO") || normalConta.includes("PATRIMÔNIO")) {
+    } else if (normalConta.includes("PATRIMONIO LIQUIDO")) {
       currentSection = "PL";
       currentTipo = "PATRIMONIO_LIQUIDO";
       tipoEntry = "PATRIMONIO_LIQUIDO";
