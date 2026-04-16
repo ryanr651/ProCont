@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { AddFilesDialog } from "@/components/AddFilesDialog";
 import { Button } from "@/components/ui/button";
 import { AppHeader } from "@/components/AppHeader";
 import { ProgressBar } from "@/components/ProgressBar";
@@ -44,6 +45,7 @@ import {
   Activity,
   Target,
   CalendarDays,
+  UploadCloud,
 } from "lucide-react";
 
 interface DREEntry {
@@ -210,6 +212,9 @@ const Resultado = () => {
 
   // Faturamento state
   const [faturamentoData, setFaturamentoData] = useState<FaturamentoRow[]>([]);
+
+  // Add Files modal state
+  const [showAddFiles, setShowAddFiles] = useState(false);
 
   // Empresa context
   const [selectedEmpresa, setSelectedEmpresa] = useState<EmpresaData | null>(null);
@@ -2008,13 +2013,19 @@ const Resultado = () => {
 
         {/* CTA */}
         <div className="text-center">
-          <p className="text-muted-foreground mb-4">Deseja analisar outro cliente?</p>
-          <Link to="/upload">
-            <Button variant="hero" size="xl">
-              <RefreshCw className="w-5 h-5 mr-2" />
-              Nova Análise
+          <p className="text-muted-foreground mb-4">Deseja adicionar arquivos ou iniciar nova análise?</p>
+          <div className="flex items-center justify-center gap-4 flex-wrap">
+            <Button variant="outline" size="xl" onClick={() => setShowAddFiles(true)}>
+              <UploadCloud className="w-5 h-5 mr-2" />
+              Adicionar Novos Arquivos
             </Button>
-          </Link>
+            <Link to="/upload">
+              <Button variant="hero" size="xl">
+                <RefreshCw className="w-5 h-5 mr-2" />
+                Nova Análise
+              </Button>
+            </Link>
+          </div>
         </div>
       </main>
 
@@ -2061,6 +2072,25 @@ const Resultado = () => {
         existingPeriods={previousPeriods.map((p) => p.ano)}
         onPeriodAdded={(period) => setPreviousPeriods((prev) => [...prev, period])}
       />
+
+      {/* Add Files Dialog */}
+      {empresaIdParam && (
+        <AddFilesDialog
+          open={showAddFiles}
+          onOpenChange={setShowAddFiles}
+          empresaId={empresaIdParam}
+          importedFiles={[
+            ...(dreData ? [{ tipo: "DRE", label: "DRE" }] : []),
+            ...(balancoData ? [{ tipo: "BALANCO_PATRIMONIAL", label: "Balanço Patrimonial" }] : []),
+            ...(balanceteEntries.length > 0 ? [{ tipo: "BALANCETE", label: "Balancete" }] : []),
+            ...(faturamentoData.length > 0 ? [{ tipo: "FATURAMENTO", label: "Relatório de Faturamento" }] : []),
+          ]}
+          onProcessingComplete={() => {
+            setLoading(true);
+            loadData();
+          }}
+        />
+      )}
     </div>
   );
 };

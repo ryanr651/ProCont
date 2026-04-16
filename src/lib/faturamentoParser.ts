@@ -215,9 +215,16 @@ function parseFaturamentoRows(rows: string[][], errors: string[]): FaturamentoPa
     const anoFromRow = rowText.match(/\b(20\d{2})\b/);
     let ano = anoFromRow ? parseInt(anoFromRow[1], 10) : 0;
 
-    const numericSource = cells.length > 1 ? cells.slice(1).join(" ") : rowText.replace(cells[0], "").trim();
+    // Extract numeric portion: skip the month name from the first cell
+    const monthNamePattern = new RegExp(`^${mesMatch}\\s*`, "i");
+    const numericSource = cells.length > 1 ? cells.slice(1).join(" ") : cells[0].replace(monthNamePattern, "").trim();
     const brNumberMatches = numericSource.match(/-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+(?:,\d{2})?/g) ?? [];
-    const numericCells = brNumberMatches.map(parseBRNumber);
+    let numericCells = brNumberMatches.map(parseBRNumber);
+
+    // If ano already detected, filter it out from numeric cells to avoid misalignment
+    if (ano && numericCells.length > 0 && numericCells[0] === ano) {
+      numericCells = numericCells.slice(1);
+    }
 
     let saidas = 0;
     let servicos = 0;
@@ -229,6 +236,12 @@ function parseFaturamentoRows(rows: string[][], errors: string[]): FaturamentoPa
       servicos = numericCells[1];
       outros = numericCells[2];
       total = numericCells[3];
+    } else if (numericCells.length >= 5 && !ano && numericCells[0] >= 2000 && numericCells[0] <= 2100) {
+      ano = Math.round(numericCells[0]);
+      saidas = numericCells[1];
+      servicos = numericCells[2];
+      outros = numericCells[3];
+      total = numericCells[4];
     } else {
       const legacyNumericCells = cells.slice(1).map(parseBRNumber);
       if (legacyNumericCells.length >= 5) {
