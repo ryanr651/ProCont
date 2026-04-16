@@ -2072,6 +2072,25 @@ const Resultado = () => {
         existingPeriods={previousPeriods.map((p) => p.ano)}
         onPeriodAdded={(period) => setPreviousPeriods((prev) => [...prev, period])}
       />
+
+      {/* Add Files Dialog */}
+      {empresaIdParam && (
+        <AddFilesDialog
+          open={showAddFiles}
+          onOpenChange={setShowAddFiles}
+          empresaId={empresaIdParam}
+          importedFiles={[
+            ...(dreData ? [{ tipo: "DRE", label: "DRE" }] : []),
+            ...(balancoData ? [{ tipo: "BALANCO_PATRIMONIAL", label: "Balanço Patrimonial" }] : []),
+            ...(balanceteEntries.length > 0 ? [{ tipo: "BALANCETE", label: "Balancete" }] : []),
+            ...(faturamentoData.length > 0 ? [{ tipo: "FATURAMENTO", label: "Relatório de Faturamento" }] : []),
+          ]}
+          onProcessingComplete={() => {
+            setLoading(true);
+            loadData();
+          }}
+        />
+      )}
     </div>
   );
 };
