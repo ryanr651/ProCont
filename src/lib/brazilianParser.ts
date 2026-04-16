@@ -62,6 +62,8 @@ export interface ParsedBalancoEntry {
   indent_level?: number;
   is_bold?: boolean;
   is_redutora?: boolean;
+  /** Natureza contábil do saldo lido do arquivo: "D" (devedora) ou "C" (credora) */
+  natureza?: "D" | "C" | null;
 }
 
 export interface BalancoMetrics {
