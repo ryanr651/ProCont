@@ -163,15 +163,13 @@ export function DashboardIndicadores({
     ? (balancoData.passivoCirculante / (balancoData.passivoCirculante + balancoData.passivoNaoCirculante)) * 100
     : 0;
 
-  // Para fórmulas derivadas, lucro líquido negativo é tratado como 0
-  const lucroLiquidoParaFormulas = Math.max(0, dreData.lucroLiquido);
-
+  // Lucro líquido negativo (prejuízo) é refletido nas fórmulas derivadas
   const roe = balancoData.patrimonioLiquido > 0
-    ? (lucroLiquidoParaFormulas / balancoData.patrimonioLiquido) * 100
+    ? (dreData.lucroLiquido / balancoData.patrimonioLiquido) * 100
     : 0;
 
   const roa = balancoData.ativoTotal > 0
-    ? (lucroLiquidoParaFormulas / balancoData.ativoTotal) * 100
+    ? (dreData.lucroLiquido / balancoData.ativoTotal) * 100
     : 0;
 
   // DRE Indicators
@@ -298,17 +296,17 @@ export function DashboardIndicadores({
     },
     {
       title: "Margem Líquida",
-      value: dreData.lucroLiquido >= 0 ? dreData.margemLiquida : 0,
+      value: dreData.margemLiquida,
       format: "percentage",
       icon: Percent,
-      variant: dreData.lucroLiquido < 0 ? "danger" : dreData.margemLiquida >= 10 ? "success" : dreData.margemLiquida >= 3 ? "warning" : "danger",
+      variant: dreData.margemLiquida < 0 ? "danger" : dreData.margemLiquida >= 10 ? "success" : dreData.margemLiquida >= 3 ? "warning" : "danger",
       formula: "(Lucro Líquido ÷ Receita Líquida) × 100",
-      formulaDescription: "Percentual final que efetivamente vira lucro para os sócios. Quando o Lucro Líquido é negativo, a margem é exibida como 0%.",
+      formulaDescription: "Percentual final que efetivamente vira lucro para os sócios. Valores negativos indicam prejuízo líquido.",
       accounts: [
-        { descricao: "Lucro Líquido", valor: dreData.lucroLiquido, motivo: "Numerador (negativo → 0)" },
+        { descricao: "Lucro Líquido", valor: dreData.lucroLiquido, motivo: "Numerador" },
         { descricao: "Receita Líquida", valor: dreData.receitaLiquida, motivo: "Denominador" },
       ],
-      trend: dreData.lucroLiquido < 0 ? "down" : dreData.margemLiquida >= 10 ? "up" : dreData.margemLiquida < 3 ? "down" : "neutral",
+      trend: dreData.margemLiquida < 0 ? "down" : dreData.margemLiquida >= 10 ? "up" : dreData.margemLiquida < 3 ? "down" : "neutral",
     },
     {
       title: "Margem EBITDA",
@@ -489,7 +487,7 @@ export function DashboardIndicadores({
       value: roe,
       format: "percentage",
       icon: Target,
-      variant: roe >= 15 ? "success" : roe >= 5 ? "warning" : "danger",
+      variant: roe < 0 ? "danger" : roe >= 15 ? "success" : roe >= 5 ? "warning" : "danger",
       formula: "(Lucro Líquido ÷ Patrimônio Líquido) × 100",
       formulaDescription: "Retorno sobre o capital dos sócios. Mede a rentabilidade do investimento próprio.",
       accounts: [
@@ -504,7 +502,7 @@ export function DashboardIndicadores({
       value: roa,
       format: "percentage",
       icon: Activity,
-      variant: roa >= 8 ? "success" : roa >= 3 ? "warning" : "danger",
+      variant: roa < 0 ? "danger" : roa >= 8 ? "success" : roa >= 3 ? "warning" : "danger",
       formula: "(Lucro Líquido ÷ Ativo Total) × 100",
       formulaDescription: "Retorno sobre os ativos totais. Eficiência no uso de todos os recursos.",
       accounts: [
@@ -520,17 +518,21 @@ export function DashboardIndicadores({
   const BALANCE_COLORS = ["hsl(221, 83%, 53%)", "hsl(262, 83%, 58%)"];
   const CAPITAL_COLORS = ["hsl(0, 84%, 60%)", "hsl(47, 96%, 53%)", "hsl(142, 76%, 36%)"];
 
-  // Normalize a value to 0-100 range for radar
-  const clamp = (v: number, max: number) => Math.min(Math.max((v / max) * 100, 0), 100);
+  // Normaliza para 0-100. Valores negativos mapeiam abaixo de 50 (centro do radar).
+  // Range: [-max, +max] -> [0, 100]; zero -> 50.
+  const normalize = (v: number, max: number) => {
+    const ratio = v / max; // -1..+1 ideal
+    return Math.min(Math.max(50 + ratio * 50, 0), 100);
+  };
 
   const radarData = useMemo(() => [
-    { label: "M. Bruta", value: clamp(dreData.margemBruta, 60) },
-    { label: "M. Oper.", value: clamp(dreData.margemOperacional, 40) },
-    { label: "M. Líquida", value: clamp(dreData.margemLiquida, 30) },
-    { label: "M. EBITDA", value: clamp(margemEbitda, 50) },
-    { label: "Liq. Corrente", value: clamp(liquidezCorrente, 3) },
-    { label: "ROE", value: clamp(roe, 30) },
-    { label: "ROA", value: clamp(roa, 15) },
+    { label: "M. Bruta", value: normalize(dreData.margemBruta, 60) },
+    { label: "M. Oper.", value: normalize(dreData.margemOperacional, 40) },
+    { label: "M. Líquida", value: normalize(dreData.margemLiquida, 30) },
+    { label: "M. EBITDA", value: normalize(margemEbitda, 50) },
+    { label: "Liq. Corrente", value: normalize(liquidezCorrente, 3) },
+    { label: "ROE", value: normalize(roe, 30) },
+    { label: "ROA", value: normalize(roa, 15) },
   ], [dreData, margemEbitda, liquidezCorrente, roe, roa]);
 
   const drePieData = useMemo(() => {
