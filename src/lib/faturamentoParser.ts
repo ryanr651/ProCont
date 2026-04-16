@@ -217,25 +217,29 @@ function parseFaturamentoRows(rows: string[][], errors: string[]): FaturamentoPa
 
     const numericSource = cells.length > 1 ? cells.slice(1).join(" ") : rowText.replace(cells[0], "").trim();
     const brNumberMatches = numericSource.match(/-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+(?:,\d{2})?/g) ?? [];
-    const numericCells = brNumberMatches.map(parseBRNumber);
+    let numericCells = brNumberMatches.map(parseBRNumber);
+
+    // If ano already detected, filter it out from numeric cells to avoid misalignment
+    if (ano && numericCells.length > 0 && numericCells[0] === ano) {
+      numericCells = numericCells.slice(1);
+    }
 
     let saidas = 0;
     let servicos = 0;
     let outros = 0;
     let total = 0;
 
-    if (numericCells.length >= 5 && !ano && numericCells[0] >= 2000 && numericCells[0] <= 2100) {
-      // First numeric is the year (e.g. "Janeiro 2025 525.614,08 4.880,00 0,00 530.494,08")
+    if (numericCells.length >= 4) {
+      saidas = numericCells[0];
+      servicos = numericCells[1];
+      outros = numericCells[2];
+      total = numericCells[3];
+    } else if (numericCells.length >= 5 && !ano && numericCells[0] >= 2000 && numericCells[0] <= 2100) {
       ano = Math.round(numericCells[0]);
       saidas = numericCells[1];
       servicos = numericCells[2];
       outros = numericCells[3];
       total = numericCells[4];
-    } else if (numericCells.length >= 4) {
-      saidas = numericCells[0];
-      servicos = numericCells[1];
-      outros = numericCells[2];
-      total = numericCells[3];
     } else {
       const legacyNumericCells = cells.slice(1).map(parseBRNumber);
       if (legacyNumericCells.length >= 5) {
