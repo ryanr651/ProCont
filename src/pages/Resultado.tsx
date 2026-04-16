@@ -313,8 +313,13 @@ const Resultado = () => {
       }
 
       // Load Faturamento entries
-      const { data: fatData, error: fatError } = await faturamentoQuery;
-      if (!fatError && fatData && fatData.length > 0) {
+      let fatData: any[] = [];
+      try {
+        fatData = await fetchAllRows(faturamentoBaseQuery);
+      } catch (e) {
+        fatData = [];
+      }
+      if (fatData && fatData.length > 0) {
         setFaturamentoData(fatData.map((e: any) => ({
           mes: e.mes,
           ano: Number(e.ano),
