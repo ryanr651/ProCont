@@ -115,7 +115,8 @@ const Upload = () => {
         fileTypes,
         user.id,
         selectedEmpresa,
-        setProcessingStage
+        setProcessingStage,
+        true // cleanAll: limpa todos os dados anteriores da empresa
       );
 
       if (result.balanco_validation?.length) {
