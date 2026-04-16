@@ -1295,6 +1295,19 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         isRedutora,
       });
 
+      // Detectar natureza (D/C) a partir do sufixo da raw cell do valor atual (último à direita)
+      let natureza: "D" | "C" | null = null;
+      if (numericRight.length > 0) {
+        const rawAtual = String(numericRight[numericRight.length - 1].raw || "").trim();
+        if (/[dD]\s*$/.test(rawAtual)) natureza = "D";
+        else if (/[cC]\s*$/.test(rawAtual)) natureza = "C";
+      }
+      // Fallback: inferir natureza pelo sinal do valor parseado em conjunto com a seção
+      if (!natureza) {
+        if (currentSection === "ATIVO") natureza = valor < 0 ? "C" : "D";
+        else if (currentSection === "PASSIVO" || currentSection === "PL") natureza = valor < 0 ? "D" : "C";
+      }
+
       entries.push({
         conta,
         tipo: tipoEntry,
@@ -1305,6 +1318,7 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
         indent_level: level,
         is_bold: row.isBold || false,
         is_redutora: isRedutora,
+        natureza,
       });
 
       debugLog(`Entry: ${conta} | Tipo: ${tipoEntry} | Valor: ${Math.abs(valor)}${isRedutora ? " [REDUTORA]" : ""}`);
