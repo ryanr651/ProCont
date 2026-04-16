@@ -238,30 +238,41 @@ const Resultado = () => {
     if (!user) return;
 
     try {
-      // Build query filters
-      let dreQuery = supabase.from("dre_entries").select("*").eq("user_id", user.id);
-      let balancoQuery = supabase.from("balanco_entries").select("*").eq("user_id", user.id);
-      let balanceteQuery = supabase.from("balancete_entries").select("*").eq("user_id", user.id);
-      let faturamentoQuery = (supabase.from("faturamento_entries") as any).select("*").eq("user_id", user.id);
+      // Helper de paginação que busca TODOS os registros em lotes de 1000
+      async function fetchAllRows(query: any): Promise<any[]> {
+        const PAGE_SIZE = 1000;
+        let allRows: any[] = [];
+        let from = 0;
 
-      if (empresaIdParam) {
-        dreQuery = dreQuery.eq("empresa_id", empresaIdParam);
-        balancoQuery = balancoQuery.eq("empresa_id", empresaIdParam);
-        balanceteQuery = balanceteQuery.eq("empresa_id", empresaIdParam);
-        faturamentoQuery = faturamentoQuery.eq("empresa_id", empresaIdParam);
+        while (true) {
+          const { data, error } = await query.range(from, from + PAGE_SIZE - 1);
+          if (error) throw error;
+          if (!data || data.length === 0) break;
+          allRows = allRows.concat(data);
+          if (data.length < PAGE_SIZE) break;
+          from += PAGE_SIZE;
+        }
+
+        return allRows;
       }
 
-      // Load DRE entries
-      const { data: dreEntries, error: dreError } = await dreQuery;
-      if (dreError) throw dreError;
+      // Build query filters
+      let dreBaseQuery = supabase.from("dre_entries").select("*").eq("user_id", user.id);
+      let balancoBaseQuery = supabase.from("balanco_entries").select("*").eq("user_id", user.id);
+      let balanceteBaseQuery = supabase.from("balancete_entries").select("*").eq("user_id", user.id);
+      let faturamentoBaseQuery = (supabase.from("faturamento_entries") as any).select("*").eq("user_id", user.id);
 
-      // Load Balanço entries
-      const { data: balancoEntries, error: balancoError } = await balancoQuery;
-      if (balancoError) throw balancoError;
+      if (empresaIdParam) {
+        dreBaseQuery = dreBaseQuery.eq("empresa_id", empresaIdParam);
+        balancoBaseQuery = balancoBaseQuery.eq("empresa_id", empresaIdParam);
+        balanceteBaseQuery = balanceteBaseQuery.eq("empresa_id", empresaIdParam);
+        faturamentoBaseQuery = faturamentoBaseQuery.eq("empresa_id", empresaIdParam);
+      }
 
-      // Load Balancete entries
-      const { data: balanceteData, error: balanceteError } = await balanceteQuery;
-      if (balanceteError) throw balanceteError;
+      // Load entries (paginadas)
+      const dreEntries = await fetchAllRows(dreBaseQuery);
+      const balancoEntries = await fetchAllRows(balancoBaseQuery);
+      const balanceteData = await fetchAllRows(balanceteBaseQuery);
 
       if (balanceteData && balanceteData.length > 0) {
         // Store the periodo from the first entry
