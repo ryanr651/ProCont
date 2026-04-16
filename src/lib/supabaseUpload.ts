@@ -234,7 +234,8 @@ export async function uploadAndProcessMultipleFiles(
   fileTypes: Array<{ filename: string; tipo: string }>,
   userId: string,
   empresaId: string,
-  onProgress?: (stage: string) => void
+  onProgress?: (stage: string) => void,
+  cleanAll?: boolean
 ): Promise<UploadResult> {
   const errors: string[] = [];
 
@@ -268,7 +269,8 @@ export async function uploadAndProcessMultipleFiles(
     empresaId,
     onProgress,
     balanceteFile?.file || null,
-    faturamentoFile?.file || null
+    faturamentoFile?.file || null,
+    cleanAll
   );
 }
 
@@ -279,23 +281,24 @@ export async function uploadAndProcessFiles(
   empresaId?: string,
   onProgress?: (stage: string) => void,
   balanceteFile?: File | null,
-  faturamentoFile?: File | null
+  faturamentoFile?: File | null,
+  cleanAll?: boolean
 ): Promise<UploadResult> {
   const errors: string[] = [];
 
   try {
-    // Step 1: Clear previous entries ONLY for types being re-imported
+    // Step 1: Clear previous entries
     onProgress?.("Limpando dados anteriores...");
     if (empresaId) {
-      if (dreFile) await supabase.from("dre_entries").delete().eq("user_id", userId).eq("empresa_id", empresaId);
-      if (balancoFile) await supabase.from("balanco_entries").delete().eq("user_id", userId).eq("empresa_id", empresaId);
-      if (balanceteFile) await supabase.from("balancete_entries").delete().eq("user_id", userId).eq("empresa_id", empresaId);
-      if (faturamentoFile) await supabase.from("faturamento_entries").delete().eq("user_id", userId).eq("empresa_id", empresaId);
+      if (cleanAll || dreFile) await supabase.from("dre_entries").delete().eq("user_id", userId).eq("empresa_id", empresaId);
+      if (cleanAll || balancoFile) await supabase.from("balanco_entries").delete().eq("user_id", userId).eq("empresa_id", empresaId);
+      if (cleanAll || balanceteFile) await supabase.from("balancete_entries").delete().eq("user_id", userId).eq("empresa_id", empresaId);
+      if (cleanAll || faturamentoFile) await supabase.from("faturamento_entries").delete().eq("user_id", userId).eq("empresa_id", empresaId);
     } else {
-      if (dreFile) await supabase.from("dre_entries").delete().eq("user_id", userId);
-      if (balancoFile) await supabase.from("balanco_entries").delete().eq("user_id", userId);
-      if (balanceteFile) await supabase.from("balancete_entries").delete().eq("user_id", userId);
-      if (faturamentoFile) await supabase.from("faturamento_entries").delete().eq("user_id", userId);
+      if (cleanAll || dreFile) await supabase.from("dre_entries").delete().eq("user_id", userId);
+      if (cleanAll || balancoFile) await supabase.from("balanco_entries").delete().eq("user_id", userId);
+      if (cleanAll || balanceteFile) await supabase.from("balancete_entries").delete().eq("user_id", userId);
+      if (cleanAll || faturamentoFile) await supabase.from("faturamento_entries").delete().eq("user_id", userId);
     }
 
     let dreResult: Awaited<ReturnType<typeof parseDREFileAuto>> | null = null;
