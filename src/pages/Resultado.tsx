@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { AddFilesDialog } from "@/components/AddFilesDialog";
 import { Button } from "@/components/ui/button";
 import { AppHeader } from "@/components/AppHeader";
 import { ProgressBar } from "@/components/ProgressBar";
@@ -44,6 +45,7 @@ import {
   Activity,
   Target,
   CalendarDays,
+  UploadCloud,
 } from "lucide-react";
 
 interface DREEntry {
