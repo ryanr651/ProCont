@@ -64,10 +64,12 @@ function parseMaskedValue(masked: string): number {
   return parseFloat(clean) || 0;
 }
 
-// Parser legacy para compatibilidade
-function parseBRCurrency(value: string): number {
-  return parseMaskedValue(value);
-}
+// Parser legacy para compatibilidade - a implementação real está no final do arquivo
+const parseBRCurrency = (value: string): number => {
+  if (!value) return 0;
+  const cleaned = value.replace(/R\$\s*/gi, "").replace(/\./g, "").replace(",", ".").trim();
+  return parseFloat(cleaned) || 0;
+};
 
 const COLORS = ["hsl(var(--primary))", "hsl(var(--secondary))", "hsl(var(--accent))"];
 const MEDAL_COLORS = ["#FFD700", "#C0C0C0", "#CD7F32"];
