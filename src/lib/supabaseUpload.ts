@@ -234,7 +234,8 @@ export async function uploadAndProcessMultipleFiles(
   fileTypes: Array<{ filename: string; tipo: string }>,
   userId: string,
   empresaId: string,
-  onProgress?: (stage: string) => void
+  onProgress?: (stage: string) => void,
+  cleanAll?: boolean
 ): Promise<UploadResult> {
   const errors: string[] = [];
 
@@ -268,7 +269,8 @@ export async function uploadAndProcessMultipleFiles(
     empresaId,
     onProgress,
     balanceteFile?.file || null,
-    faturamentoFile?.file || null
+    faturamentoFile?.file || null,
+    cleanAll
   );
 }
 
