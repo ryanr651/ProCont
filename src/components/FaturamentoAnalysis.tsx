@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine,
 } from "recharts";
 import {
   TrendingUp, TrendingDown, DollarSign, Target, Trophy, AlertTriangle,
@@ -184,8 +184,16 @@ export function FaturamentoAnalysis({ data }: Props) {
             <BarChart data={variacaoMensal}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
               <XAxis dataKey="mes" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-              <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={v => `${v.toFixed(0)}%`} />
+              <YAxis
+                stroke="hsl(var(--muted-foreground))"
+                fontSize={12}
+                tickFormatter={v => `${v.toFixed(0)}%`}
+                domain={["auto", "auto"]}
+              />
               <Tooltip formatter={(v: number) => fmtPct(v)} />
+              {variacaoMensal.some(d => d.variacao < 0) && (
+                <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="4 4" strokeWidth={1} />
+              )}
               <Bar dataKey="variacao" fill="hsl(var(--primary))">
                 {variacaoMensal.map((entry, i) => (
                   <Cell key={i} fill={entry.variacao >= 0 ? "hsl(142, 76%, 36%)" : "hsl(0, 84%, 60%)"} />
@@ -274,8 +282,16 @@ export function FaturamentoAnalysis({ data }: Props) {
           <AreaChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
             <XAxis dataKey="mes" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-            <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
+            <YAxis
+              stroke="hsl(var(--muted-foreground))"
+              fontSize={12}
+              tickFormatter={v => `${(v/1000).toFixed(0)}k`}
+              domain={["auto", "auto"]}
+            />
             <Tooltip formatter={(v: number) => fmt(v)} />
+            {chartData.some(d => d.total < 0) && (
+              <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="4 4" strokeWidth={1} />
+            )}
             <Area type="monotone" dataKey="total" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.15} strokeWidth={2} />
             <Line type="monotone" dataKey={() => media} stroke="hsl(var(--destructive))" strokeDasharray="5 5" dot={false} name="Média" />
           </AreaChart>
@@ -311,8 +327,16 @@ export function FaturamentoAnalysis({ data }: Props) {
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="mes" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
+                <YAxis
+                  stroke="hsl(var(--muted-foreground))"
+                  fontSize={12}
+                  tickFormatter={v => `${(v/1000).toFixed(0)}k`}
+                  domain={["auto", "auto"]}
+                />
                 <Tooltip formatter={(v: number) => fmt(v)} />
+                {chartData.some(d => d.servicos < 0) && (
+                  <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="4 4" strokeWidth={1} />
+                )}
                 <Line type="monotone" dataKey="servicos" stroke="hsl(var(--secondary))" strokeWidth={2} dot />
               </LineChart>
             </ResponsiveContainer>
