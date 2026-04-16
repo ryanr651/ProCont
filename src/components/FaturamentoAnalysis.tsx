@@ -31,6 +31,44 @@ const MESES_ORDEM = [
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const fmtPct = (v: number) => `${v.toFixed(1).replace(".", ",")}%`;
 
+// Máscara monetária brasileira
+function applyMoneyMask(raw: string): string {
+  // Remove tudo que não for dígito ou vírgula
+  let value = raw.replace(/[^\d,]/g, "");
+
+  // Garante no máximo uma vírgula
+  const parts = value.split(",");
+  if (parts.length > 2) {
+    value = parts[0] + "," + parts.slice(1).join("");
+  }
+
+  // Limita casas decimais a 2
+  if (parts[1] !== undefined) {
+    value = parts[0] + "," + parts[1].slice(0, 2);
+  }
+
+  // Formata a parte inteira com pontos de milhar
+  const intPart = parts[0]?.replace(/\B(?=(\d{3})+(?!\d))/g, ".") || "";
+  const decPart = parts[1] !== undefined ? "," + parts[1].slice(0, 2) : "";
+
+  if (!intPart && !decPart) return "";
+  return "R$ " + intPart + decPart;
+}
+
+function parseMaskedValue(masked: string): number {
+  const clean = masked
+    .replace("R$", "")
+    .replace(/\./g, "")
+    .replace(",", ".")
+    .trim();
+  return parseFloat(clean) || 0;
+}
+
+// Parser legacy para compatibilidade
+function parseBRCurrency(value: string): number {
+  return parseMaskedValue(value);
+}
+
 const COLORS = ["hsl(var(--primary))", "hsl(var(--secondary))", "hsl(var(--accent))"];
 const MEDAL_COLORS = ["#FFD700", "#C0C0C0", "#CD7F32"];
 
@@ -311,11 +349,12 @@ export function FaturamentoAnalysis({ data }: Props) {
         <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
           <h4 className="text-sm font-semibold mb-3">Meta Personalizada</h4>
           <div className="flex items-center gap-3 mb-3">
-            <span className="text-sm text-muted-foreground whitespace-nowrap">Meta anual (R$):</span>
+            <span className="text-sm text-muted-foreground whitespace-nowrap">Meta anual:</span>
             <Input
-              placeholder="8.000.000,00"
+              placeholder="R$ 0,00"
               value={metaAnual}
-              onChange={e => setMetaAnual(e.target.value)}
+              onChange={(e) => setMetaAnual(applyMoneyMask(e.target.value))}
+              inputMode="numeric"
               className="max-w-xs"
             />
           </div>
