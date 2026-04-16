@@ -99,16 +99,32 @@ export function IndicatorCard({ config }: { config: IndicatorConfig }) {
 
         {/* Value */}
         <div className="flex items-end gap-2">
-          <span className="text-2xl font-display font-bold text-foreground">
+          <span
+            className={cn(
+              "text-2xl font-display font-bold",
+              value < 0 ? "text-red-500" : "text-foreground"
+            )}
+          >
             {formatValue(value, format)}
           </span>
-          {trend && (
+          {trend && value >= 0 && (
             <span className={cn("text-sm font-medium mb-1", getTrendColor(trend))}>
               {trend === "up" && "↑"}
               {trend === "down" && "↓"}
             </span>
           )}
+          {value < 0 && (
+            <span className="text-sm font-medium mb-1 text-red-500">↓</span>
+          )}
         </div>
+
+        {value < 0 && (
+          <div className="mt-2">
+            <span className="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-500 font-medium">
+              ❌ Negativo
+            </span>
+          </div>
+        )}
 
         {subtitle && (
           <p className="text-xs text-muted-foreground mt-2">{subtitle}</p>
