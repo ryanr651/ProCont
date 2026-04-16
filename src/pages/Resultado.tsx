@@ -213,6 +213,9 @@ const Resultado = () => {
   // Faturamento state
   const [faturamentoData, setFaturamentoData] = useState<FaturamentoRow[]>([]);
 
+  // Add Files modal state
+  const [showAddFiles, setShowAddFiles] = useState(false);
+
   // Empresa context
   const [selectedEmpresa, setSelectedEmpresa] = useState<EmpresaData | null>(null);
 
