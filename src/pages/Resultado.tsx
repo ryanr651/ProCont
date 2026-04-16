@@ -2013,13 +2013,19 @@ const Resultado = () => {
 
         {/* CTA */}
         <div className="text-center">
-          <p className="text-muted-foreground mb-4">Deseja analisar outro cliente?</p>
-          <Link to="/upload">
-            <Button variant="hero" size="xl">
-              <RefreshCw className="w-5 h-5 mr-2" />
-              Nova Análise
+          <p className="text-muted-foreground mb-4">Deseja adicionar arquivos ou iniciar nova análise?</p>
+          <div className="flex items-center justify-center gap-4 flex-wrap">
+            <Button variant="outline" size="xl" onClick={() => setShowAddFiles(true)}>
+              <UploadCloud className="w-5 h-5 mr-2" />
+              Adicionar Novos Arquivos
             </Button>
-          </Link>
+            <Link to="/upload">
+              <Button variant="hero" size="xl">
+                <RefreshCw className="w-5 h-5 mr-2" />
+                Nova Análise
+              </Button>
+            </Link>
+          </div>
         </div>
       </main>
 
