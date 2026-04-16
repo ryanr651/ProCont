@@ -64,6 +64,7 @@ interface BalancoEntry {
   natureza_conta?: "sintetica" | "analitica";
   detection_motivo?: string;
   is_redutora?: boolean;
+  natureza?: string | null;
 }
 
 interface DiagnosticLine {
@@ -918,6 +919,23 @@ const Resultado = () => {
    * 7. PATRIMONIO LIQUIDO → Patrimônio Líquido
    */
   const calculateBalancoMetrics = (entries: BalancoEntry[]): CalculatedBalanco => {
+    /**
+     * Resolve o valor com sinal correto a partir da natureza contábil (D/C).
+     * - ATIVO:   D = positivo, C = negativo (redutora / saldo invertido)
+     * - PASSIVO: C = positivo, D = negativo (saldo invertido)
+     * - PL:      C = positivo, D = negativo (prejuízo / PL negativo)
+     */
+    const resolveSignedValue = (entry: BalancoEntry, secao: "ATIVO" | "PASSIVO" | "PL"): number => {
+      const raw = Math.abs(Number(entry.valor) || 0);
+      const nat = (entry.natureza || "").toString().toLowerCase();
+      const isDevedor = nat === "d" || nat === "devedor" || nat === "devedora";
+      const isCredor = nat === "c" || nat === "credor" || nat === "credora";
+      if (secao === "ATIVO") return isCredor ? -raw : raw;
+      if (secao === "PASSIVO") return isDevedor ? -raw : raw;
+      if (secao === "PL") return isDevedor ? -raw : raw;
+      return raw;
+    };
+
     let ativoTotal = 0;
     let ativoCirculante = 0;
     let ativoNaoCirculante = 0;
@@ -933,12 +951,11 @@ const Resultado = () => {
     let foundPassivoCirculante = false;
 
     for (const entry of entries) {
-      const valor = Math.abs(entry.valor);
       const conta = normalizeText(entry.conta);
 
       // 1. Line "ATIVO" → ATIVO_TOTAL
       if (conta === "ATIVO") {
-        ativoTotal = valor;
+        ativoTotal = resolveSignedValue(entry, "ATIVO");
         inAtivoSection = true;
         inPassivoSection = false;
         continue;
@@ -946,20 +963,19 @@ const Resultado = () => {
 
       // 4. Line "PASSIVO" → PASSIVO_TOTAL
       if (conta === "PASSIVO") {
-        passivoTotal = valor;
+        passivoTotal = resolveSignedValue(entry, "PASSIVO");
         inAtivoSection = false;
         inPassivoSection = true;
         continue;
       }
 
-      // 2. Line "CIRCULANTE" under ATIVO → ATIVO_CIRCULANTE
-      // 5. Line "CIRCULANTE" under PASSIVO → PASSIVO_CIRCULANTE
+      // 2./5. Line "CIRCULANTE"
       if (conta === "CIRCULANTE") {
         if (inAtivoSection && !foundAtivoCirculante) {
-          ativoCirculante = valor;
+          ativoCirculante = resolveSignedValue(entry, "ATIVO");
           foundAtivoCirculante = true;
         } else if (inPassivoSection && !foundPassivoCirculante) {
-          passivoCirculante = valor;
+          passivoCirculante = resolveSignedValue(entry, "PASSIVO");
           foundPassivoCirculante = true;
         }
         continue;
@@ -967,19 +983,19 @@ const Resultado = () => {
 
       // 3. Line "ATIVO NAO CIRCULANTE" or "NAO CIRCULANTE" under ATIVO
       if (conta === "ATIVO NAO CIRCULANTE" || (conta === "NAO CIRCULANTE" && inAtivoSection)) {
-        ativoNaoCirculante = valor;
+        ativoNaoCirculante = resolveSignedValue(entry, "ATIVO");
         continue;
       }
 
       // 6. Line "PASSIVO NAO CIRCULANTE" or "NAO CIRCULANTE" under PASSIVO
       if (conta === "PASSIVO NAO CIRCULANTE" || (conta === "NAO CIRCULANTE" && inPassivoSection)) {
-        passivoNaoCirculante = valor;
+        passivoNaoCirculante = resolveSignedValue(entry, "PASSIVO");
         continue;
       }
 
       // 7. Line "PATRIMONIO LIQUIDO"
       if (conta === "PATRIMONIO LIQUIDO") {
-        patrimonioLiquido = valor;
+        patrimonioLiquido = resolveSignedValue(entry, "PL");
         continue;
       }
     }

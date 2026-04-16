@@ -533,6 +533,7 @@ export async function uploadAndProcessFiles(
             valor_anterior: entry.valor_anterior,
             hierarchy: entry.hierarchy,
             raw_row: entry.raw_row,
+            natureza: entry.natureza ?? null,
           }))
         );
         if (error) {

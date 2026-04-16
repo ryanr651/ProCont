@@ -77,6 +77,7 @@ export type Database = {
           empresa_id: string | null
           hierarchy: string
           id: string
+          natureza: string | null
           periodo: string
           raw_row: Json | null
           tipo: string
@@ -90,6 +91,7 @@ export type Database = {
           empresa_id?: string | null
           hierarchy?: string
           id?: string
+          natureza?: string | null
           periodo: string
           raw_row?: Json | null
           tipo: string
@@ -103,6 +105,7 @@ export type Database = {
           empresa_id?: string | null
           hierarchy?: string
           id?: string
+          natureza?: string | null
           periodo?: string
           raw_row?: Json | null
           tipo?: string
