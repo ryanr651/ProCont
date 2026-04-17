@@ -720,6 +720,15 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
       blankrows: false,
     }) as unknown[][];
 
+    // ===== Matriz formatada (texto exibido) — captura sufixos como "d"/"c" do número =====
+    // Necessária porque com raw:true perdemos a formatação contábil (ex: "56.696.435,46d")
+    const formattedMatrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+      header: 1,
+      defval: "",
+      raw: false,
+      blankrows: false,
+    }) as unknown[][];
+
     debugLog(`Matriz JSON extraída: ${jsonMatrix.length} linhas`);
 
     if (!jsonMatrix || jsonMatrix.length === 0) {
@@ -728,7 +737,7 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
     }
 
     // ===== Converter matriz JSON para XLSRow[] =====
-    const rows = convertMatrixToXLSRows(jsonMatrix, boldRows);
+    const rows = convertMatrixToXLSRows(jsonMatrix, boldRows, formattedMatrix);
     const totalNumeric = rows.reduce((acc, r) => acc + (r.numericValues?.length || 0), 0);
 
     debugLog(`Conversão para XLSRow: ${rows.length} linhas, ${totalNumeric} valores numéricos`);
@@ -763,13 +772,20 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
  * Converte matriz JSON (de sheet_to_json) para XLSRow[]
  * Esta função processa a matriz limpa e extrai texto + valores numéricos
  */
-function convertMatrixToXLSRows(matrix: unknown[][], boldRows?: Set<number>): XLSRow[] {
+function convertMatrixToXLSRows(
+  matrix: unknown[][],
+  boldRows?: Set<number>,
+  formattedMatrix?: unknown[][],
+): XLSRow[] {
   const rows: XLSRow[] = [];
 
   let matrixRowIdx = 0;
   for (const rowData of matrix) {
     const currentMatrixRow = matrixRowIdx++;
     if (!Array.isArray(rowData)) continue;
+
+    const formattedRow = formattedMatrix?.[currentMatrixRow];
+    const formattedRowArr = Array.isArray(formattedRow) ? formattedRow : null;
 
     // Verificar se a linha tem conteúdo
     const hasContent = rowData.some(
@@ -785,11 +801,22 @@ function convertMatrixToXLSRows(matrix: unknown[][], boldRows?: Set<number>): XL
     for (let colIdx = 0; colIdx < rowData.length; colIdx++) {
       const rawCell = rowData[colIdx];
 
+      // Texto formatado da MESMA célula (preserva sufixo "d"/"c" se houver)
+      const formattedCell = formattedRowArr ? formattedRowArr[colIdx] : undefined;
+      const formattedStr =
+        typeof formattedCell === "string"
+          ? formattedCell.trim()
+          : formattedCell != null
+            ? String(formattedCell).trim()
+            : "";
+
       // Número direto do Excel
       if (typeof rawCell === "number" && Number.isFinite(rawCell)) {
-        const cellValue = String(rawCell);
-        cells.push(cellValue);
-        numericValues.push({ value: rawCell, raw: cellValue });
+        // Preferir o texto formatado para preservar o sufixo D/C; fallback para o número
+        const rawForParser =
+          formattedStr && /[dcDC]\s*$/.test(formattedStr) ? formattedStr : String(rawCell);
+        cells.push(rawForParser);
+        numericValues.push({ value: rawCell, raw: rawForParser });
         continue;
       }
 
