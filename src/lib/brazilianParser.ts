@@ -187,9 +187,39 @@ export function parseBrazilianNumber(value: string | number | undefined | null, 
   const isPureNumeric = /^-?\d+(\.\d+)?$/.test(cleaned);
 
   if (!isPureNumeric) {
-    // Brazilian format: dots for thousands, comma for decimal
-    // 1.234.567,89 -> 1234567.89
-    cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+    // Detectar formato: BR (1.234.567,89) vs US (1,234,567.89)
+    // Heurística: se tem vírgula E ponto, o último separador é o decimal.
+    // Se só tem vírgula => decimal BR. Se só tem ponto(s) com mais de um ponto => milhar BR sem decimal.
+    const hasComma = cleaned.includes(",");
+    const hasDot = cleaned.includes(".");
+    const lastComma = cleaned.lastIndexOf(",");
+    const lastDot = cleaned.lastIndexOf(".");
+
+    if (hasComma && hasDot) {
+      if (lastComma > lastDot) {
+        // BR: 1.234.567,89 -> remove pontos, vírgula vira ponto
+        cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+      } else {
+        // US: 1,234,567.89 -> remove vírgulas
+        cleaned = cleaned.replace(/,/g, "");
+      }
+    } else if (hasComma) {
+      // Só vírgula: assumir decimal BR (ex: "1234,56")
+      // Mas se houver múltiplas vírgulas, são milhares US sem decimal: "1,234,567"
+      const commaCount = (cleaned.match(/,/g) || []).length;
+      if (commaCount > 1) {
+        cleaned = cleaned.replace(/,/g, "");
+      } else {
+        cleaned = cleaned.replace(",", ".");
+      }
+    } else if (hasDot) {
+      // Só pontos: se múltiplos, são milhares BR ("1.234.567"); se único, pode ser decimal
+      const dotCount = (cleaned.match(/\./g) || []).length;
+      if (dotCount > 1) {
+        cleaned = cleaned.replace(/\./g, "");
+      }
+      // único ponto: já tratado por isPureNumeric acima
+    }
   }
 
   let num = parseFloat(cleaned);
@@ -241,7 +271,25 @@ export function parseSimpleBrazilianNumber(value: string | number | undefined | 
   const isPureNumeric = /^-?\d+(\.\d+)?$/.test(cleaned);
 
   if (!isPureNumeric) {
-    cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+    const hasComma = cleaned.includes(",");
+    const hasDot = cleaned.includes(".");
+    const lastComma = cleaned.lastIndexOf(",");
+    const lastDot = cleaned.lastIndexOf(".");
+
+    if (hasComma && hasDot) {
+      if (lastComma > lastDot) {
+        cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+      } else {
+        cleaned = cleaned.replace(/,/g, "");
+      }
+    } else if (hasComma) {
+      const commaCount = (cleaned.match(/,/g) || []).length;
+      if (commaCount > 1) cleaned = cleaned.replace(/,/g, "");
+      else cleaned = cleaned.replace(",", ".");
+    } else if (hasDot) {
+      const dotCount = (cleaned.match(/\./g) || []).length;
+      if (dotCount > 1) cleaned = cleaned.replace(/\./g, "");
+    }
   }
 
   let num = parseFloat(cleaned);
