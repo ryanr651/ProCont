@@ -720,6 +720,15 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
       blankrows: false,
     }) as unknown[][];
 
+    // ===== Matriz formatada (texto exibido) — captura sufixos como "d"/"c" do número =====
+    // Necessária porque com raw:true perdemos a formatação contábil (ex: "56.696.435,46d")
+    const formattedMatrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+      header: 1,
+      defval: "",
+      raw: false,
+      blankrows: false,
+    }) as unknown[][];
+
     debugLog(`Matriz JSON extraída: ${jsonMatrix.length} linhas`);
 
     if (!jsonMatrix || jsonMatrix.length === 0) {
@@ -728,7 +737,7 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
     }
 
     // ===== Converter matriz JSON para XLSRow[] =====
-    const rows = convertMatrixToXLSRows(jsonMatrix, boldRows);
+    const rows = convertMatrixToXLSRows(jsonMatrix, boldRows, formattedMatrix);
     const totalNumeric = rows.reduce((acc, r) => acc + (r.numericValues?.length || 0), 0);
 
     debugLog(`Conversão para XLSRow: ${rows.length} linhas, ${totalNumeric} valores numéricos`);
@@ -763,13 +772,20 @@ async function parseXLSFile(file: File): Promise<XLSRow[]> {
  * Converte matriz JSON (de sheet_to_json) para XLSRow[]
  * Esta função processa a matriz limpa e extrai texto + valores numéricos
  */
-function convertMatrixToXLSRows(matrix: unknown[][], boldRows?: Set<number>): XLSRow[] {
+function convertMatrixToXLSRows(
+  matrix: unknown[][],
+  boldRows?: Set<number>,
+  formattedMatrix?: unknown[][],
+): XLSRow[] {
   const rows: XLSRow[] = [];
 
   let matrixRowIdx = 0;
   for (const rowData of matrix) {
     const currentMatrixRow = matrixRowIdx++;
     if (!Array.isArray(rowData)) continue;
+
+    const formattedRow = formattedMatrix?.[currentMatrixRow];
+    const formattedRowArr = Array.isArray(formattedRow) ? formattedRow : null;
 
     // Verificar se a linha tem conteúdo
     const hasContent = rowData.some(
@@ -785,11 +801,22 @@ function convertMatrixToXLSRows(matrix: unknown[][], boldRows?: Set<number>): XL
     for (let colIdx = 0; colIdx < rowData.length; colIdx++) {
       const rawCell = rowData[colIdx];
 
+      // Texto formatado da MESMA célula (preserva sufixo "d"/"c" se houver)
+      const formattedCell = formattedRowArr ? formattedRowArr[colIdx] : undefined;
+      const formattedStr =
+        typeof formattedCell === "string"
+          ? formattedCell.trim()
+          : formattedCell != null
+            ? String(formattedCell).trim()
+            : "";
+
       // Número direto do Excel
       if (typeof rawCell === "number" && Number.isFinite(rawCell)) {
-        const cellValue = String(rawCell);
-        cells.push(cellValue);
-        numericValues.push({ value: rawCell, raw: cellValue });
+        // Preferir o texto formatado para preservar o sufixo D/C; fallback para o número
+        const rawForParser =
+          formattedStr && /[dcDC]\s*$/.test(formattedStr) ? formattedStr : String(rawCell);
+        cells.push(rawForParser);
+        numericValues.push({ value: rawCell, raw: rawForParser });
         continue;
       }
 
@@ -1296,16 +1323,20 @@ function parseBalancoFromXLS(rows: XLSRow[], filename: string): BalancoParseResu
       });
 
       // Detectar natureza (D/C) a partir do sufixo da raw cell do valor atual (último à direita)
+      // Prioridade: sufixo "d"/"c" explícito > sinal bruto da string original > inferência por seção
       let natureza: "D" | "C" | null = null;
-      if (numericRight.length > 0) {
-        const rawAtual = String(numericRight[numericRight.length - 1].raw || "").trim();
-        if (/[dD]\s*$/.test(rawAtual)) natureza = "D";
-        else if (/[cC]\s*$/.test(rawAtual)) natureza = "C";
-      }
-      // Fallback: inferir natureza pelo sinal do valor parseado em conjunto com a seção
-      if (!natureza) {
-        if (currentSection === "ATIVO") natureza = valor < 0 ? "C" : "D";
-        else if (currentSection === "PASSIVO" || currentSection === "PL") natureza = valor < 0 ? "D" : "C";
+      const rawAtual =
+        numericRight.length > 0 ? String(numericRight[numericRight.length - 1].raw || "").trim() : "";
+      if (/[dD]\s*$/.test(rawAtual)) natureza = "D";
+      else if (/[cC]\s*$/.test(rawAtual)) natureza = "C";
+
+      if (!natureza && rawAtual) {
+        // Olhar o sinal BRUTO da string original (antes de qualquer inversão por seção)
+        const cleanedRaw = rawAtual.replace(/R\$\s*/gi, "").replace(/\s/g, "");
+        const isRawNegative = cleanedRaw.startsWith("-") || /^\(.*\)$/.test(cleanedRaw);
+        if (currentSection === "ATIVO") natureza = isRawNegative ? "C" : "D";
+        else if (currentSection === "PASSIVO" || currentSection === "PL")
+          natureza = isRawNegative ? "D" : "C";
       }
 
       entries.push({
