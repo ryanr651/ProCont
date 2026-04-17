@@ -271,7 +271,25 @@ export function parseSimpleBrazilianNumber(value: string | number | undefined | 
   const isPureNumeric = /^-?\d+(\.\d+)?$/.test(cleaned);
 
   if (!isPureNumeric) {
-    cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+    const hasComma = cleaned.includes(",");
+    const hasDot = cleaned.includes(".");
+    const lastComma = cleaned.lastIndexOf(",");
+    const lastDot = cleaned.lastIndexOf(".");
+
+    if (hasComma && hasDot) {
+      if (lastComma > lastDot) {
+        cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+      } else {
+        cleaned = cleaned.replace(/,/g, "");
+      }
+    } else if (hasComma) {
+      const commaCount = (cleaned.match(/,/g) || []).length;
+      if (commaCount > 1) cleaned = cleaned.replace(/,/g, "");
+      else cleaned = cleaned.replace(",", ".");
+    } else if (hasDot) {
+      const dotCount = (cleaned.match(/\./g) || []).length;
+      if (dotCount > 1) cleaned = cleaned.replace(/\./g, "");
+    }
   }
 
   let num = parseFloat(cleaned);
