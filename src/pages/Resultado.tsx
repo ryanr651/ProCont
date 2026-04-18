@@ -1831,69 +1831,6 @@ const Resultado = () => {
           <FaturamentoAnalysis data={faturamentoData} />
         )}
 
-        {diagnosticLines.length > 0 && (
-          <section className="mb-12">
-            <h2 className="font-display text-2xl font-bold mb-6 flex items-center gap-3">
-              🔍 Diagnóstico de Importação
-            </h2>
-            <div className="glass-card p-6">
-              <p className="text-sm text-muted-foreground mb-4">
-                Linhas de totais encontradas no arquivo e valores importados:
-              </p>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th className="text-left py-2 px-3 text-muted-foreground font-medium">Conta</th>
-                      <th className="text-center py-2 px-3 text-muted-foreground font-medium">Seção</th>
-                      <th className="text-left py-2 px-3 text-muted-foreground font-medium">Tipo</th>
-                      <th className="text-right py-2 px-3 text-muted-foreground font-medium">Valor</th>
-                      <th className="text-center py-2 px-3 text-muted-foreground font-medium">Status</th>
-                      <th className="text-left py-2 px-3 text-muted-foreground font-medium">Motivo</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {diagnosticLines.map((line, index) => (
-                      <tr key={index} className="border-b border-border/50 hover:bg-muted/30">
-                        <td className="py-2 px-3 font-medium text-foreground">{line.conta}</td>
-                        <td className="py-2 px-3 text-center">
-                          <span
-                            className={`px-2 py-1 rounded text-xs font-medium ${
-                              line.secao === "ATIVO"
-                                ? "bg-blue-500/20 text-blue-400"
-                                : line.secao === "PASSIVO"
-                                  ? "bg-orange-500/20 text-orange-400"
-                                  : line.secao === "PL"
-                                    ? "bg-green-500/20 text-green-400"
-                                    : "bg-muted text-muted-foreground"
-                            }`}
-                          >
-                            {line.secao}
-                          </span>
-                        </td>
-                        <td className="py-2 px-3 text-foreground text-xs">{line.tipoClassificado}</td>
-                        <td className="py-2 px-3 text-right text-foreground">
-                          {line.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                        </td>
-                        <td className="py-2 px-3 text-center">
-                          {line.encontrado ? (
-                            <span className="text-green-400">✓</span>
-                          ) : (
-                            <span className="text-red-400">✗</span>
-                          )}
-                        </td>
-                        <td className="py-2 px-3 text-muted-foreground text-xs max-w-xs truncate" title={line.motivo}>
-                          {line.motivo}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </section>
-        )}
-
         {/* XLS Validation Mode */}
         {validationRows.length > 0 && (
           <section className="mb-12">
