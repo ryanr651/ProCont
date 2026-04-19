@@ -906,9 +906,19 @@ export function DashboardIndicadores({
                   }}
                 />
                 <Bar dataKey="base" stackId="waterfall" fill="transparent" />
-                <Bar dataKey="valor" stackId="waterfall" radius={[4, 4, 0, 0]}>
+                <Bar
+                  dataKey="valor"
+                  stackId="waterfall"
+                  radius={[4, 4, 0, 0]}
+                  onClick={handleBarClick}
+                  style={{ cursor: "pointer" }}
+                >
                   {waterfallDreData.map((entry, idx) => (
-                    <Cell key={idx} fill={entry.cor} fillOpacity={entry.tipo === "subtotal" ? 0.6 : 1} />
+                    <Cell
+                      key={idx}
+                      fill={entry.cor}
+                      fillOpacity={cellOpacity(entry.name, entry.tipo === "subtotal" ? 0.6 : 1)}
+                    />
                   ))}
                   <LabelList
                     dataKey="valor"
