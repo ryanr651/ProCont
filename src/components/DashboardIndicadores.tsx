@@ -610,74 +610,255 @@ export function DashboardIndicadores({
         ))}
       </IndicatorSection>
 
-      {/* Gráficos Visuais */}
+      {/* ── VISÃO GRÁFICA ───────────────────────────────────────────────── */}
       <section className="mb-10">
         <h2 className="font-display text-2xl font-bold mb-6 flex items-center gap-3">
-          <PieChartIcon className="w-6 h-6 text-primary" />
+          <BarChart3 className="w-6 h-6 text-primary" />
           Visão Gráfica
         </h2>
+
         <div className="grid md:grid-cols-2 gap-6">
-          {/* Radar Chart – Indicadores Financeiros */}
+
+          {/* ── GRÁFICO 1: Waterfall DRE ─────────────────────────────────── */}
           <div className="glass-card p-6">
-            <h3 className="font-display font-semibold mb-4">Radar de Indicadores</h3>
+            <div className="mb-4">
+              <h3 className="font-display font-semibold text-foreground">Cascata do Resultado</h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                Impacto de cada etapa sobre a Receita Bruta
+              </p>
+            </div>
             <ResponsiveContainer width="100%" height={300}>
-              <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="70%">
-                <PolarGrid stroke="hsl(var(--border))" />
-                <PolarAngleAxis dataKey="label" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
-                <PolarRadiusAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} domain={[0, 100]} />
-                <Radar name="Indicador" dataKey="value" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.25} strokeWidth={2} />
-              </RadarChart>
+              <BarChart data={waterfallDreData} margin={{ top: 20, right: 20, left: 0, bottom: 5 }}>
+                <XAxis
+                  dataKey="name"
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  tickFormatter={(v) => {
+                    if (Math.abs(v) >= 1_000_000) return `R$${(v / 1_000_000).toFixed(1)}M`;
+                    if (Math.abs(v) >= 1_000) return `R$${(v / 1_000).toFixed(0)}K`;
+                    return `R$${v}`;
+                  }}
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={60}
+                />
+                <RechartsTooltip
+                  formatter={(v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                  contentStyle={{
+                    background: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "8px",
+                    fontSize: "12px",
+                  }}
+                />
+                <Bar dataKey="base" stackId="waterfall" fill="transparent" />
+                <Bar dataKey="valor" stackId="waterfall" radius={[4, 4, 0, 0]}>
+                  {waterfallDreData.map((entry, idx) => (
+                    <Cell key={idx} fill={entry.cor} fillOpacity={entry.tipo === "subtotal" ? 0.6 : 1} />
+                  ))}
+                  <LabelList
+                    dataKey="valor"
+                    position="top"
+                    formatter={(v: number) => {
+                      if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+                      if (Math.abs(v) >= 1_000) return `${(v / 1_000).toFixed(0)}K`;
+                      return v;
+                    }}
+                    style={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }}
+                  />
+                </Bar>
+              </BarChart>
             </ResponsiveContainer>
-            <p className="text-xs text-muted-foreground mt-2 text-center">Valores normalizados de 0 a 100 para comparação visual</p>
+            <div className="flex flex-wrap gap-3 mt-2 justify-center">
+              {[
+                { cor: "#4A7FC1", label: "Receita" },
+                { cor: "#EF4444", label: "Deduções/Custos" },
+                { cor: "#6366F1", label: "Subtotais" },
+                { cor: "#F59E0B", label: "Despesas" },
+                { cor: "#10B981", label: "Resultado" },
+              ].map(item => (
+                <span key={item.label} className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: item.cor }} />
+                  {item.label}
+                </span>
+              ))}
+            </div>
           </div>
 
-          {/* Pie Chart – Composição da DRE */}
+          {/* ── GRÁFICO 2: Barras Horizontais — Composição das Despesas ─────── */}
           <div className="glass-card p-6">
-            <h3 className="font-display font-semibold mb-4">Composição da DRE</h3>
+            <div className="mb-4">
+              <h3 className="font-display font-semibold text-foreground">Destinação da Receita Líquida</h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                Como cada componente consome a receita líquida (%)
+              </p>
+            </div>
             <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie data={drePieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} innerRadius={50} paddingAngle={2} label={({ name, percent }) => { const p = percent * 100; return `${name} ${p < 1 && p > 0 ? p.toFixed(1) : p.toFixed(0)}%`; }} labelLine={false}>
-                  {drePieData.map((_, idx) => (
-                    <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
-                  ))}
-                </Pie>
-                <RechartsTooltip formatter={(v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} />
-                <Legend />
-              </PieChart>
+              <BarChart
+                data={despesasBarData}
+                layout="vertical"
+                margin={{ top: 5, right: 50, left: 10, bottom: 5 }}
+              >
+                <XAxis
+                  type="number"
+                  domain={[0, 100]}
+                  tickFormatter={(v) => `${v}%`}
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  width={80}
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <RechartsTooltip
+                  formatter={(v: number, name: string, props: any) => [
+                    `${v.toFixed(1)}% — ${props.payload.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`,
+                    props.payload.name,
+                  ]}
+                  contentStyle={{
+                    background: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "8px",
+                    fontSize: "12px",
+                  }}
+                />
+                <Bar dataKey="pct" radius={[0, 6, 6, 0]} maxBarSize={36}>
+                  {despesasBarData.map((entry, idx) => {
+                    const cores = ["#EF4444", "#F59E0B", "#6366F1", "#10B981"];
+                    return <Cell key={idx} fill={cores[idx % cores.length]} />;
+                  })}
+                  <LabelList
+                    dataKey="pct"
+                    position="right"
+                    formatter={(v: number) => `${v.toFixed(1)}%`}
+                    style={{ fill: "hsl(var(--muted-foreground))", fontSize: 10, fontWeight: 600 }}
+                  />
+                </Bar>
+              </BarChart>
             </ResponsiveContainer>
           </div>
 
-          {/* Pie Chart – Composição do Ativo */}
+          {/* ── GRÁFICO 3: Barras Empilhadas Espelhadas — Balanço Patrimonial ── */}
           <div className="glass-card p-6">
-            <h3 className="font-display font-semibold mb-4">Composição do Ativo</h3>
-            <ResponsiveContainer width="100%" height={280}>
-              <PieChart>
-                <Pie data={ativoPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
-                  {ativoPieData.map((_, idx) => (
-                    <Cell key={idx} fill={BALANCE_COLORS[idx % BALANCE_COLORS.length]} />
-                  ))}
-                </Pie>
-                <RechartsTooltip formatter={(v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} />
-                <Legend />
-              </PieChart>
+            <div className="mb-4">
+              <h3 className="font-display font-semibold text-foreground">Estrutura Patrimonial</h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                Ativo vs Passivo + Patrimônio Líquido
+              </p>
+            </div>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart
+                data={balancoEspelhadoData}
+                margin={{ top: 20, right: 20, left: 0, bottom: 5 }}
+              >
+                <XAxis
+                  dataKey="grupo"
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11, fontWeight: 600 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  tickFormatter={(v) => {
+                    if (Math.abs(v) >= 1_000_000) return `R$${(v / 1_000_000).toFixed(1)}M`;
+                    if (Math.abs(v) >= 1_000) return `R$${(v / 1_000).toFixed(0)}K`;
+                    return `R$${v}`;
+                  }}
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={60}
+                />
+                <RechartsTooltip
+                  formatter={(v: number, name: string) =>
+                    v > 0 ? [v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }), name] : null as any
+                  }
+                  contentStyle={{
+                    background: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "8px",
+                    fontSize: "12px",
+                  }}
+                />
+                <Legend
+                  formatter={(value) => (
+                    <span style={{ color: "hsl(var(--muted-foreground))", fontSize: 11 }}>{value}</span>
+                  )}
+                />
+                <Bar dataKey="Ativo Circ."       stackId="bp" fill="#4A7FC1" />
+                <Bar dataKey="Ativo Não Circ."   stackId="bp" fill="#6366F1" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Passivo Circ."     stackId="bp" fill="#EF4444" />
+                <Bar dataKey="Passivo Não Circ." stackId="bp" fill="#F59E0B" />
+                <Bar dataKey="Patr. Líquido"     stackId="bp" fill="#10B981" radius={[4, 4, 0, 0]} />
+              </BarChart>
             </ResponsiveContainer>
           </div>
 
-          {/* Pie Chart – Estrutura de Capital */}
+          {/* ── GRÁFICO 4: Barras Horizontais — % do Ativo (Estrutura de Capital) */}
           <div className="glass-card p-6">
-            <h3 className="font-display font-semibold mb-4">Estrutura de Capital</h3>
-            <ResponsiveContainer width="100%" height={280}>
-              <PieChart>
-                <Pie data={capitalPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
-                  {capitalPieData.map((_, idx) => (
-                    <Cell key={idx} fill={CAPITAL_COLORS[idx % CAPITAL_COLORS.length]} />
+            <div className="mb-4">
+              <h3 className="font-display font-semibold text-foreground">Composição do Ativo e Capital</h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                Participação de cada grupo sobre o Ativo Total
+              </p>
+            </div>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart
+                data={estruturaCapitalData}
+                layout="vertical"
+                margin={{ top: 5, right: 60, left: 10, bottom: 5 }}
+              >
+                <XAxis
+                  type="number"
+                  domain={[0, 100]}
+                  tickFormatter={(v) => `${v}%`}
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  width={110}
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <RechartsTooltip
+                  formatter={(v: number, name: string, props: any) => [
+                    `${v.toFixed(1)}% — ${props.payload.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`,
+                    props.payload.name,
+                  ]}
+                  contentStyle={{
+                    background: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "8px",
+                    fontSize: "12px",
+                  }}
+                />
+                <Bar dataKey="pct" radius={[0, 6, 6, 0]} maxBarSize={32}>
+                  {estruturaCapitalData.map((entry, idx) => (
+                    <Cell key={idx} fill={entry.cor} />
                   ))}
-                </Pie>
-                <RechartsTooltip formatter={(v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} />
-                <Legend />
-              </PieChart>
+                  <LabelList
+                    dataKey="pct"
+                    position="right"
+                    formatter={(v: number) => `${v.toFixed(1)}%`}
+                    style={{ fill: "hsl(var(--muted-foreground))", fontSize: 10, fontWeight: 600 }}
+                  />
+                </Bar>
+              </BarChart>
             </ResponsiveContainer>
           </div>
+
         </div>
       </section>
 
