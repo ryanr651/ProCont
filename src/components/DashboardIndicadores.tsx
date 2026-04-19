@@ -525,37 +525,75 @@ export function DashboardIndicadores({
     return Math.min(Math.max(50 + ratio * 50, 0), 100);
   };
 
-  const radarData = useMemo(() => [
-    { label: "M. Bruta", value: normalize(dreData.margemBruta, 60) },
-    { label: "M. Oper.", value: normalize(dreData.margemOperacional, 40) },
-    { label: "M. Líquida", value: normalize(dreData.margemLiquida, 30) },
-    { label: "M. EBITDA", value: normalize(margemEbitda, 50) },
-    { label: "Liq. Corrente", value: normalize(liquidezCorrente, 3) },
-    { label: "ROE", value: normalize(roe, 30) },
-    { label: "ROA", value: normalize(roa, 15) },
-  ], [dreData, margemEbitda, liquidezCorrente, roe, roa]);
+  // ── GRÁFICO 1: Waterfall DRE ──────────────────────────────────────────
+  const waterfallDreData = useMemo(() => {
+    const rb  = Math.abs(dreData.receitaBruta);
+    const ded = Math.abs(dreData.receitaBruta - dreData.receitaLiquida);
+    const rl  = Math.abs(dreData.receitaLiquida);
+    const cmv = Math.abs(dreData.cmv);
+    const lb  = Math.abs(dreData.lucroBruto);
+    const do_ = Math.abs(dreData.despesasOperacionais);
+    const lo  = Math.abs(dreData.lucroOperacional);
+    const rf  = dreData.resultadoFinanceiro;
+    const ll  = Math.abs(dreData.lucroLiquido);
 
-  const drePieData = useMemo(() => {
-    const items = [
-      { name: "CMV", value: Math.abs(dreData.cmv) },
-      { name: "Desp. Operacionais", value: Math.abs(dreData.despesasOperacionais) },
-      { name: "Lucro Líquido", value: Math.abs(dreData.lucroLiquido) },
-    ].filter(d => d.value > 0);
-    const rest = Math.abs(dreData.receitaLiquida) - items.reduce((s, i) => s + i.value, 0);
-    if (rest > 0) items.push({ name: "Outros", value: rest });
-    return items;
+    return [
+      { name: "Rec. Bruta",   valor: rb,   base: 0,    cor: "#4A7FC1", tipo: "positivo" },
+      { name: "Deduções",     valor: ded,  base: rl,   cor: "#EF4444", tipo: "negativo" },
+      { name: "Rec. Líquida", valor: rl,   base: 0,    cor: "#6366F1", tipo: "subtotal" },
+      { name: "CMV",          valor: cmv,  base: lb,   cor: "#EF4444", tipo: "negativo" },
+      { name: "Lucro Bruto",  valor: lb,   base: 0,    cor: "#6366F1", tipo: "subtotal" },
+      { name: "Desp. Op.",    valor: do_,  base: lo,   cor: "#F59E0B", tipo: "negativo" },
+      { name: "L. Operac.",   valor: lo,   base: 0,    cor: "#6366F1", tipo: "subtotal" },
+      { name: "Res. Fin.",    valor: Math.abs(rf), base: rf < 0 ? lo + rf : lo, cor: rf < 0 ? "#EF4444" : "#10B981", tipo: rf < 0 ? "negativo" : "positivo" },
+      { name: "L. Líquido",   valor: ll,   base: 0,    cor: "#10B981", tipo: "resultado" },
+    ];
   }, [dreData]);
 
-  const ativoPieData = useMemo(() => [
-    { name: "Ativo Circulante", value: balancoData.ativoCirculante },
-    { name: "Ativo Não Circulante", value: balancoData.ativoNaoCirculante },
-  ].filter(d => d.value > 0), [balancoData]);
+  // ── GRÁFICO 2: Barras Horizontais — Composição das Despesas ──────────
+  const despesasBarData = useMemo(() => {
+    const total = Math.abs(dreData.cmv) + Math.abs(dreData.despesasOperacionais) + Math.abs(dreData.resultadoFinanceiro);
+    if (total === 0) return [];
+    const rl = Math.abs(dreData.receitaLiquida) || 1;
+    return [
+      { name: "CMV",           valor: Math.abs(dreData.cmv),                  pct: (Math.abs(dreData.cmv) / rl) * 100 },
+      { name: "Desp. Op.",     valor: Math.abs(dreData.despesasOperacionais), pct: (Math.abs(dreData.despesasOperacionais) / rl) * 100 },
+      { name: "Res. Fin.",     valor: Math.abs(dreData.resultadoFinanceiro),  pct: (Math.abs(dreData.resultadoFinanceiro) / rl) * 100 },
+      { name: "Lucro Líquido", valor: Math.abs(dreData.lucroLiquido),         pct: (Math.abs(dreData.lucroLiquido) / rl) * 100 },
+    ].filter(d => d.valor > 0);
+  }, [dreData]);
 
-  const capitalPieData = useMemo(() => [
-    { name: "Passivo Circulante", value: balancoData.passivoCirculante },
-    { name: "Passivo Não Circulante", value: balancoData.passivoNaoCirculante },
-    { name: "Patrimônio Líquido", value: Math.abs(balancoData.patrimonioLiquido) },
-  ].filter(d => d.value > 0), [balancoData]);
+  // ── GRÁFICO 3: Barras Empilhadas Espelhadas — Balanço Patrimonial ─────
+  const balancoEspelhadoData = useMemo(() => [
+    {
+      grupo: "Ativo",
+      "Ativo Circ.":     balancoData.ativoCirculante,
+      "Ativo Não Circ.": balancoData.ativoNaoCirculante,
+      "Passivo Circ.":   0,
+      "Passivo Não Circ.": 0,
+      "Patr. Líquido":   0,
+    },
+    {
+      grupo: "Passivo + PL",
+      "Ativo Circ.":     0,
+      "Ativo Não Circ.": 0,
+      "Passivo Circ.":   balancoData.passivoCirculante,
+      "Passivo Não Circ.": balancoData.passivoNaoCirculante,
+      "Patr. Líquido":   Math.abs(balancoData.patrimonioLiquido),
+    },
+  ], [balancoData]);
+
+  // ── GRÁFICO 4: Barras Horizontais — Estrutura de Capital (% do Ativo) ─
+  const estruturaCapitalData = useMemo(() => {
+    const total = balancoData.ativoTotal || 1;
+    return [
+      { name: "Ativo Circ.",       valor: balancoData.ativoCirculante,             pct: (balancoData.ativoCirculante / total) * 100,             cor: "#4A7FC1" },
+      { name: "Ativo Não Circ.",   valor: balancoData.ativoNaoCirculante,          pct: (balancoData.ativoNaoCirculante / total) * 100,          cor: "#6366F1" },
+      { name: "Passivo Circ.",     valor: balancoData.passivoCirculante,           pct: (balancoData.passivoCirculante / total) * 100,           cor: "#EF4444" },
+      { name: "Passivo Não Circ.", valor: balancoData.passivoNaoCirculante,        pct: (balancoData.passivoNaoCirculante / total) * 100,        cor: "#F59E0B" },
+      { name: "Patr. Líquido",     valor: Math.abs(balancoData.patrimonioLiquido), pct: (Math.abs(balancoData.patrimonioLiquido) / total) * 100, cor: "#10B981" },
+    ].filter(d => d.valor > 0);
+  }, [balancoData]);
 
   return (
     <>
