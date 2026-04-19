@@ -16,7 +16,7 @@ import {
   Target,
   BarChart3,
   FileSearch,
-  PieChart as PieChartIcon,
+  
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ProgressBar } from "@/components/ProgressBar";
