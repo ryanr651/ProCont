@@ -611,6 +611,240 @@ export function DashboardIndicadores({
     ].filter(d => d.valor > 0);
   }, [balancoData]);
 
+  // ── DRILL-DOWN ──────────────────────────────────────────────────────
+  type DrillDownItem = {
+    titulo: string;
+    valor: number;
+    percentual: number;
+    descricao?: string;
+    composicao: { nome: string; valor: number; percentual: number }[];
+    scrollTargetId?: string;
+  };
+
+  const [selectedItem, setSelectedItem] = useState<DrillDownItem | null>(null);
+  const [activeChartKey, setActiveChartKey] = useState<string | null>(null);
+
+  const formatBRL = (v: number) =>
+    v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+  const buildComposicaoFromDRE = (grupo: string, totalRef: number) => {
+    const accs = dreClassifiedEntries.filter((e) => e.grupo === grupo);
+    const total = totalRef || accs.reduce((s, a) => s + Math.abs(a.valor), 0) || 1;
+    return accs
+      .map((a) => ({
+        nome: a.descricao,
+        valor: Math.abs(a.valor),
+        percentual: (Math.abs(a.valor) / total) * 100,
+      }))
+      .sort((a, b) => b.valor - a.valor);
+  };
+
+  const buildComposicaoFromBalanco = (
+    tipoFilter: (e: BalancoEntry) => boolean,
+    totalRef: number,
+  ) => {
+    const accs = rawBalancoEntries.filter(tipoFilter);
+    const total = totalRef || accs.reduce((s, a) => s + Math.abs(a.valor), 0) || 1;
+    return accs
+      .map((a) => ({
+        nome: a.conta,
+        valor: Math.abs(a.valor),
+        percentual: (Math.abs(a.valor) / total) * 100,
+      }))
+      .sort((a, b) => b.valor - a.valor)
+      .slice(0, 30);
+  };
+
+  const openDrillDown = (key: string) => {
+    setActiveChartKey(key);
+    const rb = Math.abs(dreData.receitaBruta) || 1;
+    const at = balancoData.ativoTotal || 1;
+
+    switch (key) {
+      case "Rec. Bruta":
+        setSelectedItem({
+          titulo: "Receita Bruta",
+          valor: Math.abs(dreData.receitaBruta),
+          percentual: 100,
+          composicao: buildComposicaoFromDRE("receita_bruta", Math.abs(dreData.receitaBruta)),
+          scrollTargetId: "secao-dre",
+        });
+        return;
+      case "Deduções": {
+        const ded = Math.abs(dreData.receitaBruta - dreData.receitaLiquida);
+        setSelectedItem({
+          titulo: "Deduções da Receita",
+          valor: ded,
+          percentual: (ded / rb) * 100,
+          composicao: buildComposicaoFromDRE("deducoes", ded),
+          scrollTargetId: "secao-dre",
+        });
+        return;
+      }
+      case "Rec. Líquida":
+        setSelectedItem({
+          titulo: "Receita Líquida",
+          valor: Math.abs(dreData.receitaLiquida),
+          percentual: (Math.abs(dreData.receitaLiquida) / rb) * 100,
+          descricao: "Receita Bruta menos Deduções (impostos sobre vendas, devoluções, etc.).",
+          composicao: [],
+          scrollTargetId: "secao-dre",
+        });
+        return;
+      case "CMV":
+        setSelectedItem({
+          titulo: "Custos (CMV/CPV/CSP)",
+          valor: Math.abs(dreData.cmv),
+          percentual: (Math.abs(dreData.cmv) / rb) * 100,
+          composicao: buildComposicaoFromDRE("cmv", Math.abs(dreData.cmv)),
+          scrollTargetId: "secao-dre",
+        });
+        return;
+      case "Lucro Bruto":
+        setSelectedItem({
+          titulo: "Lucro Bruto",
+          valor: Math.abs(dreData.lucroBruto),
+          percentual: (Math.abs(dreData.lucroBruto) / rb) * 100,
+          descricao: "Receita Líquida menos Custos. Indica a eficiência operacional direta.",
+          composicao: [],
+          scrollTargetId: "secao-dre",
+        });
+        return;
+      case "Desp. Op.":
+        setSelectedItem({
+          titulo: "Despesas Operacionais",
+          valor: Math.abs(dreData.despesasOperacionais),
+          percentual: (Math.abs(dreData.despesasOperacionais) / rb) * 100,
+          composicao: buildComposicaoFromDRE(
+            "despesas_operacionais",
+            Math.abs(dreData.despesasOperacionais),
+          ),
+          scrollTargetId: "secao-dre",
+        });
+        return;
+      case "L. Operac.":
+        setSelectedItem({
+          titulo: "Lucro Operacional",
+          valor: Math.abs(dreData.lucroOperacional),
+          percentual: (Math.abs(dreData.lucroOperacional) / rb) * 100,
+          descricao: "Lucro Bruto menos Despesas Operacionais.",
+          composicao: [],
+          scrollTargetId: "secao-dre",
+        });
+        return;
+      case "Res. Fin.":
+        setSelectedItem({
+          titulo: "Resultado Financeiro",
+          valor: Math.abs(dreData.resultadoFinanceiro),
+          percentual: (Math.abs(dreData.resultadoFinanceiro) / rb) * 100,
+          composicao: buildComposicaoFromDRE(
+            "resultado_financeiro",
+            Math.abs(dreData.resultadoFinanceiro),
+          ),
+          scrollTargetId: "secao-dre",
+        });
+        return;
+      case "L. Líquido":
+      case "Lucro Líquido":
+        setSelectedItem({
+          titulo: "Lucro Líquido",
+          valor: Math.abs(dreData.lucroLiquido),
+          percentual: (Math.abs(dreData.lucroLiquido) / rb) * 100,
+          descricao: "Resultado final após todos os custos, despesas e tributos sobre o lucro.",
+          composicao: [],
+          scrollTargetId: "secao-dre",
+        });
+        return;
+      case "Ativo Circ.":
+        setSelectedItem({
+          titulo: "Ativo Circulante",
+          valor: balancoData.ativoCirculante,
+          percentual: (balancoData.ativoCirculante / at) * 100,
+          composicao: buildComposicaoFromBalanco(
+            (e) => e.tipo === "ativo_circulante",
+            balancoData.ativoCirculante,
+          ),
+          scrollTargetId: "secao-balanco",
+        });
+        return;
+      case "Ativo Não Circ.":
+        setSelectedItem({
+          titulo: "Ativo Não Circulante",
+          valor: balancoData.ativoNaoCirculante,
+          percentual: (balancoData.ativoNaoCirculante / at) * 100,
+          composicao: buildComposicaoFromBalanco(
+            (e) => e.tipo === "ativo_nao_circulante",
+            balancoData.ativoNaoCirculante,
+          ),
+          scrollTargetId: "secao-balanco",
+        });
+        return;
+      case "Passivo Circ.":
+        setSelectedItem({
+          titulo: "Passivo Circulante",
+          valor: balancoData.passivoCirculante,
+          percentual: (balancoData.passivoCirculante / at) * 100,
+          composicao: buildComposicaoFromBalanco(
+            (e) => e.tipo === "passivo_circulante",
+            balancoData.passivoCirculante,
+          ),
+          scrollTargetId: "secao-balanco",
+        });
+        return;
+      case "Passivo Não Circ.":
+        setSelectedItem({
+          titulo: "Passivo Não Circulante",
+          valor: balancoData.passivoNaoCirculante,
+          percentual: (balancoData.passivoNaoCirculante / at) * 100,
+          composicao: buildComposicaoFromBalanco(
+            (e) => e.tipo === "passivo_nao_circulante",
+            balancoData.passivoNaoCirculante,
+          ),
+          scrollTargetId: "secao-balanco",
+        });
+        return;
+      case "Patr. Líquido":
+        setSelectedItem({
+          titulo: "Patrimônio Líquido",
+          valor: Math.abs(balancoData.patrimonioLiquido),
+          percentual: (Math.abs(balancoData.patrimonioLiquido) / at) * 100,
+          composicao: buildComposicaoFromBalanco(
+            (e) => e.tipo === "patrimonio_liquido",
+            Math.abs(balancoData.patrimonioLiquido),
+          ),
+          scrollTargetId: "secao-balanco",
+        });
+        return;
+      default:
+        return;
+    }
+  };
+
+  const handleBarClick = (data: any) => {
+    const key = data?.name || data?.grupo;
+    if (key) openDrillDown(key);
+  };
+
+  const closeDrillDown = () => {
+    setSelectedItem(null);
+    setActiveChartKey(null);
+  };
+
+  const scrollToReport = () => {
+    if (selectedItem?.scrollTargetId) {
+      const el = document.getElementById(selectedItem.scrollTargetId);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
+    closeDrillDown();
+  };
+
+  const cellOpacity = (key: string, baseOpacity = 1) => {
+    if (!activeChartKey) return baseOpacity;
+    return activeChartKey === key ? baseOpacity : 0.25;
+  };
+
   return (
     <>
       <IndicatorSection title="Demonstração do Resultado (DRE)" icon={TrendingUp}>
