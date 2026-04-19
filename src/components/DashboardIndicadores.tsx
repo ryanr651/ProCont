@@ -1296,6 +1296,93 @@ export function DashboardIndicadores({
           )}
         </section>
       )}
+
+      {/* ── Drill-down Sheet ─────────────────────────────────────────── */}
+      <Sheet
+        open={selectedItem !== null}
+        onOpenChange={(open) => {
+          if (!open) closeDrillDown();
+        }}
+      >
+        <SheetContent side="right" className="sm:max-w-[480px] flex flex-col">
+          {selectedItem && (
+            <>
+              <SheetHeader>
+                <SheetTitle className="font-display text-xl">{selectedItem.titulo}</SheetTitle>
+                <SheetDescription>
+                  Detalhamento da composição do indicador selecionado.
+                </SheetDescription>
+              </SheetHeader>
+
+              <div className="grid grid-cols-2 gap-3 mt-4">
+                <div className="rounded-lg border border-border bg-muted/30 p-3">
+                  <p className="text-xs text-muted-foreground">Valor</p>
+                  <p className="font-display text-lg font-semibold text-foreground">
+                    {formatBRL(selectedItem.valor)}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border bg-muted/30 p-3">
+                  <p className="text-xs text-muted-foreground">% do Total</p>
+                  <p className="font-display text-lg font-semibold text-foreground">
+                    {selectedItem.percentual.toFixed(1)}%
+                  </p>
+                </div>
+              </div>
+
+              {selectedItem.descricao && (
+                <p className="text-sm text-muted-foreground mt-4 leading-relaxed">
+                  {selectedItem.descricao}
+                </p>
+              )}
+
+              <div className="mt-6 flex-1 overflow-y-auto">
+                {selectedItem.composicao.length > 0 ? (
+                  <>
+                    <h4 className="text-sm font-semibold text-foreground mb-2">
+                      Subcomponentes
+                    </h4>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Item</TableHead>
+                          <TableHead className="text-right">Valor (R$)</TableHead>
+                          <TableHead className="text-right">% do Total</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {selectedItem.composicao.map((c, i) => (
+                          <TableRow key={i}>
+                            <TableCell className="text-xs">{c.nome}</TableCell>
+                            <TableCell className="text-right text-xs tabular-nums">
+                              {formatBRL(c.valor)}
+                            </TableCell>
+                            <TableCell className="text-right text-xs tabular-nums">
+                              {c.percentual.toFixed(1)}%
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </>
+                ) : (
+                  !selectedItem.descricao && (
+                    <p className="text-sm text-muted-foreground italic">
+                      Este indicador é um resultado calculado e não possui subcomponentes diretos.
+                    </p>
+                  )
+                )}
+              </div>
+
+              <SheetFooter className="mt-4">
+                <Button variant="outline" onClick={scrollToReport} className="w-full">
+                  <FileSearch className="w-4 h-4 mr-2" />
+                  Ver no relatório completo
+                </Button>
+              </SheetFooter>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </>
   );
 }
