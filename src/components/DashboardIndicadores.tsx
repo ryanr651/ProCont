@@ -1,4 +1,20 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+} from "@/components/ui/sheet";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   TrendingUp,
   TrendingDown,
@@ -595,6 +611,240 @@ export function DashboardIndicadores({
     ].filter(d => d.valor > 0);
   }, [balancoData]);
 
+  // ── DRILL-DOWN ──────────────────────────────────────────────────────
+  type DrillDownItem = {
+    titulo: string;
+    valor: number;
+    percentual: number;
+    descricao?: string;
+    composicao: { nome: string; valor: number; percentual: number }[];
+    scrollTargetId?: string;
+  };
+
+  const [selectedItem, setSelectedItem] = useState<DrillDownItem | null>(null);
+  const [activeChartKey, setActiveChartKey] = useState<string | null>(null);
+
+  const formatBRL = (v: number) =>
+    v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+  const buildComposicaoFromDRE = (grupo: string, totalRef: number) => {
+    const accs = dreClassifiedEntries.filter((e) => e.grupo === grupo);
+    const total = totalRef || accs.reduce((s, a) => s + Math.abs(a.valor), 0) || 1;
+    return accs
+      .map((a) => ({
+        nome: a.descricao,
+        valor: Math.abs(a.valor),
+        percentual: (Math.abs(a.valor) / total) * 100,
+      }))
+      .sort((a, b) => b.valor - a.valor);
+  };
+
+  const buildComposicaoFromBalanco = (
+    tipoFilter: (e: BalancoEntry) => boolean,
+    totalRef: number,
+  ) => {
+    const accs = rawBalancoEntries.filter(tipoFilter);
+    const total = totalRef || accs.reduce((s, a) => s + Math.abs(a.valor), 0) || 1;
+    return accs
+      .map((a) => ({
+        nome: a.conta,
+        valor: Math.abs(a.valor),
+        percentual: (Math.abs(a.valor) / total) * 100,
+      }))
+      .sort((a, b) => b.valor - a.valor)
+      .slice(0, 30);
+  };
+
+  const openDrillDown = (key: string) => {
+    setActiveChartKey(key);
+    const rb = Math.abs(dreData.receitaBruta) || 1;
+    const at = balancoData.ativoTotal || 1;
+
+    switch (key) {
+      case "Rec. Bruta":
+        setSelectedItem({
+          titulo: "Receita Bruta",
+          valor: Math.abs(dreData.receitaBruta),
+          percentual: 100,
+          composicao: buildComposicaoFromDRE("receita_bruta", Math.abs(dreData.receitaBruta)),
+          scrollTargetId: "secao-dre",
+        });
+        return;
+      case "Deduções": {
+        const ded = Math.abs(dreData.receitaBruta - dreData.receitaLiquida);
+        setSelectedItem({
+          titulo: "Deduções da Receita",
+          valor: ded,
+          percentual: (ded / rb) * 100,
+          composicao: buildComposicaoFromDRE("deducoes", ded),
+          scrollTargetId: "secao-dre",
+        });
+        return;
+      }
+      case "Rec. Líquida":
+        setSelectedItem({
+          titulo: "Receita Líquida",
+          valor: Math.abs(dreData.receitaLiquida),
+          percentual: (Math.abs(dreData.receitaLiquida) / rb) * 100,
+          descricao: "Receita Bruta menos Deduções (impostos sobre vendas, devoluções, etc.).",
+          composicao: [],
+          scrollTargetId: "secao-dre",
+        });
+        return;
+      case "CMV":
+        setSelectedItem({
+          titulo: "Custos (CMV/CPV/CSP)",
+          valor: Math.abs(dreData.cmv),
+          percentual: (Math.abs(dreData.cmv) / rb) * 100,
+          composicao: buildComposicaoFromDRE("cmv", Math.abs(dreData.cmv)),
+          scrollTargetId: "secao-dre",
+        });
+        return;
+      case "Lucro Bruto":
+        setSelectedItem({
+          titulo: "Lucro Bruto",
+          valor: Math.abs(dreData.lucroBruto),
+          percentual: (Math.abs(dreData.lucroBruto) / rb) * 100,
+          descricao: "Receita Líquida menos Custos. Indica a eficiência operacional direta.",
+          composicao: [],
+          scrollTargetId: "secao-dre",
+        });
+        return;
+      case "Desp. Op.":
+        setSelectedItem({
+          titulo: "Despesas Operacionais",
+          valor: Math.abs(dreData.despesasOperacionais),
+          percentual: (Math.abs(dreData.despesasOperacionais) / rb) * 100,
+          composicao: buildComposicaoFromDRE(
+            "despesas_operacionais",
+            Math.abs(dreData.despesasOperacionais),
+          ),
+          scrollTargetId: "secao-dre",
+        });
+        return;
+      case "L. Operac.":
+        setSelectedItem({
+          titulo: "Lucro Operacional",
+          valor: Math.abs(dreData.lucroOperacional),
+          percentual: (Math.abs(dreData.lucroOperacional) / rb) * 100,
+          descricao: "Lucro Bruto menos Despesas Operacionais.",
+          composicao: [],
+          scrollTargetId: "secao-dre",
+        });
+        return;
+      case "Res. Fin.":
+        setSelectedItem({
+          titulo: "Resultado Financeiro",
+          valor: Math.abs(dreData.resultadoFinanceiro),
+          percentual: (Math.abs(dreData.resultadoFinanceiro) / rb) * 100,
+          composicao: buildComposicaoFromDRE(
+            "resultado_financeiro",
+            Math.abs(dreData.resultadoFinanceiro),
+          ),
+          scrollTargetId: "secao-dre",
+        });
+        return;
+      case "L. Líquido":
+      case "Lucro Líquido":
+        setSelectedItem({
+          titulo: "Lucro Líquido",
+          valor: Math.abs(dreData.lucroLiquido),
+          percentual: (Math.abs(dreData.lucroLiquido) / rb) * 100,
+          descricao: "Resultado final após todos os custos, despesas e tributos sobre o lucro.",
+          composicao: [],
+          scrollTargetId: "secao-dre",
+        });
+        return;
+      case "Ativo Circ.":
+        setSelectedItem({
+          titulo: "Ativo Circulante",
+          valor: balancoData.ativoCirculante,
+          percentual: (balancoData.ativoCirculante / at) * 100,
+          composicao: buildComposicaoFromBalanco(
+            (e) => e.tipo === "ativo_circulante",
+            balancoData.ativoCirculante,
+          ),
+          scrollTargetId: "secao-balanco",
+        });
+        return;
+      case "Ativo Não Circ.":
+        setSelectedItem({
+          titulo: "Ativo Não Circulante",
+          valor: balancoData.ativoNaoCirculante,
+          percentual: (balancoData.ativoNaoCirculante / at) * 100,
+          composicao: buildComposicaoFromBalanco(
+            (e) => e.tipo === "ativo_nao_circulante",
+            balancoData.ativoNaoCirculante,
+          ),
+          scrollTargetId: "secao-balanco",
+        });
+        return;
+      case "Passivo Circ.":
+        setSelectedItem({
+          titulo: "Passivo Circulante",
+          valor: balancoData.passivoCirculante,
+          percentual: (balancoData.passivoCirculante / at) * 100,
+          composicao: buildComposicaoFromBalanco(
+            (e) => e.tipo === "passivo_circulante",
+            balancoData.passivoCirculante,
+          ),
+          scrollTargetId: "secao-balanco",
+        });
+        return;
+      case "Passivo Não Circ.":
+        setSelectedItem({
+          titulo: "Passivo Não Circulante",
+          valor: balancoData.passivoNaoCirculante,
+          percentual: (balancoData.passivoNaoCirculante / at) * 100,
+          composicao: buildComposicaoFromBalanco(
+            (e) => e.tipo === "passivo_nao_circulante",
+            balancoData.passivoNaoCirculante,
+          ),
+          scrollTargetId: "secao-balanco",
+        });
+        return;
+      case "Patr. Líquido":
+        setSelectedItem({
+          titulo: "Patrimônio Líquido",
+          valor: Math.abs(balancoData.patrimonioLiquido),
+          percentual: (Math.abs(balancoData.patrimonioLiquido) / at) * 100,
+          composicao: buildComposicaoFromBalanco(
+            (e) => e.tipo === "patrimonio_liquido",
+            Math.abs(balancoData.patrimonioLiquido),
+          ),
+          scrollTargetId: "secao-balanco",
+        });
+        return;
+      default:
+        return;
+    }
+  };
+
+  const handleBarClick = (data: any) => {
+    const key = data?.name || data?.grupo;
+    if (key) openDrillDown(key);
+  };
+
+  const closeDrillDown = () => {
+    setSelectedItem(null);
+    setActiveChartKey(null);
+  };
+
+  const scrollToReport = () => {
+    if (selectedItem?.scrollTargetId) {
+      const el = document.getElementById(selectedItem.scrollTargetId);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
+    closeDrillDown();
+  };
+
+  const cellOpacity = (key: string, baseOpacity = 1) => {
+    if (!activeChartKey) return baseOpacity;
+    return activeChartKey === key ? baseOpacity : 0.25;
+  };
+
   return (
     <>
       <IndicatorSection title="Demonstração do Resultado (DRE)" icon={TrendingUp}>
@@ -656,9 +906,19 @@ export function DashboardIndicadores({
                   }}
                 />
                 <Bar dataKey="base" stackId="waterfall" fill="transparent" />
-                <Bar dataKey="valor" stackId="waterfall" radius={[4, 4, 0, 0]}>
+                <Bar
+                  dataKey="valor"
+                  stackId="waterfall"
+                  radius={[4, 4, 0, 0]}
+                  onClick={handleBarClick}
+                  style={{ cursor: "pointer" }}
+                >
                   {waterfallDreData.map((entry, idx) => (
-                    <Cell key={idx} fill={entry.cor} fillOpacity={entry.tipo === "subtotal" ? 0.6 : 1} />
+                    <Cell
+                      key={idx}
+                      fill={entry.cor}
+                      fillOpacity={cellOpacity(entry.name, entry.tipo === "subtotal" ? 0.6 : 1)}
+                    />
                   ))}
                   <LabelList
                     dataKey="valor"
@@ -731,10 +991,22 @@ export function DashboardIndicadores({
                     fontSize: "12px",
                   }}
                 />
-                <Bar dataKey="pct" radius={[0, 6, 6, 0]} maxBarSize={36}>
+                <Bar
+                  dataKey="pct"
+                  radius={[0, 6, 6, 0]}
+                  maxBarSize={36}
+                  onClick={handleBarClick}
+                  style={{ cursor: "pointer" }}
+                >
                   {despesasBarData.map((entry, idx) => {
                     const cores = ["#EF4444", "#F59E0B", "#6366F1", "#10B981"];
-                    return <Cell key={idx} fill={cores[idx % cores.length]} />;
+                    return (
+                      <Cell
+                        key={idx}
+                        fill={cores[idx % cores.length]}
+                        fillOpacity={cellOpacity(entry.name)}
+                      />
+                    );
                   })}
                   <LabelList
                     dataKey="pct"
@@ -793,11 +1065,48 @@ export function DashboardIndicadores({
                     <span style={{ color: "hsl(var(--muted-foreground))", fontSize: 11 }}>{value}</span>
                   )}
                 />
-                <Bar dataKey="Ativo Circ."       stackId="bp" fill="#4A7FC1" />
-                <Bar dataKey="Ativo Não Circ."   stackId="bp" fill="#6366F1" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Passivo Circ."     stackId="bp" fill="#EF4444" />
-                <Bar dataKey="Passivo Não Circ." stackId="bp" fill="#F59E0B" />
-                <Bar dataKey="Patr. Líquido"     stackId="bp" fill="#10B981" radius={[4, 4, 0, 0]} />
+                <Bar
+                  dataKey="Ativo Circ."
+                  stackId="bp"
+                  fill="#4A7FC1"
+                  fillOpacity={cellOpacity("Ativo Circ.")}
+                  onClick={() => openDrillDown("Ativo Circ.")}
+                  style={{ cursor: "pointer" }}
+                />
+                <Bar
+                  dataKey="Ativo Não Circ."
+                  stackId="bp"
+                  fill="#6366F1"
+                  radius={[4, 4, 0, 0]}
+                  fillOpacity={cellOpacity("Ativo Não Circ.")}
+                  onClick={() => openDrillDown("Ativo Não Circ.")}
+                  style={{ cursor: "pointer" }}
+                />
+                <Bar
+                  dataKey="Passivo Circ."
+                  stackId="bp"
+                  fill="#EF4444"
+                  fillOpacity={cellOpacity("Passivo Circ.")}
+                  onClick={() => openDrillDown("Passivo Circ.")}
+                  style={{ cursor: "pointer" }}
+                />
+                <Bar
+                  dataKey="Passivo Não Circ."
+                  stackId="bp"
+                  fill="#F59E0B"
+                  fillOpacity={cellOpacity("Passivo Não Circ.")}
+                  onClick={() => openDrillDown("Passivo Não Circ.")}
+                  style={{ cursor: "pointer" }}
+                />
+                <Bar
+                  dataKey="Patr. Líquido"
+                  stackId="bp"
+                  fill="#10B981"
+                  radius={[4, 4, 0, 0]}
+                  fillOpacity={cellOpacity("Patr. Líquido")}
+                  onClick={() => openDrillDown("Patr. Líquido")}
+                  style={{ cursor: "pointer" }}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -844,9 +1153,15 @@ export function DashboardIndicadores({
                     fontSize: "12px",
                   }}
                 />
-                <Bar dataKey="pct" radius={[0, 6, 6, 0]} maxBarSize={32}>
+                <Bar
+                  dataKey="pct"
+                  radius={[0, 6, 6, 0]}
+                  maxBarSize={32}
+                  onClick={handleBarClick}
+                  style={{ cursor: "pointer" }}
+                >
                   {estruturaCapitalData.map((entry, idx) => (
-                    <Cell key={idx} fill={entry.cor} />
+                    <Cell key={idx} fill={entry.cor} fillOpacity={cellOpacity(entry.name)} />
                   ))}
                   <LabelList
                     dataKey="pct"
@@ -981,6 +1296,93 @@ export function DashboardIndicadores({
           )}
         </section>
       )}
+
+      {/* ── Drill-down Sheet ─────────────────────────────────────────── */}
+      <Sheet
+        open={selectedItem !== null}
+        onOpenChange={(open) => {
+          if (!open) closeDrillDown();
+        }}
+      >
+        <SheetContent side="right" className="sm:max-w-[480px] flex flex-col">
+          {selectedItem && (
+            <>
+              <SheetHeader>
+                <SheetTitle className="font-display text-xl">{selectedItem.titulo}</SheetTitle>
+                <SheetDescription>
+                  Detalhamento da composição do indicador selecionado.
+                </SheetDescription>
+              </SheetHeader>
+
+              <div className="grid grid-cols-2 gap-3 mt-4">
+                <div className="rounded-lg border border-border bg-muted/30 p-3">
+                  <p className="text-xs text-muted-foreground">Valor</p>
+                  <p className="font-display text-lg font-semibold text-foreground">
+                    {formatBRL(selectedItem.valor)}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border bg-muted/30 p-3">
+                  <p className="text-xs text-muted-foreground">% do Total</p>
+                  <p className="font-display text-lg font-semibold text-foreground">
+                    {selectedItem.percentual.toFixed(1)}%
+                  </p>
+                </div>
+              </div>
+
+              {selectedItem.descricao && (
+                <p className="text-sm text-muted-foreground mt-4 leading-relaxed">
+                  {selectedItem.descricao}
+                </p>
+              )}
+
+              <div className="mt-6 flex-1 overflow-y-auto">
+                {selectedItem.composicao.length > 0 ? (
+                  <>
+                    <h4 className="text-sm font-semibold text-foreground mb-2">
+                      Subcomponentes
+                    </h4>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Item</TableHead>
+                          <TableHead className="text-right">Valor (R$)</TableHead>
+                          <TableHead className="text-right">% do Total</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {selectedItem.composicao.map((c, i) => (
+                          <TableRow key={i}>
+                            <TableCell className="text-xs">{c.nome}</TableCell>
+                            <TableCell className="text-right text-xs tabular-nums">
+                              {formatBRL(c.valor)}
+                            </TableCell>
+                            <TableCell className="text-right text-xs tabular-nums">
+                              {c.percentual.toFixed(1)}%
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </>
+                ) : (
+                  !selectedItem.descricao && (
+                    <p className="text-sm text-muted-foreground italic">
+                      Este indicador é um resultado calculado e não possui subcomponentes diretos.
+                    </p>
+                  )
+                )}
+              </div>
+
+              <SheetFooter className="mt-4">
+                <Button variant="outline" onClick={scrollToReport} className="w-full">
+                  <FileSearch className="w-4 h-4 mr-2" />
+                  Ver no relatório completo
+                </Button>
+              </SheetFooter>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </>
   );
 }
