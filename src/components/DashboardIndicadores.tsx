@@ -1153,9 +1153,15 @@ export function DashboardIndicadores({
                     fontSize: "12px",
                   }}
                 />
-                <Bar dataKey="pct" radius={[0, 6, 6, 0]} maxBarSize={32}>
+                <Bar
+                  dataKey="pct"
+                  radius={[0, 6, 6, 0]}
+                  maxBarSize={32}
+                  onClick={handleBarClick}
+                  style={{ cursor: "pointer" }}
+                >
                   {estruturaCapitalData.map((entry, idx) => (
-                    <Cell key={idx} fill={entry.cor} />
+                    <Cell key={idx} fill={entry.cor} fillOpacity={cellOpacity(entry.name)} />
                   ))}
                   <LabelList
                     dataKey="pct"
