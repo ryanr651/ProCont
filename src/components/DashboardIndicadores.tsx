@@ -991,10 +991,22 @@ export function DashboardIndicadores({
                     fontSize: "12px",
                   }}
                 />
-                <Bar dataKey="pct" radius={[0, 6, 6, 0]} maxBarSize={36}>
+                <Bar
+                  dataKey="pct"
+                  radius={[0, 6, 6, 0]}
+                  maxBarSize={36}
+                  onClick={handleBarClick}
+                  style={{ cursor: "pointer" }}
+                >
                   {despesasBarData.map((entry, idx) => {
                     const cores = ["#EF4444", "#F59E0B", "#6366F1", "#10B981"];
-                    return <Cell key={idx} fill={cores[idx % cores.length]} />;
+                    return (
+                      <Cell
+                        key={idx}
+                        fill={cores[idx % cores.length]}
+                        fillOpacity={cellOpacity(entry.name)}
+                      />
+                    );
                   })}
                   <LabelList
                     dataKey="pct"
