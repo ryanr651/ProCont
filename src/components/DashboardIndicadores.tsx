@@ -22,8 +22,8 @@ import { Button } from "@/components/ui/button";
 import { ProgressBar } from "@/components/ProgressBar";
 import { IndicatorCard, IndicatorSection, type IndicatorConfig, type AccountDetail } from "@/components/IndicatorCard";
 import {
-  RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar,
-  PieChart, Pie, Cell, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, Cell, Tooltip as RechartsTooltip,
+  Legend, ResponsiveContainer, ReferenceLine, LabelList,
 } from "recharts";
 
 interface DREClassifiedEntry {
