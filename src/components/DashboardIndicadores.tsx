@@ -1065,11 +1065,48 @@ export function DashboardIndicadores({
                     <span style={{ color: "hsl(var(--muted-foreground))", fontSize: 11 }}>{value}</span>
                   )}
                 />
-                <Bar dataKey="Ativo Circ."       stackId="bp" fill="#4A7FC1" />
-                <Bar dataKey="Ativo Não Circ."   stackId="bp" fill="#6366F1" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Passivo Circ."     stackId="bp" fill="#EF4444" />
-                <Bar dataKey="Passivo Não Circ." stackId="bp" fill="#F59E0B" />
-                <Bar dataKey="Patr. Líquido"     stackId="bp" fill="#10B981" radius={[4, 4, 0, 0]} />
+                <Bar
+                  dataKey="Ativo Circ."
+                  stackId="bp"
+                  fill="#4A7FC1"
+                  fillOpacity={cellOpacity("Ativo Circ.")}
+                  onClick={() => openDrillDown("Ativo Circ.")}
+                  style={{ cursor: "pointer" }}
+                />
+                <Bar
+                  dataKey="Ativo Não Circ."
+                  stackId="bp"
+                  fill="#6366F1"
+                  radius={[4, 4, 0, 0]}
+                  fillOpacity={cellOpacity("Ativo Não Circ.")}
+                  onClick={() => openDrillDown("Ativo Não Circ.")}
+                  style={{ cursor: "pointer" }}
+                />
+                <Bar
+                  dataKey="Passivo Circ."
+                  stackId="bp"
+                  fill="#EF4444"
+                  fillOpacity={cellOpacity("Passivo Circ.")}
+                  onClick={() => openDrillDown("Passivo Circ.")}
+                  style={{ cursor: "pointer" }}
+                />
+                <Bar
+                  dataKey="Passivo Não Circ."
+                  stackId="bp"
+                  fill="#F59E0B"
+                  fillOpacity={cellOpacity("Passivo Não Circ.")}
+                  onClick={() => openDrillDown("Passivo Não Circ.")}
+                  style={{ cursor: "pointer" }}
+                />
+                <Bar
+                  dataKey="Patr. Líquido"
+                  stackId="bp"
+                  fill="#10B981"
+                  radius={[4, 4, 0, 0]}
+                  fillOpacity={cellOpacity("Patr. Líquido")}
+                  onClick={() => openDrillDown("Patr. Líquido")}
+                  style={{ cursor: "pointer" }}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>
