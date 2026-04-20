@@ -74,7 +74,48 @@ interface AIPresentationDialogProps {
   dreData: CalculatedDRE | null;
   balancoData: CalculatedBalanco | null;
   empresaNome?: string;
+  empresaCnpj?: string;
+  empresaCnae?: string;
+  empresaRegimeTributario?: string;
+  empresaContexto?: string;
+  ebitda?: number;
+  periodo?: string;
   branding?: BrandingInfo | null;
+}
+
+// Helper: normalize array items that may come as string OR { titulo, descricao }
+function normalizeStructuredItem(item: unknown): string {
+  if (typeof item === "string") return item;
+  if (item && typeof item === "object") {
+    const obj = item as { titulo?: string; descricao?: string; prioridade?: string; numero?: number };
+    const parts: string[] = [];
+    if (obj.numero) parts.push(`${obj.numero}.`);
+    if (obj.titulo) parts.push(obj.titulo);
+    if (obj.prioridade) parts.push(`[${obj.prioridade}]`);
+    const head = parts.join(" ").trim();
+    const desc = (obj.descricao || "").trim();
+    if (head && desc) return `${head}: ${desc}`;
+    return head || desc;
+  }
+  return String(item);
+}
+
+// Helper: convert structured paragraph object OR array OR string into string[]
+function normalizeStructuredText(value: unknown): string[] {
+  if (!value) return [];
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.map(normalizeStructuredItem).filter(Boolean);
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    const ordered = ["paragrafo1", "paragrafo2", "paragrafo3", "paragrafo4"];
+    const out: string[] = [];
+    for (const k of ordered) {
+      if (typeof obj[k] === "string" && obj[k]) out.push(obj[k] as string);
+    }
+    if (out.length > 0) return out;
+    return Object.values(obj).filter((v) => typeof v === "string" && v).map(String);
+  }
+  return [String(value)];
 }
 
 const CHART_COLORS = ['#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899'];
