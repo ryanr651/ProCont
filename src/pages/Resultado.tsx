@@ -1941,8 +1941,6 @@ const Resultado = () => {
       <div class="page">
         ${secTitle('7', 'CONCLUSÃO')}
         ${aiConclusaoParas.map(p => `<p>${escapeHtml(p)}</p>`).join('')}
-        <p>A saúde financeira é evidenciada pela ${liqCorrente >= 1.5 ? 'excelente' : 'adequada'} liquidez (corrente ${liqCorrente.toFixed(2)}) e pelo ${endivGeral <= 50 ? 'baixo endividamento' : 'nível de endividamento'} de ${pct(endivGeral)}. O patrimônio líquido de ${brl(Math.abs(balancoData.patrimonioLiquido))} representa ${pct(plPctAtivo)} do ativo total.</p>
-        <p>Para o próximo exercício, recomenda-se acompanhar de perto os pontos de atenção identificados e implementar as recomendações estratégicas apresentadas neste relatório.</p>
         <div style="margin:24px 0;">
           <div style="font-size:14px;font-weight:700;color:#1E2A4A;margin-bottom:12px;">Avaliação Geral por Dimensão</div>
           <table style="border-radius:8px;overflow:hidden;border:1px solid #E5E7EB;">
