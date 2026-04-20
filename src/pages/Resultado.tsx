@@ -2403,6 +2403,10 @@ Retorne APENAS o JSON abaixo, sem nenhum texto fora dele:
         dreData={dreData}
         balancoData={balancoData}
         empresaNome={selectedEmpresa?.nome || "Empresa"}
+        empresaCnpj={selectedEmpresa?.cnpj}
+        empresaCnae={selectedEmpresa?.cnae}
+        empresaRegimeTributario={selectedEmpresa?.regime_tributario}
+        empresaContexto={selectedEmpresa?.contexto || undefined}
         branding={branding}
       />
 
