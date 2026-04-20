@@ -1867,7 +1867,7 @@ const Resultado = () => {
             <tbody>
               ${bpRow('PASSIVO CIRCULANTE', balancoData.passivoCirculante, balancoData.ativoTotal > 0 ? (balancoData.passivoCirculante / balancoData.ativoTotal) * 100 : 0)}
               ${bpRow('PASSIVO NÃO CIRCULANTE', balancoData.passivoNaoCirculante, balancoData.ativoTotal > 0 ? (balancoData.passivoNaoCirculante / balancoData.ativoTotal) * 100 : 0)}
-              ${bpRow('PATRIMÔNIO LÍQUIDO', Math.abs(balancoData.patrimonioLiquido), balancoData.ativoTotal > 0 ? (Math.abs(balancoData.patrimonioLiquido) / balancoData.ativoTotal) * 100 : 0)}
+              ${bpRow(balancoData.patrimonioLiquido < 0 ? 'PATRIMÔNIO LÍQUIDO (Passivo a Descoberto)' : 'PATRIMÔNIO LÍQUIDO', balancoData.patrimonioLiquido, balancoData.ativoTotal > 0 ? (balancoData.patrimonioLiquido / balancoData.ativoTotal) * 100 : 0)}
               ${bpRow('PASSIVO + PL TOTAL', balancoData.ativoTotal, 100, false, true)}
             </tbody>
           </table>
