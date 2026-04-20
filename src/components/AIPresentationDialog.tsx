@@ -221,6 +221,12 @@ export function AIPresentationDialog({
             dre: dreData,
             balanco: balancoData,
             empresaNome,
+            empresaCnpj,
+            empresaCnae,
+            empresaRegimeTributario,
+            empresaContexto,
+            ebitda,
+            periodo,
           }),
         }
       );
