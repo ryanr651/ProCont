@@ -1858,9 +1858,9 @@ Retorne APENAS o JSON abaixo, sem nenhum texto fora dele:
 
       <div class="page">
         ${secTitle('1', 'SUMÁRIO EXECUTIVO')}
-        <p>${aiResumo}</p>
-        <p>${aiLiquidez.join(' ')}</p>
-        <p>${aiEstrutura.join(' ')}</p>
+        ${aiResumoParas.map(p => `<p>${escapeHtml(p)}</p>`).join('')}
+        ${aiLiquidez.length > 0 ? aiLiquidez.map(p => `<p>${escapeHtml(p)}</p>`).join('') : ''}
+        ${aiEstruturaFinal.map(p => `<p>${escapeHtml(p)}</p>`).join('')}
         <div style="margin:24px 0;">
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px;">
             ${kpiCard('Receita Líquida', fmt(dreData.receitaLiquida), `Margem ${pct(dreData.margemLiquida)}`, true)}
