@@ -1494,7 +1494,7 @@ const Resultado = () => {
       const roe          = balancoData.patrimonioLiquido > 0 ? (dreData.lucroLiquido / balancoData.patrimonioLiquido) * 100 : 0;
       const roa          = balancoData.ativoTotal > 0 ? (dreData.lucroLiquido / balancoData.ativoTotal) * 100 : 0;
       const giroAtivo    = balancoData.ativoTotal > 0 ? dreData.receitaLiquida / balancoData.ativoTotal : 0;
-      const plPctAtivo   = balancoData.ativoTotal > 0 ? (Math.abs(balancoData.patrimonioLiquido) / balancoData.ativoTotal) * 100 : 0;
+      const plPctAtivo   = balancoData.ativoTotal > 0 ? (balancoData.patrimonioLiquido / balancoData.ativoTotal) * 100 : 0;
 
       const brandName  = branding?.nome_empresa || 'ProCont';
       const clientName = selectedEmpresa?.nome || 'Empresa';
@@ -1798,7 +1798,7 @@ const Resultado = () => {
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
             ${kpiCard('Liquidez Corrente', liqCorrente.toFixed(2), liqCorrente >= 2 ? 'Excelente' : liqCorrente >= 1.5 ? 'Adequada' : 'Atenção', true)}
             ${kpiCard('ROE', pct(roe), roe >= 15 ? 'Excelente' : 'Abaixo do ideal')}
-            ${kpiCard('PL / Ativo', pct(plPctAtivo), plPctAtivo >= 50 ? 'Capital próprio dominante' : 'Alavancagem moderada')}
+            ${kpiCard('PL / Ativo', pct(plPctAtivo), plPctAtivo < 0 ? 'Passivo a descoberto' : plPctAtivo >= 50 ? 'Capital próprio dominante' : 'Alavancagem moderada')}
           </div>
         </div>
         ${rodape(2)}
@@ -1964,9 +1964,21 @@ const Resultado = () => {
               ${avalRow('Atividade',
                 giroAtivo >= 1.5 ? '★★★★★ EFICIENTE' : giroAtivo >= 1 ? '★★★★☆ BOA' : '★★★☆☆ REGULAR',
                 `Giro do ativo ${giroAtivo.toFixed(2)}x`)}
-              ${avalRow('Saúde Geral',
-                dreData.lucroLiquido > 0 && liqCorrente >= 1.5 && endivGeral <= 60 ? '★★★★★ SÓLIDA' : '★★★★☆ ADEQUADA',
-                dreData.lucroLiquido > 0 ? 'Empresa posicionada para crescimento' : 'Necessita atenção ao resultado')}
+              ${(() => {
+                const criticos = [
+                  liqCorrente < 1.0,
+                  balancoData.patrimonioLiquido < 0,
+                  dreData.lucroLiquido < 0,
+                  endivGeral > 150,
+                ].filter(Boolean).length;
+                let estrelas = '★★★★☆ BOA';
+                let resumo = 'Empresa posicionada para crescimento';
+                if (criticos >= 3) { estrelas = '★☆☆☆☆ CRÍTICA'; resumo = 'PL negativo + prejuízo + liquidez crítica — reestruturação necessária'; }
+                else if (criticos === 2) { estrelas = '★★☆☆☆ PREOCUPANTE'; resumo = 'Múltiplos indicadores fora dos parâmetros saudáveis'; }
+                else if (criticos === 1) { estrelas = '★★★☆☆ ATENÇÃO'; resumo = 'Um indicador-chave fora do ideal'; }
+                else if (dreData.lucroLiquido > 0 && liqCorrente >= 1.5 && endivGeral <= 60) { estrelas = '★★★★★ SÓLIDA'; resumo = 'Empresa posicionada para crescimento'; }
+                return avalRow('Saúde Geral', estrelas, resumo);
+              })()}
             </tbody>
           </table>
         </div>
