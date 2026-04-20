@@ -1994,36 +1994,25 @@ Retorne APENAS o JSON abaixo, sem nenhum texto fora dele:
       <div class="page">
         ${secTitle('5', 'PONTOS FORTES E PONTOS DE ATENÇÃO')}
         <div style="font-size:15px;font-weight:700;color:#16A34A;margin-bottom:12px;">✅ Pontos Fortes</div>
-        ${aiFortes.slice(0, 4).map((p, i) => {
-          const titulo = p.split('.')[0] || `Ponto Forte ${i + 1}`;
-          const texto = p.replace(titulo + '.', '').trim() || p;
-          return insightCard('●', titulo, texto.length > 10 ? texto : p, true);
-        }).join('')}
+        ${aiFortes.map((p) => insightCard('●', escapeHtml(p.titulo), escapeHtml(p.descricao || p.titulo), true)).join('')}
         <div style="font-size:15px;font-weight:700;color:#D97706;margin:20px 0 12px;">⚠️ Pontos de Atenção</div>
-        ${aiAtencao.slice(0, 3).map((p, i) => {
-          const titulo = p.split('.')[0] || `Ponto de Atenção ${i + 1}`;
-          const texto = p.replace(titulo + '.', '').trim() || p;
-          return insightCard('▲', titulo, texto.length > 10 ? texto : p, false);
-        }).join('')}
+        ${aiAtencao.map((p) => insightCard('▲', escapeHtml(p.titulo), escapeHtml(p.descricao || p.titulo), false)).join('')}
         ${rodape(6)}
       </div>
 
       <div class="page">
         ${secTitle('6', 'RECOMENDAÇÕES ESTRATÉGICAS')}
         <p style="margin-bottom:20px;">Com base na análise dos demonstrativos financeiros, apresentamos as principais recomendações para otimização do desempenho e mitigação de riscos no próximo exercício:</p>
-        ${aiRecs.slice(0, 5).map((rec, i) => {
-          const num = String(i + 1).padStart(2, '0');
-          const titulo = rec.split(':')[0] || rec.split('.')[0] || `Recomendação ${i + 1}`;
-          const texto = rec.includes(':') ? rec.split(':').slice(1).join(':').trim() : rec;
-          const prior = getPrioridade(rec) !== 'BAIXA' ? getPrioridade(rec) : getPrioridadeIdx(i);
-          return recCard(num, titulo, texto || rec, prior);
+        ${aiRecs.map((rec) => {
+          const num = String(rec.numero).padStart(2, '0');
+          return recCard(num, escapeHtml(rec.titulo), escapeHtml(rec.descricao || rec.titulo), rec.prioridade || 'BAIXA');
         }).join('')}
         ${rodape(7)}
       </div>
 
       <div class="page">
         ${secTitle('7', 'CONCLUSÃO')}
-        <p>${aiConclusao}</p>
+        ${aiConclusaoParas.map(p => `<p>${escapeHtml(p)}</p>`).join('')}
         <p>A saúde financeira é evidenciada pela ${liqCorrente >= 1.5 ? 'excelente' : 'adequada'} liquidez (corrente ${liqCorrente.toFixed(2)}) e pelo ${endivGeral <= 50 ? 'baixo endividamento' : 'nível de endividamento'} de ${pct(endivGeral)}. O patrimônio líquido de ${brl(Math.abs(balancoData.patrimonioLiquido))} representa ${pct(plPctAtivo)} do ativo total.</p>
         <p>Para o próximo exercício, recomenda-se acompanhar de perto os pontos de atenção identificados e implementar as recomendações estratégicas apresentadas neste relatório.</p>
         <div style="margin:24px 0;">
