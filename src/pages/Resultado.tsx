@@ -1395,98 +1395,25 @@ const Resultado = () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) return null;
 
-      const liquidezCorrente = balancoData.passivoCirculante > 0
-        ? balancoData.ativoCirculante / balancoData.passivoCirculante : 0;
-      const liquidezSeca = balancoData.passivoCirculante > 0
-        ? (balancoData.ativoCirculante * 0.7) / balancoData.passivoCirculante : 0;
-      const liquidezGeral = (balancoData.passivoCirculante + balancoData.passivoNaoCirculante) > 0
-        ? (balancoData.ativoCirculante + balancoData.ativoNaoCirculante) / (balancoData.passivoCirculante + balancoData.passivoNaoCirculante)
-        : 0;
-      const roe = balancoData.patrimonioLiquido > 0
-        ? (dreData.lucroLiquido / balancoData.patrimonioLiquido) * 100 : 0;
-      const roa = balancoData.ativoTotal > 0
-        ? (dreData.lucroLiquido / balancoData.ativoTotal) * 100 : 0;
-      const endividamento = balancoData.ativoTotal > 0
-        ? ((balancoData.passivoCirculante + balancoData.passivoNaoCirculante) / balancoData.ativoTotal) * 100 : 0;
-      const concentracaoCP = (balancoData.passivoCirculante + balancoData.passivoNaoCirculante) > 0
-        ? (balancoData.passivoCirculante / (balancoData.passivoCirculante + balancoData.passivoNaoCirculante)) * 100 : 0;
-      const plSobreAtivo = balancoData.ativoTotal > 0
-        ? (balancoData.patrimonioLiquido / balancoData.ativoTotal) * 100 : 0;
-      const giroAtivoLocal = balancoData.ativoTotal > 0
-        ? dreData.receitaLiquida / balancoData.ativoTotal : 0;
-
       // EBITDA estimate (lucro operacional + depreciações/amortizações)
       const depreciacaoLocal = dreClassifiedEntries
         .filter(e => /DEPRECIA|AMORTIZA/i.test(e.descricao.normalize('NFD').replace(/[\u0300-\u036f]/g, '')))
         .reduce((s, e) => s + Math.abs(e.valor), 0);
       const ebitdaLocal = dreData.lucroOperacional + depreciacaoLocal;
-      const margemEbitdaLocal = dreData.receitaLiquida > 0 ? (ebitdaLocal / dreData.receitaLiquida) * 100 : 0;
 
-      const empresaEmDificuldade = dreData.lucroLiquido < 0 || balancoData.patrimonioLiquido < 0 || liquidezCorrente < 1;
-
-      const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-      const pct = (v: number) => `${v.toFixed(2)}%`;
-
-      const prompt = `Você é um contador e consultor financeiro sênior brasileiro, especialista em análise de demonstrativos contábeis. Sua tarefa é gerar conteúdo para um relatório executivo profissional.
-
-REGRAS CRÍTICAS — leia com atenção:
-1. Nunca contradiga os dados: se a liquidez corrente for < 1,0, ela é RUIM, não "adequada". Se o lucro for negativo, é PREJUÍZO.
-2. Se a empresa está em situação negativa (prejuízo, PL negativo, liquidez < 1), adapte os Pontos Fortes: liste aspectos relativamente positivos (ex: geração operacional de caixa, giro do ativo, EBITDA positivo) ou capacidades a desenvolver. NUNCA retorne pontosFortes como array vazio [].
-3. Cada recomendação deve ter: TÍTULO CURTO + descrição explicativa diferente do título. Nunca repita o título como descrição.
-4. Use os números exatos fornecidos. Arredonde percentuais para 2 casas decimais.
-5. Contextualize pelo setor (CNAE) sempre que disponível.
-${empresaEmDificuldade ? '6. ATENÇÃO: Esta empresa está em situação financeira crítica. Seja honesto mas construtivo.' : ''}
-
-Empresa: ${selectedEmpresa?.nome || 'Empresa'} | CNPJ: ${selectedEmpresa?.cnpj || 'não informado'}${selectedEmpresa?.cnae ? ` | CNAE: ${selectedEmpresa.cnae}` : ''}${selectedEmpresa?.regime_tributario ? ` | Regime: ${selectedEmpresa.regime_tributario}` : ''}
-${selectedEmpresa?.contexto ? `Contexto do setor: ${selectedEmpresa.contexto}` : ''}
-
-DRE: Receita Bruta ${brl(dreData.receitaBruta)} | Deduções ${brl(dreData.receitaBruta - dreData.receitaLiquida)} | Receita Líquida ${brl(dreData.receitaLiquida)} | CMV ${brl(dreData.cmv)} | Lucro Bruto ${brl(dreData.lucroBruto)} (Margem ${pct(dreData.margemBruta)}) | Despesas Operacionais ${brl(dreData.despesasOperacionais)} | Lucro Operacional (EBIT) ${brl(dreData.lucroOperacional)} (Margem ${pct(dreData.margemOperacional)}) | Resultado Financeiro ${brl(dreData.resultadoFinanceiro)} | EBITDA ${brl(ebitdaLocal)} (Margem EBITDA ${pct(margemEbitdaLocal)}) | ${dreData.lucroLiquido < 0 ? 'PREJUÍZO' : 'Lucro'} Líquido ${brl(dreData.lucroLiquido)} (Margem ${pct(dreData.margemLiquida)})
-
-BALANÇO: Ativo Circulante ${brl(balancoData.ativoCirculante)} | Ativo Não Circulante ${brl(balancoData.ativoNaoCirculante)} | Ativo Total ${brl(balancoData.ativoTotal)} | Passivo Circulante ${brl(balancoData.passivoCirculante)} | Passivo Não Circulante ${brl(balancoData.passivoNaoCirculante)} | ${balancoData.patrimonioLiquido < 0 ? 'PATRIMÔNIO LÍQUIDO NEGATIVO (PASSIVO A DESCOBERTO)' : 'Patrimônio Líquido'} ${brl(balancoData.patrimonioLiquido)}
-
-INDICADORES: Liquidez Corrente ${liquidezCorrente.toFixed(2)} (ref >1,5) → ${liquidezCorrente >= 1.5 ? 'ADEQUADA' : liquidezCorrente >= 1.0 ? 'ATENÇÃO' : 'CRÍTICA'} | Liquidez Seca ${liquidezSeca.toFixed(2)} | Liquidez Geral ${liquidezGeral.toFixed(2)} | Endividamento Geral ${pct(endividamento)} (ref <50%) | Concentração CP ${pct(concentracaoCP)} | PL/Ativo ${pct(plSobreAtivo)} | ROA ${pct(roa)} | ROE ${roe === 0 && balancoData.patrimonioLiquido <= 0 ? 'N/A (PL negativo)' : pct(roe)} | Giro do Ativo ${giroAtivoLocal.toFixed(2)}x
-
-Retorne APENAS o JSON abaixo, sem nenhum texto fora dele:
-{
-  "resumo": {
-    "paragrafo1": "Parágrafo contextualizado com nome da empresa, setor e resultado geral (3-4 frases)",
-    "paragrafo2": "Análise da estrutura patrimonial e capital (2-3 frases)",
-    "paragrafo3": "Principal ponto de atenção ou destaque (1-2 frases)"
-  },
-  "analiseRentabilidade": {
-    "paragrafo1": "Análise das margens com interpretação setorial (3 frases)",
-    "paragrafo2": "Análise das despesas operacionais detalhada (2-3 frases)",
-    "paragrafo3": "Resultado financeiro e impacto no resultado (2 frases)"
-  },
-  "analisePatrimonial": {
-    "paragrafo1": "Análise do ativo circulante e capital de giro (3 frases)",
-    "paragrafo2": "Análise da estrutura de financiamento: PL vs passivo (2-3 frases)"
-  },
-  "pontosFortes": [
-    { "titulo": "Título curto (3-5 palavras)", "descricao": "Descrição analítica de 2-3 frases com valores numéricos específicos." },
-    { "titulo": "Título curto (3-5 palavras)", "descricao": "Descrição analítica de 2-3 frases com valores numéricos específicos." },
-    { "titulo": "Título curto (3-5 palavras)", "descricao": "Descrição analítica de 2-3 frases com valores numéricos específicos." }
-  ],
-  "pontosAtencao": [
-    { "titulo": "Título curto (3-5 palavras)", "descricao": "Causa, impacto e magnitude do problema com valores numéricos. 2-3 frases." },
-    { "titulo": "Título curto (3-5 palavras)", "descricao": "Causa, impacto e magnitude do problema com valores numéricos. 2-3 frases." },
-    { "titulo": "Título curto (3-5 palavras)", "descricao": "Causa, impacto e magnitude do problema com valores numéricos. 2-3 frases." }
-  ],
-  "recomendacoes": [
-    { "numero": 1, "titulo": "Verbo + Ação Específica", "prioridade": "ALTA PRIORIDADE", "descricao": "Ação concreta, valores estimados de impacto e prazo sugerido. 3-4 frases." },
-    { "numero": 2, "titulo": "Verbo + Ação Específica", "prioridade": "MÉDIA PRIORIDADE", "descricao": "Ação concreta, valores estimados de impacto e prazo sugerido. 3-4 frases." },
-    { "numero": 3, "titulo": "Verbo + Ação Específica", "prioridade": "MÉDIA PRIORIDADE", "descricao": "Ação concreta, valores estimados de impacto e prazo sugerido. 3-4 frases." },
-    { "numero": 4, "titulo": "Verbo + Ação Específica", "prioridade": "BAIXA PRIORIDADE", "descricao": "Ação concreta, valores estimados de impacto e prazo sugerido. 3-4 frases." },
-    { "numero": 5, "titulo": "Verbo + Ação Específica", "prioridade": "BAIXA PRIORIDADE", "descricao": "Ação concreta, valores estimados de impacto e prazo sugerido. 3-4 frases." }
-  ],
-  "conclusao": {
-    "paragrafo1": "Síntese coerente com os dados reais, mencionando os 3 principais indicadores. 3-4 frases.",
-    "paragrafo2": "Pontos de atenção gerenciáveis e prioridades para o próximo exercício. 2-3 frases."
-  }
-}`;
+      // Edge function expects passivoTotal alongside the rest
+      const balancoPayload = {
+        ativoCirculante: balancoData.ativoCirculante,
+        ativoNaoCirculante: balancoData.ativoNaoCirculante,
+        ativoTotal: balancoData.ativoTotal,
+        passivoCirculante: balancoData.passivoCirculante,
+        passivoNaoCirculante: balancoData.passivoNaoCirculante,
+        passivoTotal: balancoData.passivoCirculante + balancoData.passivoNaoCirculante,
+        patrimonioLiquido: balancoData.patrimonioLiquido,
+      };
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-financials`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-presentation`,
         {
           method: 'POST',
           headers: {
@@ -1494,35 +1421,33 @@ Retorne APENAS o JSON abaixo, sem nenhum texto fora dele:
             'Authorization': `Bearer ${session.access_token}`,
             'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
           },
-          body: JSON.stringify({ dre: dreData, balanco: balancoData, customPrompt: prompt }),
+          body: JSON.stringify({
+            dre: dreData,
+            balanco: balancoPayload,
+            empresaNome: selectedEmpresa?.nome,
+            empresaCnpj: selectedEmpresa?.cnpj,
+            empresaCnae: selectedEmpresa?.cnae,
+            empresaRegimeTributario: selectedEmpresa?.regime_tributario,
+            empresaContexto: selectedEmpresa?.contexto,
+            ebitda: ebitdaLocal,
+            periodo: new Date().getFullYear().toString(),
+            nonStreaming: true,
+          }),
         }
       );
 
-      if (!response.ok) return null;
-
-      const reader = response.body!.getReader();
-      const decoder = new TextDecoder();
-      let fullText = '';
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n');
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const jsonStr = line.slice(6).trim();
-          if (jsonStr === '[DONE]') break;
-          try {
-            const parsed = JSON.parse(jsonStr);
-            const content = parsed.choices?.[0]?.delta?.content;
-            if (content) fullText += content;
-          } catch { /* continue */ }
-        }
+      if (!response.ok) {
+        const errText = await response.text().catch(() => '');
+        console.error('[fetchPdfAiAnalysis] HTTP', response.status, errText.substring(0, 500));
+        return null;
       }
 
-      const jsonMatch = fullText.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) return null;
-      return JSON.parse(jsonMatch[0]);
+      const parsed = await response.json();
+      if (parsed?.error) {
+        console.error('[fetchPdfAiAnalysis] AI error:', parsed.error);
+        return null;
+      }
+      return parsed;
     } catch (e) {
       console.error('fetchPdfAiAnalysis error:', e);
       return null;
