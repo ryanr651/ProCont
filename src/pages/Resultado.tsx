@@ -220,14 +220,17 @@ const Resultado = () => {
   // Empresa context
   const [selectedEmpresa, setSelectedEmpresa] = useState<EmpresaData | null>(null);
   const [pdfAiData, setPdfAiData] = useState<{
-    resumo: string[];
-    rentabilidade: string[];
-    liquidez: string[];
-    estrutura: string[];
-    pontosFortes: string[];
-    pontosAtencao: string[];
-    recomendacoes: string[];
-    conclusao: string[];
+    resumo?: any;
+    analiseRentabilidade?: any;
+    analisePatrimonial?: any;
+    // legacy fallback keys
+    rentabilidade?: any;
+    liquidez?: any;
+    estrutura?: any;
+    pontosFortes?: any;
+    pontosAtencao?: any;
+    recomendacoes?: any;
+    conclusao?: any;
   } | null>(null);
   const [isFetchingPdfAi, setIsFetchingPdfAi] = useState(false);
 
