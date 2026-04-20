@@ -219,6 +219,17 @@ const Resultado = () => {
 
   // Empresa context
   const [selectedEmpresa, setSelectedEmpresa] = useState<EmpresaData | null>(null);
+  const [pdfAiData, setPdfAiData] = useState<{
+    resumo: string[];
+    rentabilidade: string[];
+    liquidez: string[];
+    estrutura: string[];
+    pontosFortes: string[];
+    pontosAtencao: string[];
+    recomendacoes: string[];
+    conclusao: string[];
+  } | null>(null);
+  const [isFetchingPdfAi, setIsFetchingPdfAi] = useState(false);
 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
