@@ -1542,16 +1542,19 @@ const Resultado = () => {
 
       const bpRow = (label: string, valor: number, pctAtivo: number, negativo = false, destaque = false, subconta = false) => {
         const cor = destaque ? '#1E2A4A' : '#ffffff';
-        const txtCor = destaque ? '#ffffff' : '#1E293B';
-        const fontW = destaque ? '700' : '400';
+        const isNeg = valor < 0;
+        const txtCor = destaque ? '#ffffff' : (isNeg ? '#DC2626' : '#1E293B');
+        const fontW = destaque ? '700' : (isNeg ? '700' : '400');
         const indent = subconta ? 'padding-left:28px;' : '';
-        const valStr = brl(Math.abs(valor));
-        const pctStr = pctAtivo > 0 ? `${pctAtivo.toFixed(2)}%` : '';
+        // Preserve negative sign — critical for Patrimônio Líquido negativo
+        const valStr = brl(valor);
+        const pctStr = pctAtivo !== 0 ? `${pctAtivo.toFixed(2)}%` : '';
+        const pctCor = destaque ? '#ffffff' : (pctAtivo < 0 ? '#DC2626' : '#6B7280');
         return `
           <tr style="background:${cor};">
             <td style="padding:6px 12px;${indent}font-size:12.5px;color:${txtCor};font-weight:${fontW};border-bottom:1px solid #E5E7EB;">${label}</td>
             <td style="padding:6px 12px;font-size:12.5px;color:${txtCor};font-weight:${fontW};text-align:right;border-bottom:1px solid #E5E7EB;">${valStr}</td>
-            <td style="padding:6px 12px;font-size:12.5px;color:#6B7280;text-align:right;border-bottom:1px solid #E5E7EB;">${pctStr}</td>
+            <td style="padding:6px 12px;font-size:12.5px;color:${pctCor};text-align:right;border-bottom:1px solid #E5E7EB;">${pctStr}</td>
           </tr>`;
       };
 
