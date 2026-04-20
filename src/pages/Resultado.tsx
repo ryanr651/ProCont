@@ -219,6 +219,17 @@ const Resultado = () => {
 
   // Empresa context
   const [selectedEmpresa, setSelectedEmpresa] = useState<EmpresaData | null>(null);
+  const [pdfAiData, setPdfAiData] = useState<{
+    resumo: string[];
+    rentabilidade: string[];
+    liquidez: string[];
+    estrutura: string[];
+    pontosFortes: string[];
+    pontosAtencao: string[];
+    recomendacoes: string[];
+    conclusao: string[];
+  } | null>(null);
+  const [isFetchingPdfAi, setIsFetchingPdfAi] = useState(false);
 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -1374,333 +1385,561 @@ const Resultado = () => {
     return metrics;
   };
 
-  const handleExportPDF = async () => {
-    if (!dreData || !balancoData) {
-      console.error("No data available for PDF export");
-      return;
+  const fetchPdfAiAnalysis = async (): Promise<typeof pdfAiData> => {
+    if (!dreData || !balancoData) return null;
+    try {
+      setIsFetchingPdfAi(true);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return null;
+
+      const liquidezCorrente = balancoData.passivoCirculante > 0
+        ? balancoData.ativoCirculante / balancoData.passivoCirculante : 0;
+      const liquidezSeca = balancoData.passivoCirculante > 0
+        ? (balancoData.ativoCirculante * 0.7) / balancoData.passivoCirculante : 0;
+      const roe = balancoData.patrimonioLiquido > 0
+        ? (dreData.lucroLiquido / balancoData.patrimonioLiquido) * 100 : 0;
+      const roa = balancoData.ativoTotal > 0
+        ? (dreData.lucroLiquido / balancoData.ativoTotal) * 100 : 0;
+      const endividamento = balancoData.ativoTotal > 0
+        ? ((balancoData.passivoCirculante + balancoData.passivoNaoCirculante) / balancoData.ativoTotal) * 100 : 0;
+
+      const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      const pct = (v: number) => `${v.toFixed(2)}%`;
+
+      const prompt = `Você é um contador brasileiro sênior. Analise estes dados e retorne APENAS um JSON válido, sem markdown:
+
+DRE: Receita Bruta ${brl(dreData.receitaBruta)} | Receita Líquida ${brl(dreData.receitaLiquida)} | CMV ${brl(dreData.cmv)} | Lucro Bruto ${brl(dreData.lucroBruto)} | Desp. Operacionais ${brl(dreData.despesasOperacionais)} | Lucro Operacional ${brl(dreData.lucroOperacional)} | Resultado Financeiro ${brl(dreData.resultadoFinanceiro)} | Lucro Líquido ${brl(dreData.lucroLiquido)} | Margem Bruta ${pct(dreData.margemBruta)} | Margem Operacional ${pct(dreData.margemOperacional)} | Margem Líquida ${pct(dreData.margemLiquida)}
+
+BALANÇO: Ativo Total ${brl(balancoData.ativoTotal)} | Ativo Circulante ${brl(balancoData.ativoCirculante)} | Ativo Não Circulante ${brl(balancoData.ativoNaoCirculante)} | Passivo Circulante ${brl(balancoData.passivoCirculante)} | Passivo Não Circulante ${brl(balancoData.passivoNaoCirculante)} | Patrimônio Líquido ${brl(balancoData.patrimonioLiquido)}
+
+INDICADORES: Liquidez Corrente ${liquidezCorrente.toFixed(2)} | Liquidez Seca ${liquidezSeca.toFixed(2)} | Endividamento Geral ${pct(endividamento)} | ROE ${pct(roe)} | ROA ${pct(roa)}${selectedEmpresa ? ` | Empresa: ${selectedEmpresa.nome} | CNAE: ${selectedEmpresa.cnae} | Regime: ${selectedEmpresa.regime_tributario}` : ''}
+
+Retorne EXATAMENTE este JSON (sem nenhum texto fora do JSON):
+{
+  "resumo": ["frase 1 sobre saúde geral com números", "frase 2 sobre estrutura patrimonial com números", "frase 3 sobre retorno e ponto de atenção principal"],
+  "rentabilidade": ["análise margem bruta com contexto setorial", "análise despesas operacionais", "análise resultado financeiro"],
+  "liquidez": ["análise liquidez corrente e seca", "análise estrutura do passivo circulante", "análise cobertura de dívida"],
+  "estrutura": ["análise composição do ativo", "análise financiamento próprio vs terceiros"],
+  "pontosFortes": ["ponto forte 1 com número específico", "ponto forte 2 com número específico", "ponto forte 3 com número específico", "ponto forte 4 com número específico"],
+  "pontosAtencao": ["atenção 1 com número e recomendação", "atenção 2 com número e recomendação", "atenção 3 com número e recomendação"],
+  "recomendacoes": ["recomendação 1 acionável com prioridade ALTA e valores estimados", "recomendação 2 com prioridade MÉDIA e valores", "recomendação 3 com prioridade MÉDIA", "recomendação 4 com prioridade BAIXA", "recomendação 5 com prioridade BAIXA"],
+  "conclusao": ["parágrafo de conclusão integrando todos os pontos com visão para próximo exercício"]
+}`;
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-financials`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+            'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+          body: JSON.stringify({ dre: dreData, balanco: balancoData, customPrompt: prompt }),
+        }
+      );
+
+      if (!response.ok) return null;
+
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let fullText = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === '[DONE]') break;
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) fullText += content;
+          } catch { /* continue */ }
+        }
+      }
+
+      const jsonMatch = fullText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) return null;
+      return JSON.parse(jsonMatch[0]);
+    } catch (e) {
+      console.error('fetchPdfAiAnalysis error:', e);
+      return null;
+    } finally {
+      setIsFetchingPdfAi(false);
     }
+  };
 
+  const handleExportPDF = async () => {
+    if (!dreData || !balancoData) return;
     setIsExporting(true);
-    console.log("Starting PDF export...");
-
-    const currentDate = new Date().toLocaleDateString("pt-BR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-
-    // Create PDF wrapper with custom styling
-    const pdfWrapper = document.createElement("div");
-    pdfWrapper.innerHTML = `
-      <style>
-        * {
-          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-          box-sizing: border-box;
-        }
-        .pdf-container {
-          padding: 40px;
-          background: #ffffff;
-          color: #1a1a2e;
-        }
-        .pdf-header {
-          text-align: center;
-          margin-bottom: 40px;
-          padding-bottom: 30px;
-          border-bottom: 3px solid #3b82f6;
-        }
-        .pdf-logo {
-          font-size: 32px;
-          font-weight: bold;
-          color: #3b82f6;
-          margin-bottom: 8px;
-        }
-        .pdf-title {
-          font-size: 24px;
-          color: #374151;
-          margin-bottom: 8px;
-        }
-        .pdf-date {
-          font-size: 14px;
-          color: #6b7280;
-        }
-        .pdf-section {
-          margin-bottom: 35px;
-          page-break-inside: avoid;
-        }
-        .pdf-section-title {
-          font-size: 18px;
-          font-weight: bold;
-          color: #1e40af;
-          margin-bottom: 20px;
-          padding-bottom: 8px;
-          border-bottom: 2px solid #e5e7eb;
-        }
-        .pdf-metrics-grid {
-          display: grid;
-          grid-template-columns: repeat(2, 1fr);
-          gap: 15px;
-          margin-bottom: 20px;
-        }
-        .pdf-metric-card {
-          background: #f8fafc;
-          border: 1px solid #e2e8f0;
-          border-radius: 8px;
-          padding: 16px;
-        }
-        .pdf-metric-label {
-          font-size: 12px;
-          color: #64748b;
-          margin-bottom: 4px;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-        .pdf-metric-value {
-          font-size: 18px;
-          font-weight: bold;
-          color: #1e293b;
-        }
-        .pdf-metric-highlight {
-          background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-          color: white;
-        }
-        .pdf-metric-highlight .pdf-metric-label {
-          color: rgba(255,255,255,0.8);
-        }
-        .pdf-metric-highlight .pdf-metric-value {
-          color: white;
-        }
-        .pdf-margins-table {
-          width: 100%;
-          border-collapse: collapse;
-          margin-top: 15px;
-        }
-        .pdf-margins-table th,
-        .pdf-margins-table td {
-          padding: 12px;
-          text-align: left;
-          border-bottom: 1px solid #e5e7eb;
-        }
-        .pdf-margins-table th {
-          background: #f1f5f9;
-          font-weight: 600;
-          color: #475569;
-          font-size: 13px;
-        }
-        .pdf-margins-table td {
-          font-size: 14px;
-          color: #374151;
-        }
-        .pdf-progress-bar {
-          background: #e5e7eb;
-          border-radius: 4px;
-          height: 8px;
-          overflow: hidden;
-        }
-        .pdf-progress-fill {
-          height: 100%;
-          border-radius: 4px;
-        }
-        .pdf-progress-blue { background: #3b82f6; }
-        .pdf-progress-green { background: #10b981; }
-        .pdf-progress-purple { background: #8b5cf6; }
-        .pdf-insight {
-          background: #f0fdf4;
-          border-left: 4px solid #22c55e;
-          padding: 12px 16px;
-          margin-bottom: 10px;
-          font-size: 14px;
-          color: #166534;
-          border-radius: 0 6px 6px 0;
-        }
-        .pdf-footer {
-          margin-top: 50px;
-          padding-top: 20px;
-          border-top: 2px solid #e5e7eb;
-          text-align: center;
-          font-size: 12px;
-          color: #9ca3af;
-        }
-        .pdf-footer-brand {
-          font-weight: 600;
-          color: #3b82f6;
-        }
-      </style>
-      <div class="pdf-container">
-        <div class="pdf-header">
-          ${branding?.logo_url ? `<img src="${branding.logo_url}" alt="Logo" style="max-height: 60px; max-width: 200px; margin-bottom: 10px;" crossorigin="anonymous" />` : `<div class="pdf-logo">📊 ProCont</div>`}
-          <div class="pdf-logo" style="font-size: ${branding?.nome_empresa ? "24px" : "32px"};">${branding?.nome_empresa || "ProCont"}</div>
-          ${branding?.cnpj_empresa ? `<div style="font-size: 13px; color: #6b7280; margin-bottom: 4px;">CNPJ: ${branding.cnpj_empresa}</div>` : ""}
-          ${branding?.telefone_fixo ? `<div style="font-size: 13px; color: #6b7280; margin-bottom: 8px;">Tel: ${branding.telefone_fixo}</div>` : ""}
-          <div class="pdf-title">Relatório de Resultados Financeiros</div>
-          ${selectedEmpresa ? `<div style="font-size: 14px; color: #374151; margin-bottom: 4px;"><strong>${selectedEmpresa.nome}</strong> - CNPJ: ${selectedEmpresa.cnpj}</div>` : ""}
-          <div class="pdf-date">Gerado em: ${currentDate}</div>
-        </div>
-
-        <div class="pdf-section">
-          <div class="pdf-section-title">📈 Demonstração do Resultado (DRE)</div>
-          <div class="pdf-metrics-grid">
-            <div class="pdf-metric-card pdf-metric-highlight">
-              <div class="pdf-metric-label">Receita Bruta</div>
-              <div class="pdf-metric-value">${dreData?.receitaBruta.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div>
-            </div>
-            <div class="pdf-metric-card">
-              <div class="pdf-metric-label">Receita Líquida</div>
-              <div class="pdf-metric-value">${dreData?.receitaLiquida.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div>
-            </div>
-            <div class="pdf-metric-card">
-              <div class="pdf-metric-label">CMV / Custos</div>
-              <div class="pdf-metric-value">${dreData?.cmv.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div>
-            </div>
-            <div class="pdf-metric-card">
-              <div class="pdf-metric-label">Lucro Bruto</div>
-              <div class="pdf-metric-value">${dreData?.lucroBruto.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div>
-            </div>
-            <div class="pdf-metric-card">
-              <div class="pdf-metric-label">Despesas Operacionais</div>
-              <div class="pdf-metric-value">${dreData?.despesasOperacionais.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div>
-            </div>
-            <div class="pdf-metric-card">
-              <div class="pdf-metric-label">Lucro Operacional</div>
-              <div class="pdf-metric-value">${dreData?.lucroOperacional.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div>
-            </div>
-            <div class="pdf-metric-card">
-              <div class="pdf-metric-label">Resultado Financeiro</div>
-              <div class="pdf-metric-value">${dreData?.resultadoFinanceiro.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div>
-            </div>
-            <div class="pdf-metric-card pdf-metric-highlight">
-              <div class="pdf-metric-label">Lucro Líquido</div>
-              <div class="pdf-metric-value">${dreData?.lucroLiquido.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div>
-            </div>
-          </div>
-          
-          <table class="pdf-margins-table">
-            <thead>
-              <tr>
-                <th>Indicador</th>
-                <th>Valor</th>
-                <th>Análise</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Margem Bruta</td>
-                <td><strong>${dreData?.margemBruta.toFixed(2)}%</strong></td>
-                <td>
-                  <div class="pdf-progress-bar">
-                    <div class="pdf-progress-fill pdf-progress-purple" style="width: ${Math.min(dreData?.margemBruta || 0, 100)}%"></div>
-                  </div>
-                </td>
-              </tr>
-              <tr>
-                <td>Margem Operacional</td>
-                <td><strong>${dreData?.margemOperacional.toFixed(2)}%</strong></td>
-                <td>
-                  <div class="pdf-progress-bar">
-                    <div class="pdf-progress-fill pdf-progress-blue" style="width: ${Math.min(dreData?.margemOperacional || 0, 100)}%"></div>
-                  </div>
-                </td>
-              </tr>
-              <tr>
-                <td>Margem Líquida</td>
-                <td><strong>${dreData?.margemLiquida.toFixed(2)}%</strong></td>
-                <td>
-                  <div class="pdf-progress-bar">
-                    <div class="pdf-progress-fill pdf-progress-green" style="width: ${Math.min(dreData?.margemLiquida || 0, 100)}%"></div>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="pdf-section">
-          <div class="pdf-section-title">⚖️ Balanço Patrimonial</div>
-          <div class="pdf-metrics-grid">
-            <div class="pdf-metric-card pdf-metric-highlight">
-              <div class="pdf-metric-label">Ativo Total</div>
-              <div class="pdf-metric-value">${balancoData?.ativoTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div>
-            </div>
-            <div class="pdf-metric-card">
-              <div class="pdf-metric-label">Passivo Total</div>
-              <div class="pdf-metric-value">${balancoData?.passivoTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div>
-            </div>
-            <div class="pdf-metric-card">
-              <div class="pdf-metric-label">Patrimônio Líquido</div>
-              <div class="pdf-metric-value">${balancoData?.patrimonioLiquido.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div>
-            </div>
-          </div>
-
-          <table class="pdf-margins-table">
-            <thead>
-              <tr>
-                <th>Componente</th>
-                <th>Valor</th>
-                <th>% do Ativo</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Ativo Circulante</td>
-                <td>${balancoData?.ativoCirculante.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
-                <td>${balancoData?.ativoTotal ? ((balancoData.ativoCirculante / balancoData.ativoTotal) * 100).toFixed(1) : 0}%</td>
-              </tr>
-              <tr>
-                <td>Ativo Não Circulante</td>
-                <td>${balancoData?.ativoNaoCirculante.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
-                <td>${balancoData?.ativoTotal ? ((balancoData.ativoNaoCirculante / balancoData.ativoTotal) * 100).toFixed(1) : 0}%</td>
-              </tr>
-              <tr>
-                <td>Passivo Circulante</td>
-                <td>${balancoData?.passivoCirculante.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
-                <td>${balancoData?.ativoTotal ? ((balancoData.passivoCirculante / balancoData.ativoTotal) * 100).toFixed(1) : 0}%</td>
-              </tr>
-              <tr>
-                <td>Passivo Não Circulante</td>
-                <td>${balancoData?.passivoNaoCirculante.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
-                <td>${balancoData?.ativoTotal ? ((balancoData.passivoNaoCirculante / balancoData.ativoTotal) * 100).toFixed(1) : 0}%</td>
-              </tr>
-              <tr>
-                <td><strong>Patrimônio Líquido</strong></td>
-                <td><strong>${balancoData?.patrimonioLiquido.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong></td>
-                <td><strong>${balancoData?.ativoTotal ? ((balancoData.patrimonioLiquido / balancoData.ativoTotal) * 100).toFixed(1) : 0}%</strong></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="pdf-section">
-          <div class="pdf-section-title">💡 Insights e Recomendações</div>
-          ${insights.map((insight) => `<div class="pdf-insight">${insight}</div>`).join("")}
-        </div>
-
-        <div class="pdf-footer">
-          <div class="pdf-footer-brand">Gerado por ${branding?.nome_empresa || "ProCont"}</div>
-          <div>Sistema de Análise Financeira Contábil</div>
-          ${branding?.telefone_fixo ? `<div style="margin-top: 4px;">Contato: ${branding.telefone_fixo}</div>` : ""}
-        </div>
-      </div>
-    `;
-
-    const opt = {
-      margin: 10,
-      filename: `relatorio-procont-${new Date().toISOString().split("T")[0]}.pdf`,
-      image: { type: "jpeg" as const, quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, logging: false },
-      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" as const },
-      pagebreak: { mode: ["avoid-all", "css", "legacy"] },
-    };
 
     try {
-      console.log("Generating PDF with html2pdf...");
-      await html2pdf().from(pdfWrapper).set(opt).save();
-      console.log("PDF generated successfully");
+      let aiData = pdfAiData;
+      if (!aiData) {
+        aiData = await fetchPdfAiAnalysis();
+        if (aiData) setPdfAiData(aiData);
+      }
+
+      const brl = (v: number) => {
+        const neg = v < 0;
+        const s = Math.abs(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        return neg ? `-${s}` : s;
+      };
+      const pct = (v: number) => `${v.toFixed(2)}%`;
+      const fmt = (v: number) => {
+        if (Math.abs(v) >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(2)}M`;
+        if (Math.abs(v) >= 1_000) return `R$ ${(v / 1_000).toFixed(0)}K`;
+        return brl(v);
+      };
+
+      const depreciacao = dreClassifiedEntries
+        .filter(e => /DEPRECIA|AMORTIZA/i.test(e.descricao.normalize('NFD').replace(/[\u0300-\u036f]/g, '')))
+        .reduce((s, e) => s + Math.abs(e.valor), 0);
+      const ebitda       = dreData.lucroOperacional + depreciacao;
+      const margemEbitda = dreData.receitaLiquida > 0 ? (ebitda / dreData.receitaLiquida) * 100 : 0;
+      const liqCorrente  = balancoData.passivoCirculante > 0 ? balancoData.ativoCirculante / balancoData.passivoCirculante : 0;
+      const liqSeca      = balancoData.passivoCirculante > 0 ? (balancoData.ativoCirculante * 0.7) / balancoData.passivoCirculante : 0;
+      const liqGeral     = (balancoData.passivoCirculante + balancoData.passivoNaoCirculante) > 0
+        ? (balancoData.ativoCirculante + balancoData.ativoNaoCirculante * 0.3) / (balancoData.passivoCirculante + balancoData.passivoNaoCirculante) : 0;
+      const endivGeral   = balancoData.ativoTotal > 0 ? ((balancoData.passivoCirculante + balancoData.passivoNaoCirculante) / balancoData.ativoTotal) * 100 : 0;
+      const endivCP      = (balancoData.passivoCirculante + balancoData.passivoNaoCirculante) > 0
+        ? (balancoData.passivoCirculante / (balancoData.passivoCirculante + balancoData.passivoNaoCirculante)) * 100 : 0;
+      const roe          = balancoData.patrimonioLiquido > 0 ? (dreData.lucroLiquido / balancoData.patrimonioLiquido) * 100 : 0;
+      const roa          = balancoData.ativoTotal > 0 ? (dreData.lucroLiquido / balancoData.ativoTotal) * 100 : 0;
+      const giroAtivo    = balancoData.ativoTotal > 0 ? dreData.receitaLiquida / balancoData.ativoTotal : 0;
+      const plPctAtivo   = balancoData.ativoTotal > 0 ? (Math.abs(balancoData.patrimonioLiquido) / balancoData.ativoTotal) * 100 : 0;
+
+      const brandName  = branding?.nome_empresa || 'ProCont';
+      const clientName = selectedEmpresa?.nome || 'Empresa';
+      const clientCnpj = selectedEmpresa?.cnpj || '';
+      const clientCnae = selectedEmpresa?.cnae || '';
+      const clientReg  = selectedEmpresa?.regime_tributario || '';
+      const hoje       = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+      const periodo    = '01/01/2025 a 31/12/2025';
+      const paginaRodape = `${clientName}${clientCnpj ? ' | ' + clientCnpj : ''}`;
+
+      const chartEls = document.querySelectorAll('.recharts-responsive-container');
+      const chartImgs: string[] = [];
+      for (let i = 0; i < Math.min(chartEls.length, 4); i++) {
+        try {
+          const { default: html2canvas } = await import('html2canvas');
+          const canvas = await html2canvas(chartEls[i] as HTMLElement, {
+            scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false
+          });
+          chartImgs.push(canvas.toDataURL('image/png'));
+        } catch { chartImgs.push(''); }
+      }
+
+      const chartDRE  = chartImgs[0] ? `<img src="${chartImgs[0]}" style="width:48%;border-radius:8px;" />` : '';
+      const chartMarg = chartImgs[1] ? `<img src="${chartImgs[1]}" style="width:48%;border-radius:8px;" />` : '';
+      const chartBP   = chartImgs[2] ? `<img src="${chartImgs[2]}" style="width:48%;border-radius:8px;" />` : '';
+      const chartCap  = chartImgs[3] ? `<img src="${chartImgs[3]}" style="width:48%;border-radius:8px;" />` : '';
+
+      const logoHtml = branding?.logo_url
+        ? `<img src="${branding.logo_url}" style="max-height:64px;max-width:200px;margin-bottom:16px;object-fit:contain;" crossorigin="anonymous" />`
+        : `<div style="font-size:32px;font-weight:800;color:#4A7FC1;margin-bottom:16px;">${brandName}</div>`;
+
+      const dreRow = (label: string, valor: number, pctVal: number, negativo = false, destaque = false, subtotal = false) => {
+        const cor = destaque ? '#1E2A4A' : subtotal ? '#EFF6FF' : '#ffffff';
+        const txtCor = destaque ? '#ffffff' : '#1E293B';
+        const fontW = (destaque || subtotal) ? '700' : '400';
+        const valStr = negativo ? `-${brl(Math.abs(valor))}` : brl(valor);
+        const pctStr = negativo ? `-${Math.abs(pctVal).toFixed(2)}%` : `${pctVal.toFixed(2)}%`;
+        return `
+          <tr style="background:${cor};">
+            <td style="padding:7px 12px;font-size:13px;color:${txtCor};font-weight:${fontW};border-bottom:1px solid #E5E7EB;">${label}</td>
+            <td style="padding:7px 12px;font-size:13px;color:${negativo ? '#DC2626' : txtCor};font-weight:${fontW};text-align:right;border-bottom:1px solid #E5E7EB;">${valStr}</td>
+            <td style="padding:7px 12px;font-size:13px;color:${negativo ? '#DC2626' : txtCor};font-weight:${fontW};text-align:right;border-bottom:1px solid #E5E7EB;">${pctStr}</td>
+          </tr>`;
+      };
+
+      const bpRow = (label: string, valor: number, pctAtivo: number, negativo = false, destaque = false, subconta = false) => {
+        const cor = destaque ? '#1E2A4A' : '#ffffff';
+        const txtCor = destaque ? '#ffffff' : '#1E293B';
+        const fontW = destaque ? '700' : '400';
+        const indent = subconta ? 'padding-left:28px;' : '';
+        const valStr = brl(Math.abs(valor));
+        const pctStr = pctAtivo > 0 ? `${pctAtivo.toFixed(2)}%` : '';
+        return `
+          <tr style="background:${cor};">
+            <td style="padding:6px 12px;${indent}font-size:12.5px;color:${txtCor};font-weight:${fontW};border-bottom:1px solid #E5E7EB;">${label}</td>
+            <td style="padding:6px 12px;font-size:12.5px;color:${txtCor};font-weight:${fontW};text-align:right;border-bottom:1px solid #E5E7EB;">${valStr}</td>
+            <td style="padding:6px 12px;font-size:12.5px;color:#6B7280;text-align:right;border-bottom:1px solid #E5E7EB;">${pctStr}</td>
+          </tr>`;
+      };
+
+      const indRow = (label: string, valor: string, ref: string, ok: boolean, interp: string, alerta = false) => {
+        const statusHtml = alerta
+          ? `<span style="color:#D97706;font-weight:700;font-size:11px;">⚠ ATENÇÃO</span>`
+          : `<span style="color:#16A34A;font-weight:700;font-size:11px;">✓ OK</span>`;
+        return `
+          <tr style="background:#ffffff;">
+            <td style="padding:7px 10px;font-size:12.5px;color:#1E293B;border-bottom:1px solid #E5E7EB;">${label}</td>
+            <td style="padding:7px 10px;font-size:12.5px;font-weight:700;color:#1E2A4A;text-align:center;border-bottom:1px solid #E5E7EB;">${valor}</td>
+            <td style="padding:7px 10px;font-size:12px;color:#6B7280;text-align:center;border-bottom:1px solid #E5E7EB;">${ref}</td>
+            <td style="padding:7px 10px;text-align:center;border-bottom:1px solid #E5E7EB;">${statusHtml}</td>
+            <td style="padding:7px 10px;font-size:11.5px;color:#374151;border-bottom:1px solid #E5E7EB;">${interp}</td>
+          </tr>`;
+      };
+
+      const indGroupRow = (label: string) =>
+        `<tr style="background:#2D4A8A;"><td colspan="5" style="padding:7px 12px;font-size:12px;font-weight:700;color:#ffffff;letter-spacing:1px;">${label}</td></tr>`;
+
+      const recCard = (num: string, titulo: string, texto: string, prioridade: string) => {
+        const cores: Record<string, [string, string]> = {
+          'ALTA': ['#FEE2E2', '#DC2626'],
+          'MÉDIA': ['#FEF3C7', '#D97706'],
+          'BAIXA': ['#DCFCE7', '#16A34A'],
+        };
+        const [bg, cor] = cores[prioridade] || cores['BAIXA'];
+        return `
+          <div style="display:flex;gap:16px;margin-bottom:14px;background:#F8FAFC;border:1px solid #E5E7EB;border-radius:10px;padding:16px;page-break-inside:avoid;">
+            <div style="font-size:28px;font-weight:800;color:#4A7FC1;min-width:40px;text-align:center;line-height:1;">${num}</div>
+            <div style="flex:1;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <div style="font-size:13.5px;font-weight:700;color:#1E2A4A;">${titulo}</div>
+                <span style="background:${bg};color:${cor};padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">${prioridade} PRIORIDADE</span>
+              </div>
+              <div style="font-size:12.5px;color:#374151;line-height:1.7;">${texto}</div>
+            </div>
+          </div>`;
+      };
+
+      const insightCard = (icone: string, titulo: string, texto: string, verde = true) => {
+        const [bg, borda] = verde ? ['#F0FDF4', '#16A34A'] : ['#FFFBEB', '#D97706'];
+        return `
+          <div style="background:${bg};border-left:4px solid ${borda};border-radius:0 8px 8px 0;padding:14px 18px;margin-bottom:12px;page-break-inside:avoid;">
+            <div style="font-size:13.5px;font-weight:700;color:#1E2A4A;margin-bottom:4px;">${icone} ${titulo}</div>
+            <div style="font-size:12.5px;color:#374151;line-height:1.7;">${texto}</div>
+          </div>`;
+      };
+
+      const kpiCard = (label: string, valor: string, sub: string, destaque = false) => {
+        const bg = destaque ? 'background:linear-gradient(135deg,#1E2A4A,#2D4A8A);color:white;' : 'background:#F8FAFC;color:#1E2A4A;';
+        const subCor = destaque ? 'rgba(255,255,255,0.7)' : '#6B7280';
+        return `
+          <div style="border:1px solid #E5E7EB;border-radius:10px;padding:14px;text-align:center;${bg}">
+            <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:${destaque ? 'rgba(255,255,255,0.7)' : '#6B7280'};margin-bottom:4px;">${label}</div>
+            <div style="font-size:17px;font-weight:800;margin-bottom:2px;">${valor}</div>
+            <div style="font-size:11px;color:${subCor};">${sub}</div>
+          </div>`;
+      };
+
+      const rodape = (pagina: number) => `
+        <div style="margin-top:30px;padding-top:12px;border-top:1px solid #E5E7EB;display:flex;justify-content:space-between;font-size:11px;color:#9CA3AF;">
+          <span>${paginaRodape}</span>
+          <span>Página ${pagina} | Análise gerada pelo ${brandName}</span>
+        </div>`;
+
+      const secTitle = (num: string, titulo: string) => `
+        <div style="margin-bottom:20px;padding-bottom:10px;border-bottom:2px solid #4A7FC1;">
+          <div style="font-size:22px;font-weight:800;color:#1E2A4A;">${num}. ${titulo}</div>
+        </div>`;
+
+      const avalRow = (dimensao: string, estrelas: string, resumoAval: string) => `
+        <tr>
+          <td style="padding:8px 12px;font-size:13px;color:#1E2A4A;font-weight:600;border-bottom:1px solid #E5E7EB;">${dimensao}</td>
+          <td style="padding:8px 12px;font-size:13px;color:#F59E0B;border-bottom:1px solid #E5E7EB;">${estrelas}</td>
+          <td style="padding:8px 12px;font-size:12.5px;color:#374151;border-bottom:1px solid #E5E7EB;">${resumoAval}</td>
+        </tr>`;
+
+      const container = document.createElement('div');
+      container.style.cssText = 'background:white;width:794px;font-family:"Segoe UI",Arial,sans-serif;';
+
+      const aiResumo       = aiData?.resumo?.join(' ') || `A empresa encerrou o exercício com receita líquida de ${brl(dreData.receitaLiquida)}, lucro líquido de ${brl(dreData.lucroLiquido)} e margem de ${pct(dreData.margemLiquida)}.`;
+      const aiRentab       = aiData?.rentabilidade || [`Margem bruta de ${pct(dreData.margemBruta)}.`, `Despesas operacionais de ${brl(dreData.despesasOperacionais)}.`, `Resultado financeiro de ${brl(dreData.resultadoFinanceiro)}.`];
+      const aiLiquidez     = aiData?.liquidez || [`Liquidez corrente de ${liqCorrente.toFixed(2)}.`];
+      const aiEstrutura    = aiData?.estrutura || [`Patrimônio líquido de ${brl(balancoData.patrimonioLiquido)}.`];
+      const aiFortes       = aiData?.pontosFortes || insights.filter(i => i.includes('✅') || i.includes('💰') || i.includes('🏦'));
+      const aiAtencao      = aiData?.pontosAtencao || insights.filter(i => i.includes('⚠️') || i.includes('⚡'));
+      const aiRecs         = aiData?.recomendacoes || ['Monitorar indicadores financeiros periodicamente.', 'Revisar estrutura de custos operacionais.', 'Avaliar política de crédito a clientes.', 'Constituir reserva de contingência.', 'Acompanhar evolução do resultado financeiro.'];
+      const aiConclusao    = aiData?.conclusao?.[0] || `A empresa apresenta fundamentos financeiros ${dreData.lucroLiquido > 0 ? 'sólidos' : 'que demandam atenção'} ao término do exercício.`;
+
+      const getPrioridade = (texto: string): string => {
+        if (/\bALTA\b/i.test(texto)) return 'ALTA';
+        if (/\bMÉDIA\b|MEDIA\b/i.test(texto)) return 'MÉDIA';
+        return 'BAIXA';
+      };
+      const getPrioridadeIdx = (i: number): string => i === 0 ? 'ALTA' : i <= 2 ? 'MÉDIA' : 'BAIXA';
+
+      container.innerHTML = `
+      <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; }
+        .page { width: 794px; padding: 48px 56px; background: white; page-break-after: always; }
+        .page:last-child { page-break-after: auto; }
+        table { border-collapse: collapse; width: 100%; }
+        p { margin-bottom: 12px; font-size: 13px; color: #374151; line-height: 1.75; text-align: justify; }
+      </style>
+
+      <div class="page" style="background:linear-gradient(160deg,#1E2A4A 0%,#2D4A8A 55%,#3D5FA8 100%);display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;position:relative;overflow:hidden;min-height:1122px;">
+        <div style="position:absolute;top:-80px;right:-80px;width:400px;height:400px;background:radial-gradient(circle,rgba(74,127,193,0.3) 0%,transparent 70%);border-radius:50%;"></div>
+        <div style="position:absolute;bottom:-60px;left:-60px;width:300px;height:300px;background:radial-gradient(circle,rgba(99,102,241,0.2) 0%,transparent 70%);border-radius:50%;"></div>
+        <div style="position:absolute;top:0;left:0;right:0;height:6px;background:linear-gradient(90deg,#16A34A,#4A7FC1,#7C3AED);"></div>
+        <div style="position:relative;z-index:2;">
+          ${logoHtml}
+          <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.5);letter-spacing:3px;text-transform:uppercase;margin-bottom:16px;">RELATÓRIO DE ANÁLISE FINANCEIRA</div>
+          <div style="font-size:13px;color:rgba(255,255,255,0.6);margin-bottom:40px;">Análise Completa com Inteligência Artificial</div>
+          <div style="background:rgba(255,255,255,0.12);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.2);border-radius:16px;padding:28px 56px;margin-bottom:40px;">
+            <div style="font-size:24px;font-weight:800;color:white;margin-bottom:6px;">${clientName}</div>
+            ${clientCnpj ? `<div style="font-size:13px;color:rgba(255,255,255,0.7);margin-bottom:4px;">CNPJ: ${clientCnpj}</div>` : ''}
+            ${clientReg ? `<div style="font-size:12px;color:rgba(255,255,255,0.6);">${clientReg}${clientCnae ? ' | ' + clientCnae : ''}</div>` : ''}
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;width:400px;margin:0 auto 40px;">
+            <div style="background:rgba(255,255,255,0.1);border-radius:10px;padding:14px;border:1px solid rgba(255,255,255,0.15);">
+              <div style="font-size:11px;color:rgba(255,255,255,0.6);margin-bottom:4px;">RECEITA LÍQUIDA</div>
+              <div style="font-size:16px;font-weight:800;color:white;">${fmt(dreData.receitaLiquida)}</div>
+            </div>
+            <div style="background:rgba(22,163,74,0.25);border-radius:10px;padding:14px;border:1px solid rgba(22,163,74,0.4);">
+              <div style="font-size:11px;color:rgba(255,255,255,0.6);margin-bottom:4px;">LUCRO LÍQUIDO</div>
+              <div style="font-size:16px;font-weight:800;color:#86EFAC;">${fmt(dreData.lucroLiquido)}</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.1);border-radius:10px;padding:14px;border:1px solid rgba(255,255,255,0.15);">
+              <div style="font-size:11px;color:rgba(255,255,255,0.6);margin-bottom:4px;">MARGEM LÍQUIDA</div>
+              <div style="font-size:16px;font-weight:800;color:white;">${pct(dreData.margemLiquida)}</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.1);border-radius:10px;padding:14px;border:1px solid rgba(255,255,255,0.15);">
+              <div style="font-size:11px;color:rgba(255,255,255,0.6);margin-bottom:4px;">LIQUIDEZ CORRENTE</div>
+              <div style="font-size:16px;font-weight:800;color:white;">${liqCorrente.toFixed(2)}</div>
+            </div>
+          </div>
+          <div style="font-size:13px;color:rgba(255,255,255,0.5);">Exercício: ${periodo} | Emitido em: ${hoje}</div>
+        </div>
+        <div style="position:absolute;bottom:0;left:0;right:0;height:4px;background:linear-gradient(90deg,#16A34A,#4A7FC1,#7C3AED);"></div>
+      </div>
+
+      <div class="page">
+        ${secTitle('1', 'SUMÁRIO EXECUTIVO')}
+        <p>${aiResumo}</p>
+        <p>${aiLiquidez.join(' ')}</p>
+        <p>${aiEstrutura.join(' ')}</p>
+        <div style="margin:24px 0;">
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px;">
+            ${kpiCard('Receita Líquida', fmt(dreData.receitaLiquida), `Margem ${pct(dreData.margemLiquida)}`, true)}
+            ${kpiCard('Lucro Líquido', fmt(dreData.lucroLiquido), dreData.lucroLiquido >= 0 ? 'Resultado positivo' : 'Prejuízo no período')}
+            ${kpiCard('EBITDA', fmt(ebitda), `Margem ${pct(margemEbitda)}`)}
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+            ${kpiCard('Liquidez Corrente', liqCorrente.toFixed(2), liqCorrente >= 2 ? 'Excelente' : liqCorrente >= 1.5 ? 'Adequada' : 'Atenção', true)}
+            ${kpiCard('ROE', pct(roe), roe >= 15 ? 'Excelente' : 'Abaixo do ideal')}
+            ${kpiCard('PL / Ativo', pct(plPctAtivo), plPctAtivo >= 50 ? 'Capital próprio dominante' : 'Alavancagem moderada')}
+          </div>
+        </div>
+        ${rodape(2)}
+      </div>
+
+      <div class="page">
+        ${secTitle('2', 'DEMONSTRAÇÃO DO RESULTADO DO EXERCÍCIO (DRE)')}
+        <p>A DRE evidencia a geração de valor ao longo do exercício, partindo da receita bruta até o resultado líquido distribuível aos sócios.</p>
+        <table style="margin-bottom:20px;border-radius:8px;overflow:hidden;border:1px solid #E5E7EB;">
+          <thead>
+            <tr style="background:#1E2A4A;">
+              <th style="padding:9px 12px;text-align:left;font-size:12px;color:white;font-weight:700;">DEMONSTRAÇÃO DO RESULTADO</th>
+              <th style="padding:9px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">Valor (R$)</th>
+              <th style="padding:9px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">% Rec. Líq.</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${dreRow('(+) Receita Bruta', dreData.receitaBruta, dreData.receitaLiquida > 0 ? (dreData.receitaBruta / dreData.receitaLiquida) * 100 : 0)}
+            ${dreRow('(-) Deduções e Impostos s/ Vendas', dreData.receitaBruta - dreData.receitaLiquida, dreData.receitaLiquida > 0 ? ((dreData.receitaBruta - dreData.receitaLiquida) / dreData.receitaLiquida) * 100 : 0, true)}
+            ${dreRow('(=) Receita Líquida', dreData.receitaLiquida, 100, false, false, true)}
+            ${dreData.cmv > 0 ? dreRow('(-) CMV / Custo dos Serviços', dreData.cmv, dreData.receitaLiquida > 0 ? (dreData.cmv / dreData.receitaLiquida) * 100 : 0, true) : ''}
+            ${dreRow('(=) Lucro Bruto', dreData.lucroBruto, dreData.receitaLiquida > 0 ? (dreData.lucroBruto / dreData.receitaLiquida) * 100 : 0, false, false, true)}
+            ${dreRow('(-) Despesas Operacionais', dreData.despesasOperacionais, dreData.receitaLiquida > 0 ? (dreData.despesasOperacionais / dreData.receitaLiquida) * 100 : 0, true)}
+            ${dreRow('(=) Lucro Operacional (EBIT)', dreData.lucroOperacional, dreData.receitaLiquida > 0 ? (dreData.lucroOperacional / dreData.receitaLiquida) * 100 : 0, false, false, true)}
+            ${dreRow('(-) Resultado Financeiro Líquido', dreData.resultadoFinanceiro, dreData.receitaLiquida > 0 ? (dreData.resultadoFinanceiro / dreData.receitaLiquida) * 100 : 0, dreData.resultadoFinanceiro < 0)}
+            ${ebitda > 0 ? dreRow('(=) EBITDA', ebitda, dreData.receitaLiquida > 0 ? (ebitda / dreData.receitaLiquida) * 100 : 0, false, false, true) : ''}
+            ${dreData.contribuicaoSocial > 0 ? dreRow('(-) Contribuição Social (CSLL)', dreData.contribuicaoSocial, dreData.receitaLiquida > 0 ? (dreData.contribuicaoSocial / dreData.receitaLiquida) * 100 : 0, true) : ''}
+            ${dreRow('(=) LUCRO LÍQUIDO DO EXERCÍCIO', dreData.lucroLiquido, dreData.receitaLiquida > 0 ? (dreData.lucroLiquido / dreData.receitaLiquida) * 100 : 0, dreData.lucroLiquido < 0, true)}
+          </tbody>
+        </table>
+        ${chartDRE || chartMarg ? `
+        <div style="display:flex;gap:16px;margin-bottom:20px;justify-content:center;align-items:flex-start;">
+          ${chartDRE}
+          ${chartMarg}
+        </div>` : ''}
+        <div style="margin-top:16px;">
+          <div style="font-size:14px;font-weight:700;color:#2D4A8A;margin-bottom:8px;">2.1 Análise de Rentabilidade</div>
+          ${aiRentab.map(p => `<p>${p}</p>`).join('')}
+        </div>
+        ${rodape(3)}
+      </div>
+
+      <div class="page">
+        ${secTitle('3', 'BALANÇO PATRIMONIAL')}
+        <p>O balanço patrimonial fotografa a posição financeira da empresa, demonstrando a composição dos recursos e suas fontes de financiamento.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+          <table style="border-radius:8px;overflow:hidden;border:1px solid #E5E7EB;">
+            <thead>
+              <tr style="background:#1E2A4A;">
+                <th style="padding:8px 12px;text-align:left;font-size:12px;color:white;font-weight:700;">ATIVO</th>
+                <th style="padding:8px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">Valor</th>
+                <th style="padding:8px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">%</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${bpRow('ATIVO CIRCULANTE', balancoData.ativoCirculante, balancoData.ativoTotal > 0 ? (balancoData.ativoCirculante / balancoData.ativoTotal) * 100 : 0)}
+              ${bpRow('ATIVO NÃO CIRCULANTE', balancoData.ativoNaoCirculante, balancoData.ativoTotal > 0 ? (balancoData.ativoNaoCirculante / balancoData.ativoTotal) * 100 : 0)}
+              ${bpRow('ATIVO TOTAL', balancoData.ativoTotal, 100, false, true)}
+            </tbody>
+          </table>
+          <table style="border-radius:8px;overflow:hidden;border:1px solid #E5E7EB;">
+            <thead>
+              <tr style="background:#2D4A8A;">
+                <th style="padding:8px 12px;text-align:left;font-size:12px;color:white;font-weight:700;">PASSIVO + PL</th>
+                <th style="padding:8px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">Valor</th>
+                <th style="padding:8px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">%</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${bpRow('PASSIVO CIRCULANTE', balancoData.passivoCirculante, balancoData.ativoTotal > 0 ? (balancoData.passivoCirculante / balancoData.ativoTotal) * 100 : 0)}
+              ${bpRow('PASSIVO NÃO CIRCULANTE', balancoData.passivoNaoCirculante, balancoData.ativoTotal > 0 ? (balancoData.passivoNaoCirculante / balancoData.ativoTotal) * 100 : 0)}
+              ${bpRow('PATRIMÔNIO LÍQUIDO', Math.abs(balancoData.patrimonioLiquido), balancoData.ativoTotal > 0 ? (Math.abs(balancoData.patrimonioLiquido) / balancoData.ativoTotal) * 100 : 0)}
+              ${bpRow('PASSIVO + PL TOTAL', balancoData.ativoTotal, 100, false, true)}
+            </tbody>
+          </table>
+        </div>
+        ${chartBP || chartCap ? `
+        <div style="display:flex;gap:16px;margin-bottom:20px;justify-content:center;align-items:flex-start;">
+          ${chartBP}
+          ${chartCap}
+        </div>` : ''}
+        <div>
+          <div style="font-size:14px;font-weight:700;color:#2D4A8A;margin-bottom:8px;">3.1 Análise da Estrutura Patrimonial</div>
+          ${aiEstrutura.map(p => `<p>${p}</p>`).join('')}
+        </div>
+        ${rodape(4)}
+      </div>
+
+      <div class="page">
+        ${secTitle('4', 'INDICADORES FINANCEIROS')}
+        <p>Os indicadores financeiros permitem avaliar objetivamente o desempenho em quatro dimensões: liquidez, endividamento, rentabilidade e atividade.</p>
+        <table style="margin-bottom:24px;border-radius:8px;overflow:hidden;border:1px solid #E5E7EB;">
+          <thead>
+            <tr style="background:#1E2A4A;">
+              <th style="padding:8px 10px;text-align:left;font-size:12px;color:white;font-weight:700;">INDICADOR</th>
+              <th style="padding:8px 10px;text-align:center;font-size:12px;color:white;font-weight:700;">VALOR</th>
+              <th style="padding:8px 10px;text-align:center;font-size:12px;color:white;font-weight:700;">REFERÊNCIA</th>
+              <th style="padding:8px 10px;text-align:center;font-size:12px;color:white;font-weight:700;">STATUS</th>
+              <th style="padding:8px 10px;text-align:left;font-size:12px;color:white;font-weight:700;">INTERPRETAÇÃO</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${indGroupRow('LIQUIDEZ')}
+            ${indRow('Liquidez Corrente', liqCorrente.toFixed(2), '> 1,5', liqCorrente >= 1.5, `Para cada R$ 1 de dívida CP, há R$ ${liqCorrente.toFixed(2)} em ativos`, liqCorrente < 1.5)}
+            ${indRow('Liquidez Seca', liqSeca.toFixed(2), '> 1,0', liqSeca >= 1, 'Cobertura do PC sem depender de estoques', liqSeca < 1)}
+            ${indRow('Liquidez Geral', liqGeral.toFixed(2), '> 1,0', liqGeral >= 1, 'Ativos realizáveis cobrem o passivo exigível', liqGeral < 1)}
+            ${indGroupRow('ENDIVIDAMENTO')}
+            ${indRow('Endividamento Geral', pct(endivGeral), '< 50%', endivGeral <= 50, `${(100 - endivGeral).toFixed(1)}% do ativo financiado por capital próprio`, endivGeral > 50)}
+            ${indRow('Concentração CP', pct(endivCP), '< 60%', endivCP <= 60, 'Proporção das dívidas que vencem no curto prazo', endivCP > 60)}
+            ${indGroupRow('RENTABILIDADE')}
+            ${indRow('ROE', pct(roe), '> 15%', roe >= 15, 'Retorno sobre o capital dos sócios', roe < 15)}
+            ${indRow('ROA', pct(roa), '> 8%', roa >= 8, 'Retorno líquido sobre os ativos totais', roa < 8)}
+            ${indRow('Margem EBITDA', pct(margemEbitda), '> 15%', margemEbitda >= 15, 'Geração de caixa operacional sobre a receita', margemEbitda < 15)}
+            ${indGroupRow('ATIVIDADE')}
+            ${indRow('Giro do Ativo', `${giroAtivo.toFixed(2)}x`, '> 1,0x', giroAtivo >= 1, 'Eficiência dos ativos na geração de receita', giroAtivo < 1)}
+          </tbody>
+        </table>
+        ${rodape(5)}
+      </div>
+
+      <div class="page">
+        ${secTitle('5', 'PONTOS FORTES E PONTOS DE ATENÇÃO')}
+        <div style="font-size:15px;font-weight:700;color:#16A34A;margin-bottom:12px;">✅ Pontos Fortes</div>
+        ${aiFortes.slice(0, 4).map((p, i) => {
+          const titulo = p.split('.')[0] || `Ponto Forte ${i + 1}`;
+          const texto = p.replace(titulo + '.', '').trim() || p;
+          return insightCard('●', titulo, texto.length > 10 ? texto : p, true);
+        }).join('')}
+        <div style="font-size:15px;font-weight:700;color:#D97706;margin:20px 0 12px;">⚠️ Pontos de Atenção</div>
+        ${aiAtencao.slice(0, 3).map((p, i) => {
+          const titulo = p.split('.')[0] || `Ponto de Atenção ${i + 1}`;
+          const texto = p.replace(titulo + '.', '').trim() || p;
+          return insightCard('▲', titulo, texto.length > 10 ? texto : p, false);
+        }).join('')}
+        ${rodape(6)}
+      </div>
+
+      <div class="page">
+        ${secTitle('6', 'RECOMENDAÇÕES ESTRATÉGICAS')}
+        <p style="margin-bottom:20px;">Com base na análise dos demonstrativos financeiros, apresentamos as principais recomendações para otimização do desempenho e mitigação de riscos no próximo exercício:</p>
+        ${aiRecs.slice(0, 5).map((rec, i) => {
+          const num = String(i + 1).padStart(2, '0');
+          const titulo = rec.split(':')[0] || rec.split('.')[0] || `Recomendação ${i + 1}`;
+          const texto = rec.includes(':') ? rec.split(':').slice(1).join(':').trim() : rec;
+          const prior = getPrioridade(rec) !== 'BAIXA' ? getPrioridade(rec) : getPrioridadeIdx(i);
+          return recCard(num, titulo, texto || rec, prior);
+        }).join('')}
+        ${rodape(7)}
+      </div>
+
+      <div class="page">
+        ${secTitle('7', 'CONCLUSÃO')}
+        <p>${aiConclusao}</p>
+        <p>A saúde financeira é evidenciada pela ${liqCorrente >= 1.5 ? 'excelente' : 'adequada'} liquidez (corrente ${liqCorrente.toFixed(2)}) e pelo ${endivGeral <= 50 ? 'baixo endividamento' : 'nível de endividamento'} de ${pct(endivGeral)}. O patrimônio líquido de ${brl(Math.abs(balancoData.patrimonioLiquido))} representa ${pct(plPctAtivo)} do ativo total.</p>
+        <p>Para o próximo exercício, recomenda-se acompanhar de perto os pontos de atenção identificados e implementar as recomendações estratégicas apresentadas neste relatório.</p>
+        <div style="margin:24px 0;">
+          <div style="font-size:14px;font-weight:700;color:#1E2A4A;margin-bottom:12px;">Avaliação Geral por Dimensão</div>
+          <table style="border-radius:8px;overflow:hidden;border:1px solid #E5E7EB;">
+            <thead>
+              <tr style="background:#1E2A4A;">
+                <th style="padding:9px 12px;text-align:left;font-size:12px;color:white;">DIMENSÃO</th>
+                <th style="padding:9px 12px;text-align:left;font-size:12px;color:white;">AVALIAÇÃO</th>
+                <th style="padding:9px 12px;text-align:left;font-size:12px;color:white;">RESUMO</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${avalRow('Rentabilidade',
+                dreData.margemLiquida >= 15 ? '★★★★★ EXCELENTE' : dreData.margemLiquida >= 5 ? '★★★★☆ BOA' : '★★★☆☆ REGULAR',
+                `Margem líquida ${pct(dreData.margemLiquida)} | ROE ${pct(roe)}`)}
+              ${avalRow('Liquidez',
+                liqCorrente >= 2 ? '★★★★★ EXCELENTE' : liqCorrente >= 1.5 ? '★★★★☆ BOA' : '★★★☆☆ REGULAR',
+                `LC ${liqCorrente.toFixed(2)} | LS ${liqSeca.toFixed(2)}`)}
+              ${avalRow('Endividamento',
+                endivGeral <= 30 ? '★★★★★ BAIXO' : endivGeral <= 50 ? '★★★★☆ ADEQUADO' : '★★★☆☆ ELEVADO',
+                `${pct(endivGeral)} — ${pct(endivCP)} concentrado no CP`)}
+              ${avalRow('Atividade',
+                giroAtivo >= 1.5 ? '★★★★★ EFICIENTE' : giroAtivo >= 1 ? '★★★★☆ BOA' : '★★★☆☆ REGULAR',
+                `Giro do ativo ${giroAtivo.toFixed(2)}x`)}
+              ${avalRow('Saúde Geral',
+                dreData.lucroLiquido > 0 && liqCorrente >= 1.5 && endivGeral <= 60 ? '★★★★★ SÓLIDA' : '★★★★☆ ADEQUADA',
+                dreData.lucroLiquido > 0 ? 'Empresa posicionada para crescimento' : 'Necessita atenção ao resultado')}
+            </tbody>
+          </table>
+        </div>
+        <div style="background:#F8FAFC;border:1px solid #E5E7EB;border-radius:8px;padding:14px;margin-top:20px;">
+          <p style="margin:0;font-size:11.5px;color:#6B7280;text-align:center;font-style:italic;">
+            Este relatório foi gerado automaticamente pelo sistema ${brandName} com base nos demonstrativos contábeis importados.
+            As análises e recomendações têm caráter informativo e devem ser validadas pelo contador responsável.
+          </p>
+        </div>
+        ${rodape(8)}
+      </div>
+      `;
+
+      document.body.appendChild(container);
+
+      const opt = {
+        margin: 0,
+        filename: `relatorio-${clientName.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.pdf`,
+        image: { type: 'jpeg' as const, quality: 0.97 },
+        html2canvas: { scale: 2, useCORS: true, logging: false, width: 794, windowWidth: 794 },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
+        pagebreak: { mode: ['css', 'legacy'] },
+      };
+
+      await html2pdf().set(opt).from(container).save();
+      document.body.removeChild(container);
+
     } catch (error) {
-      console.error("Error generating PDF:", error);
-      alert("Erro ao gerar PDF. Tente novamente.");
+      console.error('Erro ao gerar PDF:', error);
+      alert('Erro ao gerar PDF. Tente novamente.');
     } finally {
       setIsExporting(false);
+      setIsFetchingPdfAi(false);
     }
   };
 
@@ -1946,12 +2185,12 @@ const Resultado = () => {
               {isExporting ? (
                 <>
                   <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                  Gerando PDF...
+                  {isFetchingPdfAi ? 'Consultando IA...' : 'Gerando PDF...'}
                 </>
               ) : (
                 <>
                   <FileDown className="w-5 h-5 mr-2" />
-                  Exportar relatório em PDF
+                  Exportar Relatório Completo (PDF)
                 </>
               )}
             </Button>
