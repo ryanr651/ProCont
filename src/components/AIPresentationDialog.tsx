@@ -126,6 +126,12 @@ export function AIPresentationDialog({
   dreData,
   balancoData,
   empresaNome = "Empresa",
+  empresaCnpj,
+  empresaCnae,
+  empresaRegimeTributario,
+  empresaContexto,
+  ebitda,
+  periodo,
   branding
 }: AIPresentationDialogProps) {
   const [slides, setSlides] = useState<Slide[]>([]);
