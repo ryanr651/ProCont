@@ -1708,21 +1708,107 @@ Retorne APENAS o JSON abaixo, sem nenhum texto fora dele:
       const container = document.createElement('div');
       container.style.cssText = 'background:white;width:794px;font-family:"Segoe UI",Arial,sans-serif;';
 
-      const aiResumo       = aiData?.resumo?.join(' ') || `A empresa encerrou o exercício com receita líquida de ${brl(dreData.receitaLiquida)}, lucro líquido de ${brl(dreData.lucroLiquido)} e margem de ${pct(dreData.margemLiquida)}.`;
-      const aiRentab       = aiData?.rentabilidade || [`Margem bruta de ${pct(dreData.margemBruta)}.`, `Despesas operacionais de ${brl(dreData.despesasOperacionais)}.`, `Resultado financeiro de ${brl(dreData.resultadoFinanceiro)}.`];
-      const aiLiquidez     = aiData?.liquidez || [`Liquidez corrente de ${liqCorrente.toFixed(2)}.`];
-      const aiEstrutura    = aiData?.estrutura || [`Patrimônio líquido de ${brl(balancoData.patrimonioLiquido)}.`];
-      const aiFortes       = aiData?.pontosFortes || insights.filter(i => i.includes('✅') || i.includes('💰') || i.includes('🏦'));
-      const aiAtencao      = aiData?.pontosAtencao || insights.filter(i => i.includes('⚠️') || i.includes('⚡'));
-      const aiRecs         = aiData?.recomendacoes || ['Monitorar indicadores financeiros periodicamente.', 'Revisar estrutura de custos operacionais.', 'Avaliar política de crédito a clientes.', 'Constituir reserva de contingência.', 'Acompanhar evolução do resultado financeiro.'];
-      const aiConclusao    = aiData?.conclusao?.[0] || `A empresa apresenta fundamentos financeiros ${dreData.lucroLiquido > 0 ? 'sólidos' : 'que demandam atenção'} ao término do exercício.`;
+      // ── Helpers de compatibilidade (suportam formato antigo string[] e novo objeto estruturado) ──
+      const escapeHtml = (s: string) => s
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-      const getPrioridade = (texto: string): string => {
-        if (/\bALTA\b/i.test(texto)) return 'ALTA';
-        if (/\bMÉDIA\b|MEDIA\b/i.test(texto)) return 'MÉDIA';
-        return 'BAIXA';
+      // Recebe string[] | { paragrafo1, paragrafo2, ... } | string | undefined → string[]
+      const toParagraphs = (val: any): string[] => {
+        if (!val) return [];
+        if (typeof val === 'string') return [val];
+        if (Array.isArray(val)) return val.filter(v => typeof v === 'string' && v).map(String);
+        if (typeof val === 'object') {
+          const ordered = ['paragrafo1', 'paragrafo2', 'paragrafo3', 'paragrafo4'];
+          const out: string[] = [];
+          for (const k of ordered) if (typeof val[k] === 'string' && val[k]) out.push(val[k]);
+          if (out.length > 0) return out;
+          return Object.values(val).filter(v => typeof v === 'string' && v).map(String);
+        }
+        return [];
       };
+
+      // Recebe string | { titulo, descricao, prioridade?, numero? } → { titulo, descricao, prioridade?, numero? }
+      const toItem = (raw: any, fallbackTitle: string): { titulo: string; descricao: string; prioridade?: string; numero?: number } => {
+        if (typeof raw === 'string') {
+          const txt = raw.trim();
+          // tenta separar "Título: descrição" ou "Título. descrição"
+          const colonIdx = txt.indexOf(':');
+          const dotIdx = txt.indexOf('. ');
+          const splitIdx = colonIdx > 0 && (dotIdx < 0 || colonIdx < dotIdx) ? colonIdx : (dotIdx > 0 ? dotIdx + 1 : -1);
+          if (splitIdx > 0 && splitIdx < txt.length - 1) {
+            const titulo = txt.slice(0, splitIdx).trim();
+            const descricao = txt.slice(splitIdx + 1).trim();
+            if (titulo && descricao && titulo !== descricao) return { titulo, descricao };
+          }
+          return { titulo: fallbackTitle, descricao: txt };
+        }
+        if (raw && typeof raw === 'object') {
+          return {
+            titulo: (raw.titulo || fallbackTitle).toString().trim(),
+            descricao: (raw.descricao || '').toString().trim(),
+            prioridade: raw.prioridade ? String(raw.prioridade).replace(/\s*PRIORIDADE\s*$/i, '').toUpperCase() : undefined,
+            numero: typeof raw.numero === 'number' ? raw.numero : undefined,
+          };
+        }
+        return { titulo: fallbackTitle, descricao: '' };
+      };
+
+      // ── Sumário Executivo ──
+      const resumoParas = toParagraphs(pdfAiData?.resumo ?? aiData?.resumo);
+      const aiResumoParas = resumoParas.length > 0
+        ? resumoParas
+        : [`A empresa encerrou o exercício com receita líquida de ${brl(dreData.receitaLiquida)}, ${dreData.lucroLiquido < 0 ? 'prejuízo' : 'lucro líquido'} de ${brl(dreData.lucroLiquido)} e margem de ${pct(dreData.margemLiquida)}.`];
+
+      // ── Análise de Rentabilidade (novo: analiseRentabilidade; legacy: rentabilidade) ──
+      const aiRentab = toParagraphs(aiData?.analiseRentabilidade ?? aiData?.rentabilidade);
+      const aiRentabFinal = aiRentab.length > 0 ? aiRentab : [
+        `Margem bruta de ${pct(dreData.margemBruta)}.`,
+        `Despesas operacionais de ${brl(dreData.despesasOperacionais)}.`,
+        `Resultado financeiro de ${brl(dreData.resultadoFinanceiro)}.`,
+      ];
+
+      // ── Análise Patrimonial (novo: analisePatrimonial; legacy: estrutura) ──
+      const aiEstrutura = toParagraphs(aiData?.analisePatrimonial ?? aiData?.estrutura);
+      const aiEstruturaFinal = aiEstrutura.length > 0 ? aiEstrutura : [
+        `Patrimônio líquido de ${brl(balancoData.patrimonioLiquido)}.`,
+      ];
+
+      // Liquidez (campo legacy opcional)
+      const aiLiquidez = toParagraphs(aiData?.liquidez);
+
+      // ── Pontos Fortes/Atenção ──
+      const fortesRaw = Array.isArray(aiData?.pontosFortes) && aiData.pontosFortes.length > 0
+        ? aiData.pontosFortes
+        : insights.filter(i => i.includes('✅') || i.includes('💰') || i.includes('🏦'));
+      const aiFortes = fortesRaw.slice(0, 4).map((it: any, i: number) => toItem(it, `Ponto Forte ${i + 1}`));
+
+      const atencaoRaw = Array.isArray(aiData?.pontosAtencao) && aiData.pontosAtencao.length > 0
+        ? aiData.pontosAtencao
+        : insights.filter(i => i.includes('⚠️') || i.includes('⚡'));
+      const aiAtencao = atencaoRaw.slice(0, 3).map((it: any, i: number) => toItem(it, `Ponto de Atenção ${i + 1}`));
+
+      // ── Recomendações ──
+      const recsFallback = [
+        'Monitorar indicadores financeiros periodicamente.',
+        'Revisar estrutura de custos operacionais.',
+        'Avaliar política de crédito a clientes.',
+        'Constituir reserva de contingência.',
+        'Acompanhar evolução do resultado financeiro.',
+      ];
+      const recsRaw = Array.isArray(aiData?.recomendacoes) && aiData.recomendacoes.length > 0
+        ? aiData.recomendacoes
+        : recsFallback;
       const getPrioridadeIdx = (i: number): string => i === 0 ? 'ALTA' : i <= 2 ? 'MÉDIA' : 'BAIXA';
+      const aiRecs = recsRaw.slice(0, 5).map((it: any, i: number) => {
+        const item = toItem(it, `Recomendação ${i + 1}`);
+        return { ...item, prioridade: item.prioridade || getPrioridadeIdx(i), numero: item.numero || i + 1 };
+      });
+
+      // ── Conclusão ──
+      const conclParas = toParagraphs(aiData?.conclusao);
+      const aiConclusaoParas = conclParas.length > 0 ? conclParas : [
+        `A empresa apresenta fundamentos financeiros ${dreData.lucroLiquido > 0 ? 'sólidos' : 'que demandam atenção'} ao término do exercício.`,
+      ];
 
       container.innerHTML = `
       <style>
