@@ -359,84 +359,101 @@ export function AIPresentationDialog({
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const aiData = JSON.parse(jsonMatch[0]);
-        
-        if (aiData.resumo) {
+
+        const resumoLines = normalizeStructuredText(aiData.resumo);
+        if (resumoLines.length > 0) {
           slides.push({
             type: 'overview',
             title: 'Visão Geral',
-            content: Array.isArray(aiData.resumo) ? aiData.resumo : [aiData.resumo],
+            content: resumoLines,
             icon: <PieChartIcon className="w-8 h-8" />,
             highlight: 'neutral'
           });
         }
 
-        if (aiData.rentabilidade) {
+        // New key: analiseRentabilidade — fallback to legacy "rentabilidade"
+        const rentLines = normalizeStructuredText(aiData.analiseRentabilidade ?? aiData.rentabilidade);
+        if (rentLines.length > 0) {
           slides.push({
             type: 'profitability',
             title: 'Análise de Rentabilidade',
-            content: Array.isArray(aiData.rentabilidade) ? aiData.rentabilidade : [aiData.rentabilidade],
+            content: rentLines,
             icon: <DollarSign className="w-8 h-8" />,
             highlight: dre.margemLiquida > 5 ? 'positive' : dre.margemLiquida < 0 ? 'negative' : 'neutral'
           });
         }
 
-        if (aiData.liquidez) {
+        // Liquidez (legacy) — kept for backward compat
+        const liqLines = normalizeStructuredText(aiData.liquidez);
+        if (liqLines.length > 0) {
           slides.push({
             type: 'liquidity',
             title: 'Liquidez e Solvência',
-            content: Array.isArray(aiData.liquidez) ? aiData.liquidez : [aiData.liquidez],
-            icon: balanco.ativoCirculante > balanco.passivoCirculante 
-              ? <TrendingUp className="w-8 h-8" /> 
+            content: liqLines,
+            icon: balanco.ativoCirculante > balanco.passivoCirculante
+              ? <TrendingUp className="w-8 h-8" />
               : <TrendingDown className="w-8 h-8" />,
             highlight: balanco.ativoCirculante > balanco.passivoCirculante ? 'positive' : 'negative'
           });
         }
 
-        if (aiData.estrutura) {
+        // New key: analisePatrimonial — fallback to legacy "estrutura"
+        const estrLines = normalizeStructuredText(aiData.analisePatrimonial ?? aiData.estrutura);
+        if (estrLines.length > 0) {
           slides.push({
             type: 'structure',
-            title: 'Estrutura de Capital',
-            content: Array.isArray(aiData.estrutura) ? aiData.estrutura : [aiData.estrutura],
+            title: 'Estrutura Patrimonial',
+            content: estrLines,
             icon: <Building className="w-8 h-8" />,
             highlight: 'neutral'
           });
         }
 
-        if (aiData.pontosFortes && aiData.pontosFortes.length > 0) {
+        const fortesLines = Array.isArray(aiData.pontosFortes)
+          ? aiData.pontosFortes.map(normalizeStructuredItem).filter(Boolean)
+          : [];
+        if (fortesLines.length > 0) {
           slides.push({
             type: 'strengths',
             title: 'Pontos Fortes',
-            content: aiData.pontosFortes,
+            content: fortesLines,
             icon: <CheckCircle2 className="w-8 h-8" />,
             highlight: 'positive'
           });
         }
 
-        if (aiData.pontosAtencao && aiData.pontosAtencao.length > 0) {
+        const atencaoLines = Array.isArray(aiData.pontosAtencao)
+          ? aiData.pontosAtencao.map(normalizeStructuredItem).filter(Boolean)
+          : [];
+        if (atencaoLines.length > 0) {
           slides.push({
             type: 'risks',
             title: 'Pontos de Atenção',
-            content: aiData.pontosAtencao,
+            content: atencaoLines,
             icon: <AlertTriangle className="w-8 h-8" />,
             highlight: 'negative'
           });
         }
 
-        if (aiData.recomendacoes && aiData.recomendacoes.length > 0) {
+        const recsLines = Array.isArray(aiData.recomendacoes)
+          ? aiData.recomendacoes.map(normalizeStructuredItem).filter(Boolean)
+          : [];
+        if (recsLines.length > 0) {
           slides.push({
             type: 'recommendations',
             title: 'Recomendações Estratégicas',
-            content: aiData.recomendacoes,
+            content: recsLines,
             icon: <Target className="w-8 h-8" />,
             highlight: 'neutral'
           });
         }
 
-        if (aiData.conclusao) {
+        const conclLines = normalizeStructuredText(aiData.conclusao);
+        if (conclLines.length > 0) {
           slides.push({
             type: 'conclusion',
             title: 'Conclusão',
-            content: Array.isArray(aiData.conclusao) ? aiData.conclusao : [aiData.conclusao],
+            content: conclLines,
             icon: <CheckCircle2 className="w-8 h-8" />,
             highlight: 'neutral'
           });
