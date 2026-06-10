@@ -19,7 +19,7 @@ export function Logo({ className, size = "md" }: LogoProps) {
     <div className={cn("flex items-center", config.gap, className)}>
       <img 
         src={procontIcon} 
-        alt="ProCont" 
+        alt="KlarCont" 
         style={{ height: config.icon }}
         className="object-contain"
       />
@@ -27,7 +27,7 @@ export function Logo({ className, size = "md" }: LogoProps) {
         "font-display font-bold tracking-tight",
         config.text
       )}>
-        <span className="text-foreground">Pro</span>
+        <span className="text-foreground">Klar</span>
         <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">Cont</span>
       </span>
     </div>
