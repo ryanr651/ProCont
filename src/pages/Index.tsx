@@ -103,24 +103,24 @@ const Index = () => {
   // FAQ data
   const faqItems = [
     {
-      question: "Para quem é o ProCont?",
+      question: "Para quem é o KlarCont?",
       answer:
-        "O ProCont foi desenvolvido para contadores, escritórios de contabilidade e profissionais financeiros que desejam automatizar análises de DRE e Balanço Patrimonial, gerando insights visuais e relatórios profissionais de forma rápida e eficiente.",
+        "O KlarCont foi desenvolvido para contadores, escritórios de contabilidade e profissionais financeiros que desejam automatizar análises de DRE e Balanço Patrimonial, gerando insights visuais e relatórios profissionais de forma rápida e eficiente.",
     },
     {
-      question: "Como funciona o ProCont?",
+      question: "Como funciona o KlarCont?",
       answer:
         "Basta enviar seus arquivos de DRE e Balanço Patrimonial (CSV, XLS ou XLSX), e o sistema automaticamente processa os dados, identifica as contas contábeis brasileiras e gera dashboards visuais com indicadores, margens e insights automatizados.",
     },
     {
-      question: "O ProCont está preparado para a reforma tributária?",
+      question: "O KlarCont está preparado para a reforma tributária?",
       answer:
-        "Sim! O ProCont está em constante atualização para acompanhar as mudanças da reforma tributária brasileira. Nossa equipe trabalha continuamente para garantir que as análises estejam sempre alinhadas com as novas exigências fiscais e contábeis.",
+        "Sim! O KlarCont está em constante atualização para acompanhar as mudanças da reforma tributária brasileira. Nossa equipe trabalha continuamente para garantir que as análises estejam sempre alinhadas com as novas exigências fiscais e contábeis.",
     },
     {
       question: "Quais formatos de arquivo são aceitos?",
       answer:
-        "O ProCont aceita arquivos nos formatos CSV, XLS e XLSX. O sistema possui inteligência para reconhecer automaticamente a estrutura das demonstrações financeiras em padrão brasileiro.",
+        "O KlarCont aceita arquivos nos formatos CSV, XLS e XLSX. O sistema possui inteligência para reconhecer automaticamente a estrutura das demonstrações financeiras em padrão brasileiro.",
     },
   ];
 
@@ -239,7 +239,7 @@ const Index = () => {
                 análise de resultados.
               </p>
               <p>
-                O <strong className="text-primary">ProCont</strong> nasce para simplificar essa
+                O <strong className="text-primary">KlarCont</strong> nasce para simplificar essa
                 transição. Automatizamos a análise de DRE e Balanço Patrimonial, gerando insights
                 visuais e relatórios profissionais que ajudam você a tomar decisões com{" "}
                 <strong className="text-foreground">clareza, organização e inteligência de dados</strong>.
@@ -253,7 +253,7 @@ const Index = () => {
             >
               <Link to="/showcase">
                 <Button variant="hero" size="xl" className="group">
-                  Conheça o ProCont
+                  Conheça o KlarCont
                   <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
                 </Button>
               </Link>
@@ -405,7 +405,7 @@ const Index = () => {
               <span className="gradient-text">Feedbacks</span>
             </h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
-              O que nossos primeiros usuários estão dizendo sobre o ProCont.
+              O que nossos primeiros usuários estão dizendo sobre o KlarCont.
             </p>
           </div>
 
@@ -426,7 +426,7 @@ const Index = () => {
                   </div>
                   <MessageSquare className="w-8 h-8 text-primary/50 mb-3" />
                   <p className="text-muted-foreground italic mb-4">
-                    "Feedback da equipe ProCont será inserido aqui. Esta seção está preparada
+                    "Feedback da equipe KlarCont será inserido aqui. Esta seção está preparada
                     para receber depoimentos reais de clientes e parceiros."
                   </p>
                   <div className="flex items-center gap-3">
@@ -434,7 +434,7 @@ const Index = () => {
                       <Building2 className="w-5 h-5 text-primary" />
                     </div>
                     <div>
-                      <p className="font-medium text-sm">Equipe ProCont</p>
+                      <p className="font-medium text-sm">Equipe KlarCont</p>
                       <p className="text-xs text-muted-foreground">Em breve</p>
                     </div>
                   </div>
@@ -444,7 +444,7 @@ const Index = () => {
           </div>
 
           <p className="text-center text-sm text-muted-foreground mt-8">
-            Os feedbacks serão adicionados pela equipe ProCont à medida que recebemos retornos
+            Os feedbacks serão adicionados pela equipe KlarCont à medida que recebemos retornos
             de nossos usuários.
           </p>
         </div>
@@ -458,7 +458,7 @@ const Index = () => {
               <span className="gradient-text">Contato</span>
             </h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
-              Entre em contato conosco para saber mais sobre o ProCont.
+              Entre em contato conosco para saber mais sobre o KlarCont.
             </p>
           </div>
 
@@ -473,10 +473,10 @@ const Index = () => {
                     <div>
                       <p className="text-sm text-muted-foreground">E-mail</p>
                       <a
-                        href="mailto:ProCont@gmail.com"
+                        href="mailto:KlarCont@gmail.com"
                         className="font-medium text-foreground hover:text-primary transition-colors"
                       >
-                        ProCont@gmail.com
+                        KlarCont@gmail.com
                       </a>
                     </div>
                   </div>
@@ -510,7 +510,7 @@ const Index = () => {
               <span className="gradient-text">Perguntas Frequentes</span>
             </h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
-              Tire suas dúvidas sobre o ProCont.
+              Tire suas dúvidas sobre o KlarCont.
             </p>
           </div>
 
@@ -544,7 +544,7 @@ const Index = () => {
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <Logo />
             <div className="text-center text-sm text-muted-foreground">
-              © {new Date().getFullYear()} ProCont. Análise financeira inteligente para
+              © {new Date().getFullYear()} KlarCont. Análise financeira inteligente para
               escritórios contábeis.
             </div>
             <div className="flex items-center gap-4">

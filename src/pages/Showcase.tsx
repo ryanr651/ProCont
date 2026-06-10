@@ -172,7 +172,7 @@ const Showcase = () => {
             Dashboard de <span className="gradient-text">Análise Financeira</span>
           </h1>
           <p className="text-muted-foreground max-w-2xl mx-auto">
-            Este é um exemplo ilustrativo de como o ProCont transforma DRE, Balanço Patrimonial e Balancete
+            Este é um exemplo ilustrativo de como o KlarCont transforma DRE, Balanço Patrimonial e Balancete
             em análises financeiras visuais com indicadores detalhados.
           </p>
         </div>
