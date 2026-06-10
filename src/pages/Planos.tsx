@@ -165,7 +165,7 @@ export default function Planos() {
           <div className="inline-flex items-center gap-2 mb-4">
             <Crown className="w-6 h-6 text-primary" />
             <Badge variant="outline" className="text-primary border-primary">
-              ProCont
+              KlarCont
             </Badge>
           </div>
           <h1 className="text-4xl md:text-5xl font-display font-bold mb-4">
@@ -237,7 +237,7 @@ export default function Planos() {
             <CardHeader className="relative text-center pb-2">
               <div className="flex items-center justify-center gap-2 mb-2">
                 <Zap className="w-5 h-5 text-primary" />
-                <CardTitle className="text-2xl font-display">ProCont</CardTitle>
+                <CardTitle className="text-2xl font-display">KlarCont</CardTitle>
               </div>
               <div className="mt-4">
                 <span className="text-5xl font-bold">

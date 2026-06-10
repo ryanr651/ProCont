@@ -569,7 +569,7 @@ export function AIPresentationDialog({
     
     setIsExporting(true);
     try {
-      const brandName = branding?.nome_empresa || 'ProCont';
+      const brandName = branding?.nome_empresa || 'KlarCont';
       const currentDate = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
       
       const container = document.createElement('div');
@@ -781,7 +781,7 @@ export function AIPresentationDialog({
     setIsExporting(true);
     try {
       const pptx = new PptxGenJS();
-      const brandName = branding?.nome_empresa || 'ProCont';
+      const brandName = branding?.nome_empresa || 'KlarCont';
       pptx.author = brandName;
       pptx.title = `Análise Financeira - ${empresaNome}`;
       pptx.subject = 'Apresentação Executiva';

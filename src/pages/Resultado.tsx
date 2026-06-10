@@ -1496,7 +1496,7 @@ const Resultado = () => {
       const giroAtivo    = balancoData.ativoTotal > 0 ? dreData.receitaLiquida / balancoData.ativoTotal : 0;
       const plPctAtivo   = balancoData.ativoTotal > 0 ? (balancoData.patrimonioLiquido / balancoData.ativoTotal) * 100 : 0;
 
-      const brandName  = branding?.nome_empresa || 'ProCont';
+      const brandName  = branding?.nome_empresa || 'KlarCont';
       const clientName = selectedEmpresa?.nome || 'Empresa';
       const clientCnpj = selectedEmpresa?.cnpj || '';
       const clientCnae = selectedEmpresa?.cnae || '';
