@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { IndicatorCard, IndicatorSection, type IndicatorConfig } from "@/components/IndicatorCard";
+import { FaturamentoAnalysis, type FaturamentoRow } from "@/components/FaturamentoAnalysis";
+import { Sparkles, Presentation, MessageSquare } from "lucide-react";
 import {
   ArrowLeft,
   TrendingUp,
@@ -140,6 +142,32 @@ const Showcase = () => {
     { title: "Saldo de Tesouraria", value: saldoTesouraria, format: "currency", icon: Wallet, variant: "success", formula: "Ativo Circulante Financeiro − Passivo Circulante Financeiro", formulaDescription: "Diferença entre disponibilidades e empréstimos de curto prazo.", accounts: [{ descricao: "Disponibilidades", valor: 450000, motivo: "Caixa e bancos" }], trend: "up" },
   ];
 
+  // ===== Faturamento Mensal (12 meses) =====
+  const faturamentoData: FaturamentoRow[] = [
+    { mes: "Janeiro",   ano: 2024, saidas: 180000, servicos: 60000, outros: 10000, total: 250000 },
+    { mes: "Fevereiro", ano: 2024, saidas: 170000, servicos: 55000, outros:  8000, total: 233000 },
+    { mes: "Março",     ano: 2024, saidas: 210000, servicos: 70000, outros: 12000, total: 292000 },
+    { mes: "Abril",     ano: 2024, saidas: 195000, servicos: 65000, outros:  9000, total: 269000 },
+    { mes: "Maio",      ano: 2024, saidas: 230000, servicos: 80000, outros: 15000, total: 325000 },
+    { mes: "Junho",     ano: 2024, saidas: 220000, servicos: 75000, outros: 11000, total: 306000 },
+    { mes: "Julho",     ano: 2024, saidas: 240000, servicos: 82000, outros: 13000, total: 335000 },
+    { mes: "Agosto",    ano: 2024, saidas: 235000, servicos: 78000, outros: 12000, total: 325000 },
+    { mes: "Setembro",  ano: 2024, saidas: 260000, servicos: 90000, outros: 14000, total: 364000 },
+    { mes: "Outubro",   ano: 2024, saidas: 275000, servicos: 95000, outros: 16000, total: 386000 },
+    { mes: "Novembro",  ano: 2024, saidas: 290000, servicos:100000, outros: 18000, total: 408000 },
+    { mes: "Dezembro",  ano: 2024, saidas: 310000, servicos:110000, outros: 20000, total: 440000 },
+  ];
+
+  // ===== Análise Vertical/Horizontal (exemplo) =====
+  const comparativoRows = [
+    { conta: "Ativo Circulante",    atual: 1800000, anterior: 1500000 },
+    { conta: "Ativo Não Circulante",atual: 1400000, anterior: 1300000 },
+    { conta: "Ativo Total",         atual: 3200000, anterior: 2800000, bold: true },
+    { conta: "Passivo Circulante",  atual:  900000, anterior:  820000 },
+    { conta: "Passivo Não Circulante", atual: 600000, anterior: 550000 },
+    { conta: "Patrimônio Líquido",  atual: 1700000, anterior: 1430000, bold: true },
+  ];
+
   return (
     <div className="min-h-screen bg-background relative">
       <div className="hero-glow w-full h-[400px] top-0 left-0" />
@@ -232,6 +260,124 @@ const Showcase = () => {
             <IndicatorCard key={i} config={config} />
           ))}
         </IndicatorSection>
+
+        {/* Análise Comparativa (AV / AH) */}
+        <section className="mb-12">
+          <h2 className="font-display text-2xl font-bold flex items-center gap-3 mb-6">
+            <BarChart3 className="w-6 h-6 text-primary" />
+            Análise Comparativa (AV / AH)
+          </h2>
+          <div className="glass-card p-6 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border/50 text-left text-muted-foreground">
+                  <th className="py-2 pr-4">Conta</th>
+                  <th className="py-2 pr-4 text-right">2024 (Atual)</th>
+                  <th className="py-2 pr-4 text-right">AV %</th>
+                  <th className="py-2 pr-4 text-right">2023 (Anterior)</th>
+                  <th className="py-2 pr-4 text-right">AV %</th>
+                  <th className="py-2 pr-4 text-right">AH %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {comparativoRows.map((r, i) => {
+                  const baseAtual = comparativoRows[2].atual;
+                  const baseAnt = comparativoRows[2].anterior;
+                  const avA = (r.atual / baseAtual) * 100;
+                  const avP = (r.anterior / baseAnt) * 100;
+                  const ah = ((r.atual - r.anterior) / r.anterior) * 100;
+                  const trendColor = ah > 5 ? "text-emerald-500" : ah < -5 ? "text-red-500" : "text-foreground";
+                  return (
+                    <tr key={i} className={`border-b border-border/30 ${r.bold ? "font-semibold" : ""}`}>
+                      <td className="py-2 pr-4">{r.conta}</td>
+                      <td className="py-2 pr-4 text-right">{r.atual.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
+                      <td className="py-2 pr-4 text-right text-muted-foreground">{avA.toFixed(1)}%</td>
+                      <td className="py-2 pr-4 text-right">{r.anterior.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
+                      <td className="py-2 pr-4 text-right text-muted-foreground">{avP.toFixed(1)}%</td>
+                      <td className={`py-2 pr-4 text-right font-medium ${trendColor}`}>
+                        {ah > 0 ? "+" : ""}{ah.toFixed(1)}%
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <p className="text-xs text-muted-foreground mt-4">
+              Análise Vertical (AV%) compara cada conta com o total. Análise Horizontal (AH%) compara o exercício atual
+              com o anterior. Variações acima de ±5% são destacadas.
+            </p>
+          </div>
+        </section>
+
+        {/* Faturamento Mensal */}
+        <FaturamentoAnalysis data={faturamentoData} />
+
+        {/* AI Section - Analysis & Presentation */}
+        <section className="mb-12">
+          <div className="grid md:grid-cols-2 gap-6">
+            <div className="glass-card p-8 text-center bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
+              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                <Sparkles className="w-8 h-8 text-primary" />
+              </div>
+              <h3 className="font-display text-xl font-bold mb-3">🤖 Análise Inteligente</h3>
+              <p className="text-muted-foreground mb-6 text-sm">
+                Gere uma análise detalhada com insights estratégicos, pontos de atenção e recomendações personalizadas
+                para o seu cliente.
+              </p>
+              <Link to="/upload">
+                <Button variant="hero" size="lg">
+                  <Sparkles className="w-5 h-5 mr-2" />
+                  Experimentar
+                </Button>
+              </Link>
+            </div>
+
+            <div className="glass-card p-8 text-center bg-gradient-to-br from-secondary/5 to-secondary/10 border-secondary/20">
+              <div className="w-16 h-16 rounded-full bg-secondary/10 flex items-center justify-center mx-auto mb-4">
+                <Presentation className="w-8 h-8 text-secondary" />
+              </div>
+              <h3 className="font-display text-xl font-bold mb-3">📊 Apresentação Executiva</h3>
+              <p className="text-muted-foreground mb-6 text-sm">
+                Crie slides profissionais com situação financeira da empresa, indicadores chave e recomendações
+                estratégicas em poucos cliques.
+              </p>
+              <Link to="/upload">
+                <Button variant="neon" size="lg">
+                  <Presentation className="w-5 h-5 mr-2" />
+                  Experimentar
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* Simulador de Cenários */}
+        <section className="mb-12">
+          <h2 className="font-display text-2xl font-bold mb-6 flex items-center gap-3">
+            <MessageSquare className="w-6 h-6 text-primary" />
+            🤖 Simulador de Cenários
+          </h2>
+          <div className="glass-card p-6 space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Converse com a IA para simular cenários (ex: "e se a receita crescer 10%?", "qual o impacto de reduzir o
+              CMV em 5%?") e receba projeções imediatas baseadas nos dados do seu cliente.
+            </p>
+            <div className="flex items-start gap-3 p-4 rounded-lg bg-muted/30 border border-border/50">
+              <span className="text-xl">🧑</span>
+              <p className="text-foreground text-sm">
+                Se eu aumentar o preço de venda em 8% mantendo o volume, qual seria o novo lucro líquido?
+              </p>
+            </div>
+            <div className="flex items-start gap-3 p-4 rounded-lg bg-primary/10 border border-primary/20">
+              <span className="text-xl">🤖</span>
+              <p className="text-foreground text-sm">
+                Com aumento de 8% no preço, mantendo volume e custos, a Receita Bruta passaria de R$ 3,20M para R$ 3,46M.
+                O Lucro Líquido projetado subiria de R$ 420 mil para aproximadamente R$ 600 mil (+42,8%), elevando a
+                Margem Líquida de 16,8% para ~21,7%.
+              </p>
+            </div>
+          </div>
+        </section>
 
         {/* Insights */}
         <section className="mb-12">
