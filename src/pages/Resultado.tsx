@@ -1742,8 +1742,8 @@ const Resultado = () => {
       <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Segoe UI', Arial, sans-serif; }
-        .page { width: 794px; padding: 48px 56px; background: white; page-break-after: always; }
-        .page:last-child { page-break-after: auto; }
+        .page { width: 794px; padding: 48px 56px; background: white; }
+        .page + .page { page-break-before: always; }
         table { border-collapse: collapse; width: 100%; }
         p { margin-bottom: 12px; font-size: 13px; color: #374151; line-height: 1.75; text-align: justify; }
       </style>
@@ -2000,7 +2000,7 @@ const Resultado = () => {
         image: { type: 'jpeg' as const, quality: 0.97 },
         html2canvas: { scale: 2, useCORS: true, logging: false, width: 794, windowWidth: 794 },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
-        pagebreak: { mode: ['css', 'legacy'] },
+        pagebreak: { mode: ['css'], avoid: ['.no-break'] },
       };
 
       await html2pdf().set(opt).from(container).save();

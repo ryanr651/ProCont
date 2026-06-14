@@ -573,7 +573,7 @@ export function AIPresentationDialog({
       const currentDate = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
       
       const container = document.createElement('div');
-      container.style.cssText = 'background: white; width: 1000px;';
+      container.style.cssText = 'background: white; width: 794px; max-width: 794px; overflow: hidden;';
       
       container.innerHTML = `
         <style>
@@ -621,7 +621,7 @@ export function AIPresentationDialog({
           .cover-brand-bar { position: absolute; bottom: 0; left: 0; right: 0; height: 6px; background: linear-gradient(90deg, #8b5cf6, #06b6d4, #10b981); z-index: 2; }
 
           .pdf-body { padding: 50px 60px; }
-          .section { margin-bottom: 50px; page-break-inside: avoid; }
+          .section { margin-bottom: 50px; page-break-inside: avoid; max-width: 794px; overflow: hidden; }
           .section-header { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; padding-bottom: 14px; border-bottom: 2px solid #e5e7eb; }
           .section-icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 22px; color: white; flex-shrink: 0; }
           .section-icon-positive { background: linear-gradient(135deg, #059669, #10b981); }
@@ -717,9 +717,9 @@ export function AIPresentationDialog({
         margin: 0,
         filename: `apresentacao-${empresaNome.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.pdf`,
         image: { type: 'jpeg' as const, quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
+        html2canvas: { scale: 2, useCORS: true, logging: false, width: 794, windowWidth: 794 },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
-        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+        pagebreak: { mode: ['css'], avoid: ['.section', '.no-break'] }
       };
 
       await html2pdf().set(opt).from(container).save();
