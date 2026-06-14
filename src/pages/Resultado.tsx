@@ -1748,7 +1748,7 @@ const Resultado = () => {
         p { margin-bottom: 12px; font-size: 13px; color: #374151; line-height: 1.75; text-align: justify; }
       </style>
 
-      <div class="page" style="background:linear-gradient(160deg,#1E2A4A 0%,#2D4A8A 55%,#3D5FA8 100%);display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;position:relative;overflow:hidden;min-height:1122px;">
+      <div class="page" style="padding:0;background:linear-gradient(160deg,#1E2A4A 0%,#2D4A8A 55%,#3D5FA8 100%);display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;position:relative;overflow:hidden;height:1122px;min-height:1122px;max-height:1122px;">
         <div style="position:absolute;top:-80px;right:-80px;width:400px;height:400px;background:radial-gradient(circle,rgba(74,127,193,0.3) 0%,transparent 70%);border-radius:50%;"></div>
         <div style="position:absolute;bottom:-60px;left:-60px;width:300px;height:300px;background:radial-gradient(circle,rgba(99,102,241,0.2) 0%,transparent 70%);border-radius:50%;"></div>
         <div style="position:absolute;top:0;left:0;right:0;height:6px;background:linear-gradient(90deg,#16A34A,#4A7FC1,#7C3AED);"></div>
