@@ -1742,8 +1742,8 @@ const Resultado = () => {
       <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Segoe UI', Arial, sans-serif; }
-        .page { width: 794px; padding: 48px 56px; background: white; page-break-after: always; }
-        .page:last-child { page-break-after: auto; }
+        .page { width: 794px; padding: 48px 56px; background: white; }
+        .page + .page { page-break-before: always; }
         table { border-collapse: collapse; width: 100%; }
         p { margin-bottom: 12px; font-size: 13px; color: #374151; line-height: 1.75; text-align: justify; }
       </style>
