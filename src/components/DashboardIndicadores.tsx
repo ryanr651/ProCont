@@ -555,13 +555,13 @@ export function DashboardIndicadores({
 
     return [
       { name: "Rec. Bruta",   valor: rb,   base: 0,    cor: "#4A7FC1", tipo: "positivo" },
-      { name: "Deduções",     valor: ded,  base: rl,   cor: "#EF4444", tipo: "negativo" },
+      { name: "Deduções",     valor: ded,  base: 0,    cor: "#EF4444", tipo: "negativo" },
       { name: "Rec. Líquida", valor: rl,   base: 0,    cor: "#6366F1", tipo: "subtotal" },
-      { name: "CMV",          valor: cmv,  base: lb,   cor: "#EF4444", tipo: "negativo" },
+      { name: "CMV",          valor: cmv,  base: 0,    cor: "#EF4444", tipo: "negativo" },
       { name: "Lucro Bruto",  valor: lb,   base: 0,    cor: "#6366F1", tipo: "subtotal" },
-      { name: "Desp. Op.",    valor: do_,  base: lo,   cor: "#F59E0B", tipo: "negativo" },
+      { name: "Desp. Op.",    valor: do_,  base: 0,    cor: "#F59E0B", tipo: "negativo" },
       { name: "L. Operac.",   valor: lo,   base: 0,    cor: "#6366F1", tipo: "subtotal" },
-      { name: "Res. Fin.",    valor: Math.abs(rf), base: rf < 0 ? lo + rf : lo, cor: rf < 0 ? "#EF4444" : "#10B981", tipo: rf < 0 ? "negativo" : "positivo" },
+      { name: "Res. Fin.",    valor: Math.abs(rf), base: 0, cor: rf < 0 ? "#EF4444" : "#10B981", tipo: rf < 0 ? "negativo" : "positivo" },
       { name: "L. Líquido",   valor: ll,   base: 0,    cor: "#10B981", tipo: "resultado" },
     ];
   }, [dreData]);
