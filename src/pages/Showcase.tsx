@@ -142,6 +142,32 @@ const Showcase = () => {
     { title: "Saldo de Tesouraria", value: saldoTesouraria, format: "currency", icon: Wallet, variant: "success", formula: "Ativo Circulante Financeiro − Passivo Circulante Financeiro", formulaDescription: "Diferença entre disponibilidades e empréstimos de curto prazo.", accounts: [{ descricao: "Disponibilidades", valor: 450000, motivo: "Caixa e bancos" }], trend: "up" },
   ];
 
+  // ===== Faturamento Mensal (12 meses) =====
+  const faturamentoData: FaturamentoRow[] = [
+    { mes: "Janeiro",   ano: 2024, saidas: 180000, servicos: 60000, outros: 10000, total: 250000 },
+    { mes: "Fevereiro", ano: 2024, saidas: 170000, servicos: 55000, outros:  8000, total: 233000 },
+    { mes: "Março",     ano: 2024, saidas: 210000, servicos: 70000, outros: 12000, total: 292000 },
+    { mes: "Abril",     ano: 2024, saidas: 195000, servicos: 65000, outros:  9000, total: 269000 },
+    { mes: "Maio",      ano: 2024, saidas: 230000, servicos: 80000, outros: 15000, total: 325000 },
+    { mes: "Junho",     ano: 2024, saidas: 220000, servicos: 75000, outros: 11000, total: 306000 },
+    { mes: "Julho",     ano: 2024, saidas: 240000, servicos: 82000, outros: 13000, total: 335000 },
+    { mes: "Agosto",    ano: 2024, saidas: 235000, servicos: 78000, outros: 12000, total: 325000 },
+    { mes: "Setembro",  ano: 2024, saidas: 260000, servicos: 90000, outros: 14000, total: 364000 },
+    { mes: "Outubro",   ano: 2024, saidas: 275000, servicos: 95000, outros: 16000, total: 386000 },
+    { mes: "Novembro",  ano: 2024, saidas: 290000, servicos:100000, outros: 18000, total: 408000 },
+    { mes: "Dezembro",  ano: 2024, saidas: 310000, servicos:110000, outros: 20000, total: 440000 },
+  ];
+
+  // ===== Análise Vertical/Horizontal (exemplo) =====
+  const comparativoRows = [
+    { conta: "Ativo Circulante",    atual: 1800000, anterior: 1500000 },
+    { conta: "Ativo Não Circulante",atual: 1400000, anterior: 1300000 },
+    { conta: "Ativo Total",         atual: 3200000, anterior: 2800000, bold: true },
+    { conta: "Passivo Circulante",  atual:  900000, anterior:  820000 },
+    { conta: "Passivo Não Circulante", atual: 600000, anterior: 550000 },
+    { conta: "Patrimônio Líquido",  atual: 1700000, anterior: 1430000, bold: true },
+  ];
+
   return (
     <div className="min-h-screen bg-background relative">
       <div className="hero-glow w-full h-[400px] top-0 left-0" />
