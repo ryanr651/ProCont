@@ -1615,11 +1615,8 @@ const Resultado = () => {
           </div>`;
       };
 
-      const rodape = (pagina: number) => `
-        <div style="margin-top:30px;padding-top:12px;border-top:1px solid #E5E7EB;display:flex;justify-content:space-between;font-size:11px;color:#9CA3AF;">
-          <span>${paginaRodape}</span>
-          <span>Página ${pagina} | Análise gerada pelo ${brandName}</span>
-        </div>`;
+      // Rodapé removido a pedido do usuário (sem empresa/CNPJ/número de página)
+      const rodape = (_pagina: number) => ``;
 
       const secTitle = (num: string, titulo: string) => `
         <div style="margin-bottom:20px;padding-bottom:10px;border-bottom:2px solid #4A7FC1;">
@@ -1981,7 +1978,7 @@ const Resultado = () => {
             </tbody>
           </table>
         </div>
-        <div style="background:#F8FAFC;border:1px solid #E5E7EB;border-radius:8px;padding:14px;margin-top:20px;">
+        <div class="no-break" style="background:#F8FAFC;border:1px solid #E5E7EB;border-radius:8px;padding:14px;margin-top:20px;page-break-inside:avoid;break-inside:avoid;">
           <p style="margin:0;font-size:11.5px;color:#6B7280;text-align:center;font-style:italic;">
             Este relatório foi gerado automaticamente pelo sistema ${brandName} com base nos demonstrativos contábeis importados.
             As análises e recomendações têm caráter informativo e devem ser validadas pelo contador responsável.
