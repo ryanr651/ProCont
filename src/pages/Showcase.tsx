@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { IndicatorCard, IndicatorSection, type IndicatorConfig } from "@/components/IndicatorCard";
+import { FaturamentoAnalysis, type FaturamentoRow } from "@/components/FaturamentoAnalysis";
+import { Sparkles, Presentation, MessageSquare, BarChart3 as BarChartIcon } from "lucide-react";
 import {
   ArrowLeft,
   TrendingUp,
