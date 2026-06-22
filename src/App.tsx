@@ -84,7 +84,7 @@ const App = () => (
                 <Route 
                   path="/gerenciar-usuarios" 
                   element={
-                    <ProtectedRoute>
+                    <ProtectedRoute masterOnly={true}>
                       <GerenciarUsuarios />
                     </ProtectedRoute>
                   } 
