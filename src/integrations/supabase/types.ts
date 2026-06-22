@@ -153,6 +153,73 @@ export type Database = {
         }
         Relationships: []
       }
+      client_link_users: {
+        Row: {
+          created_at: string
+          id: string
+          link_id: string
+          password_hash: string
+          username: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          link_id: string
+          password_hash: string
+          username: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          link_id?: string
+          password_hash?: string
+          username?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_link_users_link_id_fkey"
+            columns: ["link_id"]
+            isOneToOne: false
+            referencedRelation: "client_links"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_links: {
+        Row: {
+          created_at: string
+          created_by: string
+          empresa_id: string
+          id: string
+          is_active: boolean
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          empresa_id: string
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          empresa_id?: string
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_links_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: true
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dre_entries: {
         Row: {
           created_at: string
