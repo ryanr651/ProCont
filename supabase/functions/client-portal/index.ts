@@ -201,25 +201,21 @@ Deno.serve(async (req) => {
     }
     const { data: link } = await supabase
       .from("client_links")
-      .select("id, is_active")
+      .select("id, is_active, snapshot, updated_at")
       .eq("empresa_id", empresa_id)
       .maybeSingle();
     if (!link || !link.is_active) return json({ error: "Link inativo" }, 401);
 
-    const [empresaRes, dreRes, balancoRes, balanceteRes, faturamentoRes] = await Promise.all([
-      supabase.from("empresas").select("id, nome, cnpj, cnae, regime_tributario").eq("id", empresa_id).maybeSingle(),
-      supabase.from("dre_entries").select("*").eq("empresa_id", empresa_id),
-      supabase.from("balanco_entries").select("*").eq("empresa_id", empresa_id),
-      supabase.from("balancete_entries").select("*").eq("empresa_id", empresa_id),
-      supabase.from("faturamento_entries").select("*").eq("empresa_id", empresa_id),
-    ]);
+    const { data: empresa } = await supabase
+      .from("empresas")
+      .select("id, nome, cnpj, cnae, regime_tributario")
+      .eq("id", empresa_id)
+      .maybeSingle();
 
     return json({
-      empresa: empresaRes.data,
-      dre: dreRes.data || [],
-      balanco: balancoRes.data || [],
-      balancete: balanceteRes.data || [],
-      faturamento: faturamentoRes.data || [],
+      empresa,
+      snapshot: link.snapshot ?? null,
+      snapshot_updated_at: link.updated_at,
     });
   }
 

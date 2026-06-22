@@ -252,6 +252,49 @@ const Resultado = () => {
     loadData();
   }, [user, navigate, empresaIdParam]);
 
+  // Salva snapshot dos dados já calculados no client_link da empresa (se existir),
+  // para que a página /visualizar exiba exatamente os mesmos números/gráficos.
+  useEffect(() => {
+    if (!empresaIdParam || !dreData || !balancoData) return;
+    const snapshot = {
+      version: 1,
+      saved_at: new Date().toISOString(),
+      empresa: selectedEmpresa
+        ? {
+            nome: selectedEmpresa.nome,
+            cnpj: selectedEmpresa.cnpj,
+            cnae: selectedEmpresa.cnae,
+            regime_tributario: selectedEmpresa.regime_tributario,
+          }
+        : null,
+      dreData,
+      balancoData,
+      dreClassifiedEntries,
+      rawBalancoEntries,
+      balanceteEntries,
+      balancetePeriodo,
+      previousPeriods,
+      faturamentoData,
+    };
+    (async () => {
+      await supabase
+        .from("client_links")
+        .update({ snapshot: snapshot as any, updated_at: new Date().toISOString() })
+        .eq("empresa_id", empresaIdParam);
+    })();
+  }, [
+    empresaIdParam,
+    dreData,
+    balancoData,
+    dreClassifiedEntries,
+    rawBalancoEntries,
+    balanceteEntries,
+    balancetePeriodo,
+    previousPeriods,
+    faturamentoData,
+    selectedEmpresa,
+  ]);
+
   const loadData = async () => {
     if (!user) return;
 

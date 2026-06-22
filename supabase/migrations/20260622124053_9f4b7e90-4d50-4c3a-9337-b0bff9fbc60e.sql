@@ -1,0 +1,1 @@
+ALTER TABLE public.client_links ADD COLUMN IF NOT EXISTS snapshot jsonb;

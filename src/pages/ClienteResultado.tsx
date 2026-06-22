@@ -1,30 +1,61 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/button";
+import { DashboardIndicadores } from "@/components/DashboardIndicadores";
+import { DashboardBalancete, type BalanceteClassifiedEntry } from "@/components/DashboardBalancete";
+import { BalanceteComparativo } from "@/components/BalanceteComparativo";
 import { FaturamentoAnalysis, type FaturamentoRow } from "@/components/FaturamentoAnalysis";
-import { LogOut, Loader2, Eye, TrendingUp, TrendingDown, Wallet, Building, Receipt } from "lucide-react";
+import { LogOut, Loader2, Eye, BarChart3, CalendarDays } from "lucide-react";
 
 const TOKEN_KEY = (id: string) => `klarcont_client_token_${id}`;
 
-interface DREEntry { descricao: string; valor: number; valor_anterior: number | null; grupo?: string | null; }
-interface BalancoEntry { conta: string; tipo: string; valor: number; valor_anterior: number | null; hierarchy?: string; natureza?: string | null; }
-interface BalanceteEntry { conta: string; grupo: string; saldo_anterior: number; debitos: number; creditos: number; saldo_atual: number; natureza?: string | null; }
+const getDREGroupColor = (grupo: string): string => {
+  const colors: Record<string, string> = {
+    receita_bruta: "bg-green-500/20 text-green-400 border-green-500/30",
+    receita_liquida: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+    cmv: "bg-red-500/20 text-red-400 border-red-500/30",
+    lucro_bruto: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+    despesas_operacionais: "bg-orange-500/20 text-orange-400 border-orange-500/30",
+    lucro_operacional: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+    resultado_financeiro: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+    contribuicao_social: "bg-indigo-500/20 text-indigo-400 border-indigo-500/30",
+    nao_operacional: "bg-pink-500/20 text-pink-400 border-pink-500/30",
+    lucro_liquido: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+    contas_resultado: "bg-teal-500/20 text-teal-400 border-teal-500/30",
+    provisoes: "bg-rose-500/20 text-rose-400 border-rose-500/30",
+    ir: "bg-amber-500/20 text-amber-400 border-amber-500/30",
+  };
+  return colors[grupo] || "bg-muted text-muted-foreground border-border";
+};
 
-const brl = (n: number) =>
-  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(n || 0);
+const getDREGroupLabel = (grupo: string): string => {
+  const labels: Record<string, string> = {
+    receita_bruta: "Receita Bruta",
+    receita_liquida: "Receita Líquida",
+    cmv: "CMV",
+    lucro_bruto: "Lucro Bruto",
+    despesas_operacionais: "Despesas Operacionais",
+    lucro_operacional: "Lucro Operacional",
+    resultado_financeiro: "Resultado Financeiro",
+    contribuicao_social: "Contribuição Social",
+    nao_operacional: "Não Operacional",
+    lucro_liquido: "Lucro Líquido",
+    contas_resultado: "Contas Resultado",
+    provisoes: "Provisões",
+    ir: "Imposto de Renda",
+  };
+  return labels[grupo] || grupo;
+};
 
 export default function ClienteResultado() {
   const { empresaId } = useParams<{ empresaId: string }>();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [empresa, setEmpresa] = useState<{ nome: string; cnpj?: string } | null>(null);
-  const [dre, setDre] = useState<DREEntry[]>([]);
-  const [balanco, setBalanco] = useState<BalancoEntry[]>([]);
-  const [balancete, setBalancete] = useState<BalanceteEntry[]>([]);
-  const [faturamento, setFaturamento] = useState<FaturamentoRow[]>([]);
+  const [empresa, setEmpresa] = useState<any>(null);
+  const [snapshot, setSnapshot] = useState<any>(null);
 
   useEffect(() => {
     if (!empresaId) return;
@@ -56,16 +87,7 @@ export default function ClienteResultado() {
         return;
       }
       setEmpresa(data.empresa);
-      setDre(data.dre);
-      setBalanco(data.balanco);
-      setBalancete(data.balancete);
-      setFaturamento(
-        (data.faturamento || []).map((f: any) => ({
-          mes: f.mes, ano: f.ano,
-          saidas: Number(f.saidas) || 0, servicos: Number(f.servicos) || 0,
-          outros: Number(f.outros) || 0, total: Number(f.total) || 0,
-        })),
-      );
+      setSnapshot(data.snapshot);
       setLoading(false);
     })().catch((e) => {
       setError(e.message || "Erro ao carregar dados");
@@ -78,20 +100,6 @@ export default function ClienteResultado() {
     navigate(`/visualizar/${empresaId}`, { replace: true });
   };
 
-  const kpis = useMemo(() => {
-    const find = (re: RegExp) => dre.find((d) => re.test(d.descricao || ""))?.valor || 0;
-    const receitaLiquida = find(/receita\s+l[ií]quida/i) || find(/receita\s+operacional\s+l[ií]quida/i);
-    const receitaBruta = find(/receita\s+bruta/i) || find(/receita\s+operacional\s+bruta/i);
-    const lucroLiquido = find(/lucro\s+l[ií]quido/i) || find(/resultado\s+l[ií]quido/i);
-    const ativoTotal = balanco
-      .filter((b) => /ativo\s+total/i.test(b.conta))
-      .reduce((s, b) => s + (b.valor || 0), 0);
-    const passivoTotal = balanco
-      .filter((b) => /passivo\s+total/i.test(b.conta))
-      .reduce((s, b) => s + (b.valor || 0), 0);
-    return { receitaLiquida, receitaBruta, lucroLiquido, ativoTotal, passivoTotal };
-  }, [dre, balanco]);
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -103,9 +111,26 @@ export default function ClienteResultado() {
     return <div className="min-h-screen flex items-center justify-center text-destructive">{error}</div>;
   }
 
+  if (!snapshot || !snapshot.dreData || !snapshot.balancoData) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-6">
+        <div className="max-w-md text-center space-y-2">
+          <h1 className="font-display text-xl font-bold">Análise ainda não disponível</h1>
+          <p className="text-sm text-muted-foreground">
+            O seu contador ainda não publicou a análise desta empresa. Tente novamente em alguns instantes.
+          </p>
+          <Button variant="outline" onClick={handleLogout} className="mt-4">Sair</Button>
+        </div>
+      </div>
+    );
+  }
+
+  const balanceteEntries: BalanceteClassifiedEntry[] = snapshot.balanceteEntries || [];
+  const previousPeriods: any[] = snapshot.previousPeriods || [];
+  const faturamentoData: FaturamentoRow[] = snapshot.faturamentoData || [];
+
   return (
     <div className="min-h-screen bg-background">
-      {/* Header mínimo */}
       <header className="border-b bg-card sticky top-0 z-50">
         <div className="container mx-auto px-4 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4 min-w-0">
@@ -126,84 +151,70 @@ export default function ClienteResultado() {
 
       <main className="container mx-auto px-4 py-8 space-y-10">
         <div>
-          <h1 className="font-display text-3xl font-bold mb-2">{empresa?.nome}</h1>
-          <p className="text-muted-foreground">Visualização do Cliente — Somente Leitura</p>
+          <h1 className="font-display text-3xl font-bold mb-2">
+            Resultado da <span className="gradient-text">Análise Financeira</span>
+          </h1>
+          <p className="text-muted-foreground">
+            {empresa?.nome} — Visualização do Cliente (Somente Leitura)
+          </p>
         </div>
 
-        {/* KPIs */}
-        <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <KpiCard icon={<Receipt className="w-5 h-5" />} label="Receita Bruta" value={brl(kpis.receitaBruta)} />
-          <KpiCard icon={<TrendingUp className="w-5 h-5" />} label="Receita Líquida" value={brl(kpis.receitaLiquida)} />
-          <KpiCard
-            icon={kpis.lucroLiquido >= 0 ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
-            label={kpis.lucroLiquido >= 0 ? "Lucro Líquido" : "Prejuízo"}
-            value={brl(Math.abs(kpis.lucroLiquido))}
-            accent={kpis.lucroLiquido >= 0 ? "text-emerald-600" : "text-destructive"}
-          />
-          <KpiCard icon={<Building className="w-5 h-5" />} label="Ativo Total" value={brl(kpis.ativoTotal)} />
-        </section>
-
-        {/* DRE */}
-        {dre.length > 0 && (
-          <section>
-            <h2 className="font-display text-2xl font-bold mb-4 flex items-center gap-2">
-              <Wallet className="w-6 h-6 text-primary" />
-              DRE — Demonstração do Resultado
-            </h2>
-            <DataTable
-              headers={["Descrição", "Grupo", "Valor", "Anterior"]}
-              rows={dre.map((d) => [
-                d.descricao,
-                d.grupo || "—",
-                brl(d.valor),
-                d.valor_anterior != null ? brl(d.valor_anterior) : "—",
-              ])}
-            />
-          </section>
-        )}
-
-        {/* Balanço */}
-        {balanco.length > 0 && (
-          <section>
-            <h2 className="font-display text-2xl font-bold mb-4 flex items-center gap-2">
-              <Building className="w-6 h-6 text-primary" />
-              Balanço Patrimonial
-            </h2>
-            <DataTable
-              headers={["Conta", "Tipo", "Valor", "Anterior"]}
-              rows={balanco.map((b) => [
-                b.conta,
-                b.tipo,
-                brl(b.valor),
-                b.valor_anterior != null ? brl(b.valor_anterior) : "—",
-              ])}
-            />
-          </section>
-        )}
+        {/* Dashboard de indicadores */}
+        <DashboardIndicadores
+          dreData={snapshot.dreData}
+          balancoData={snapshot.balancoData}
+          dreClassifiedEntries={snapshot.dreClassifiedEntries || []}
+          rawBalancoEntries={snapshot.rawBalancoEntries || []}
+          getDREGroupColor={getDREGroupColor}
+          getDREGroupLabel={getDREGroupLabel}
+          showDreDebug={false}
+          setShowDreDebug={() => {}}
+        />
 
         {/* Balancete */}
-        {balancete.length > 0 && (
-          <section>
-            <h2 className="font-display text-2xl font-bold mb-4">Balancete</h2>
-            <DataTable
-              headers={["Conta", "Grupo", "Saldo Anterior", "Débitos", "Créditos", "Saldo Atual"]}
-              rows={balancete.map((b) => [
-                b.conta,
-                b.grupo,
-                brl(b.saldo_anterior),
-                brl(b.debitos),
-                brl(b.creditos),
-                brl(b.saldo_atual),
-              ])}
+        {balanceteEntries.length > 0 && (
+          <>
+            <DashboardBalancete
+              entries={balanceteEntries}
+              previousPeriods={previousPeriods.map((p) => ({ ano: p.ano, entries: p.entries }))}
+              dreReceitaBruta={snapshot.dreData?.receitaBruta}
+              dreCMV={snapshot.dreData?.cmv}
             />
-          </section>
+
+            {previousPeriods.length > 0 && (
+              <section>
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="font-display text-2xl font-bold flex items-center gap-3">
+                    <BarChart3 className="w-6 h-6 text-primary" />
+                    Análise Comparativa (AV / AH)
+                  </h2>
+                </div>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {previousPeriods.map((p, i) => (
+                    <span
+                      key={i}
+                      className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-sm text-primary font-medium"
+                    >
+                      <CalendarDays className="w-3 h-3" />
+                      {p.ano} ({p.entries.length} contas)
+                    </span>
+                  ))}
+                </div>
+                <BalanceteComparativo
+                  currentEntries={balanceteEntries}
+                  currentPeriodo={snapshot.balancetePeriodo || ""}
+                  previousPeriods={previousPeriods}
+                />
+              </section>
+            )}
+          </>
         )}
 
         {/* Faturamento */}
-        {faturamento.length > 0 && (
+        {faturamentoData.length > 0 && (
           <section>
             <h2 className="font-display text-2xl font-bold mb-4">Faturamento Mensal</h2>
-            <FaturamentoAnalysis data={faturamento} />
+            <FaturamentoAnalysis data={faturamentoData} />
           </section>
         )}
 
@@ -211,42 +222,6 @@ export default function ClienteResultado() {
           Visualização gerada por KlarCont — somente leitura
         </footer>
       </main>
-    </div>
-  );
-}
-
-function KpiCard({ icon, label, value, accent }: { icon: React.ReactNode; label: string; value: string; accent?: string }) {
-  return (
-    <div className="glass-card p-5 rounded-xl border bg-card">
-      <div className="flex items-center gap-2 text-muted-foreground text-sm mb-2">
-        {icon}<span>{label}</span>
-      </div>
-      <div className={`font-display text-2xl font-bold ${accent ?? ""}`}>{value}</div>
-    </div>
-  );
-}
-
-function DataTable({ headers, rows }: { headers: string[]; rows: (string | number)[][] }) {
-  return (
-    <div className="overflow-x-auto rounded-xl border bg-card">
-      <table className="w-full text-sm">
-        <thead className="bg-muted/50">
-          <tr>
-            {headers.map((h) => (
-              <th key={h} className="text-left px-4 py-3 font-semibold">{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr key={i} className="border-t hover:bg-muted/30">
-              {r.map((c, j) => (
-                <td key={j} className={`px-4 py-2 ${j >= 2 ? "text-right tabular-nums" : ""}`}>{c}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }
