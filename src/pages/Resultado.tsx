@@ -261,7 +261,6 @@ const Resultado = () => {
       saved_at: new Date().toISOString(),
       empresa: selectedEmpresa
         ? {
-            id: selectedEmpresa.id,
             nome: selectedEmpresa.nome,
             cnpj: selectedEmpresa.cnpj,
             cnae: selectedEmpresa.cnae,
@@ -280,7 +279,7 @@ const Resultado = () => {
     (async () => {
       await supabase
         .from("client_links")
-        .update({ snapshot, updated_at: new Date().toISOString() })
+        .update({ snapshot: snapshot as any, updated_at: new Date().toISOString() })
         .eq("empresa_id", empresaIdParam);
     })();
   }, [
