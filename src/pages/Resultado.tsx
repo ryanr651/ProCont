@@ -8,6 +8,7 @@ import { XLSValidationMode, ValidationRow } from "@/components/XLSValidationMode
 import { ManualEditDialog, EditableBalancoEntry, EditableDREEntry } from "@/components/ManualEditDialog";
 import { AIAnalysisDialog } from "@/components/AIAnalysisDialog";
 import { AIPresentationDialog } from "@/components/AIPresentationDialog";
+import { ShareClientDialog } from "@/components/ShareClientDialog";
 import { FinancialChatBox } from "@/components/FinancialChatBox";
 import { DashboardIndicadores } from "@/components/DashboardIndicadores";
 import { DashboardBalancete, type BalanceteClassifiedEntry } from "@/components/DashboardBalancete";
@@ -46,6 +47,7 @@ import {
   Target,
   CalendarDays,
   UploadCloud,
+  Share2,
 } from "lucide-react";
 
 interface DREEntry {
