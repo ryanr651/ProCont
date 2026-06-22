@@ -218,6 +218,7 @@ const Resultado = () => {
 
   // Add Files modal state
   const [showAddFiles, setShowAddFiles] = useState(false);
+  const [showShareDialog, setShowShareDialog] = useState(false);
 
   // Empresa context
   const [selectedEmpresa, setSelectedEmpresa] = useState<EmpresaData | null>(null);
