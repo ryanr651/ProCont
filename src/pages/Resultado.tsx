@@ -2386,6 +2386,16 @@ const Resultado = () => {
           }}
         />
       )}
+
+      {/* Share Client Dialog */}
+      {empresaIdParam && (
+        <ShareClientDialog
+          open={showShareDialog}
+          onOpenChange={setShowShareDialog}
+          empresaId={empresaIdParam}
+          empresaNome={selectedEmpresa?.nome}
+        />
+      )}
     </div>
   );
 };
