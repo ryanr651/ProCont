@@ -2252,6 +2252,7 @@ const Resultado = () => {
             <p className="text-muted-foreground mb-6">
               Gere um PDF profissional com todos os dados desta análise para enviar aos seus clientes.
             </p>
+            <div className="flex flex-wrap items-center justify-center gap-3">
             <Button variant="hero" size="xl" onClick={handleExportPDF} disabled={isExporting}>
               {isExporting ? (
                 <>
@@ -2265,6 +2266,17 @@ const Resultado = () => {
                 </>
               )}
             </Button>
+            {empresaIdParam && (
+              <Button
+                variant="outline"
+                size="xl"
+                onClick={() => setShowShareDialog(true)}
+              >
+                <Share2 className="w-5 h-5 mr-2" />
+                Compartilhar com Cliente
+              </Button>
+            )}
+            </div>
           </div>
         </section>
 
