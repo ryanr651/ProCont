@@ -8,6 +8,7 @@ import { XLSValidationMode, ValidationRow } from "@/components/XLSValidationMode
 import { ManualEditDialog, EditableBalancoEntry, EditableDREEntry } from "@/components/ManualEditDialog";
 import { AIAnalysisDialog } from "@/components/AIAnalysisDialog";
 import { AIPresentationDialog } from "@/components/AIPresentationDialog";
+import { ShareClientDialog } from "@/components/ShareClientDialog";
 import { FinancialChatBox } from "@/components/FinancialChatBox";
 import { DashboardIndicadores } from "@/components/DashboardIndicadores";
 import { DashboardBalancete, type BalanceteClassifiedEntry } from "@/components/DashboardBalancete";
@@ -46,6 +47,7 @@ import {
   Target,
   CalendarDays,
   UploadCloud,
+  Share2,
 } from "lucide-react";
 
 interface DREEntry {
@@ -216,6 +218,7 @@ const Resultado = () => {
 
   // Add Files modal state
   const [showAddFiles, setShowAddFiles] = useState(false);
+  const [showShareDialog, setShowShareDialog] = useState(false);
 
   // Empresa context
   const [selectedEmpresa, setSelectedEmpresa] = useState<EmpresaData | null>(null);
@@ -2249,6 +2252,7 @@ const Resultado = () => {
             <p className="text-muted-foreground mb-6">
               Gere um PDF profissional com todos os dados desta análise para enviar aos seus clientes.
             </p>
+            <div className="flex flex-wrap items-center justify-center gap-3">
             <Button variant="hero" size="xl" onClick={handleExportPDF} disabled={isExporting}>
               {isExporting ? (
                 <>
@@ -2262,6 +2266,17 @@ const Resultado = () => {
                 </>
               )}
             </Button>
+            {empresaIdParam && (
+              <Button
+                variant="outline"
+                size="xl"
+                onClick={() => setShowShareDialog(true)}
+              >
+                <Share2 className="w-5 h-5 mr-2" />
+                Compartilhar com Cliente
+              </Button>
+            )}
+            </div>
           </div>
         </section>
 
@@ -2369,6 +2384,16 @@ const Resultado = () => {
             setLoading(true);
             loadData();
           }}
+        />
+      )}
+
+      {/* Share Client Dialog */}
+      {empresaIdParam && (
+        <ShareClientDialog
+          open={showShareDialog}
+          onOpenChange={setShowShareDialog}
+          empresaId={empresaIdParam}
+          empresaNome={selectedEmpresa?.nome}
         />
       )}
     </div>
