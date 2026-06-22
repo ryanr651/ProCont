@@ -192,6 +192,7 @@ export type Database = {
           empresa_id: string
           id: string
           is_active: boolean
+          snapshot: Json | null
           updated_at: string
         }
         Insert: {
@@ -200,6 +201,7 @@ export type Database = {
           empresa_id: string
           id?: string
           is_active?: boolean
+          snapshot?: Json | null
           updated_at?: string
         }
         Update: {
@@ -208,6 +210,7 @@ export type Database = {
           empresa_id?: string
           id?: string
           is_active?: boolean
+          snapshot?: Json | null
           updated_at?: string
         }
         Relationships: [
