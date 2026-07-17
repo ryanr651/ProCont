@@ -1984,12 +1984,31 @@ const Resultado = () => {
       document.body.appendChild(container);
 
       const opt = {
-        margin: 0,
-        filename: `relatorio-${clientName.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.pdf`,
-        image: { type: 'jpeg' as const, quality: 0.97 },
-        html2canvas: { scale: 2, useCORS: true, logging: false, width: 794, windowWidth: 794 },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
-        pagebreak: { mode: ['css'], avoid: ['.no-break'] },
+        margin: [10, 10, 10, 10],
+        filename: `analise-financeira-${new Date().toISOString().split('T')[0]}.pdf`,
+        image: { type: 'jpeg' as const, quality: 0.98 },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          letterRendering: true,
+          allowTaint: false,
+        },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" as const },
+        pagebreak: {
+          mode: ["css", "legacy"],
+          before: ".pdf-page-break-before",
+          after: ".pdf-page-break-after",
+          avoid: [
+            ".pdf-section",
+            ".pdf-metric-card",
+            ".pdf-metrics-grid",
+            ".pdf-insight",
+            ".pdf-footer",
+            "li",
+            "tr",
+          ],
+        },
       };
 
       await html2pdf().set(opt).from(container).save();
