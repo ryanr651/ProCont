@@ -1835,38 +1835,40 @@ const Resultado = () => {
       </div>
 
       <div class="page">
-        ${secTitle('3', 'BALANÇO PATRIMONIAL')}
-        <p>O balanço patrimonial fotografa a posição financeira da empresa, demonstrando a composição dos recursos e suas fontes de financiamento.</p>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
-          <table style="border-radius:8px;overflow:hidden;border:1px solid #E5E7EB;">
-            <thead>
-              <tr style="background:#1E2A4A;">
-                <th style="padding:8px 12px;text-align:left;font-size:12px;color:white;font-weight:700;">ATIVO</th>
-                <th style="padding:8px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">Valor</th>
-                <th style="padding:8px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">%</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${bpRow('ATIVO CIRCULANTE', balancoData.ativoCirculante, balancoData.ativoTotal > 0 ? (balancoData.ativoCirculante / balancoData.ativoTotal) * 100 : 0)}
-              ${bpRow('ATIVO NÃO CIRCULANTE', balancoData.ativoNaoCirculante, balancoData.ativoTotal > 0 ? (balancoData.ativoNaoCirculante / balancoData.ativoTotal) * 100 : 0)}
-              ${bpRow('ATIVO TOTAL', balancoData.ativoTotal, 100, false, true)}
-            </tbody>
-          </table>
-          <table style="border-radius:8px;overflow:hidden;border:1px solid #E5E7EB;">
-            <thead>
-              <tr style="background:#2D4A8A;">
-                <th style="padding:8px 12px;text-align:left;font-size:12px;color:white;font-weight:700;">PASSIVO + PL</th>
-                <th style="padding:8px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">Valor</th>
-                <th style="padding:8px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">%</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${bpRow('PASSIVO CIRCULANTE', balancoData.passivoCirculante, balancoData.ativoTotal > 0 ? (balancoData.passivoCirculante / balancoData.ativoTotal) * 100 : 0)}
-              ${bpRow('PASSIVO NÃO CIRCULANTE', balancoData.passivoNaoCirculante, balancoData.ativoTotal > 0 ? (balancoData.passivoNaoCirculante / balancoData.ativoTotal) * 100 : 0)}
-              ${bpRow(balancoData.patrimonioLiquido < 0 ? 'PATRIMÔNIO LÍQUIDO (Passivo a Descoberto)' : 'PATRIMÔNIO LÍQUIDO', balancoData.patrimonioLiquido, balancoData.ativoTotal > 0 ? (balancoData.patrimonioLiquido / balancoData.ativoTotal) * 100 : 0)}
-              ${bpRow('PASSIVO + PL TOTAL', balancoData.ativoTotal, 100, false, true)}
-            </tbody>
-          </table>
+        <div class="pdf-section-header" style="page-break-inside: avoid; break-inside: avoid;">
+          ${secTitle('3', 'BALANÇO PATRIMONIAL')}
+          <p>O balanço patrimonial fotografa a posição financeira da empresa, demonstrando a composição dos recursos e suas fontes de financiamento.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+            <table style="border-radius:8px;overflow:hidden;border:1px solid #E5E7EB;">
+              <thead>
+                <tr style="background:#1E2A4A;">
+                  <th style="padding:8px 12px;text-align:left;font-size:12px;color:white;font-weight:700;">ATIVO</th>
+                  <th style="padding:8px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">Valor</th>
+                  <th style="padding:8px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">%</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${bpRow('ATIVO CIRCULANTE', balancoData.ativoCirculante, balancoData.ativoTotal > 0 ? (balancoData.ativoCirculante / balancoData.ativoTotal) * 100 : 0)}
+                ${bpRow('ATIVO NÃO CIRCULANTE', balancoData.ativoNaoCirculante, balancoData.ativoTotal > 0 ? (balancoData.ativoNaoCirculante / balancoData.ativoTotal) * 100 : 0)}
+                ${bpRow('ATIVO TOTAL', balancoData.ativoTotal, 100, false, true)}
+              </tbody>
+            </table>
+            <table style="border-radius:8px;overflow:hidden;border:1px solid #E5E7EB;">
+              <thead>
+                <tr style="background:#2D4A8A;">
+                  <th style="padding:8px 12px;text-align:left;font-size:12px;color:white;font-weight:700;">PASSIVO + PL</th>
+                  <th style="padding:8px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">Valor</th>
+                  <th style="padding:8px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">%</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${bpRow('PASSIVO CIRCULANTE', balancoData.passivoCirculante, balancoData.ativoTotal > 0 ? (balancoData.passivoCirculante / balancoData.ativoTotal) * 100 : 0)}
+                ${bpRow('PASSIVO NÃO CIRCULANTE', balancoData.passivoNaoCirculante, balancoData.ativoTotal > 0 ? (balancoData.passivoNaoCirculante / balancoData.ativoTotal) * 100 : 0)}
+                ${bpRow(balancoData.patrimonioLiquido < 0 ? 'PATRIMÔNIO LÍQUIDO (Passivo a Descoberto)' : 'PATRIMÔNIO LÍQUIDO', balancoData.patrimonioLiquido, balancoData.ativoTotal > 0 ? (balancoData.patrimonioLiquido / balancoData.ativoTotal) * 100 : 0)}
+                ${bpRow('PASSIVO + PL TOTAL', balancoData.ativoTotal, 100, false, true)}
+              </tbody>
+            </table>
+          </div>
         </div>
         ${chartBP || chartCap ? `
         <div style="display:flex;gap:16px;margin-bottom:20px;justify-content:center;align-items:flex-start;">
