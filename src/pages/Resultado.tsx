@@ -1697,8 +1697,23 @@ const Resultado = () => {
         p { margin-bottom: 12px; font-size: 13px; color: #374151; line-height: 1.75; text-align: justify; }
         /* ── ANTI PAGE-BREAK ── */
         .pdf-section {
-          page-break-inside: avoid !important;
-          break-inside: avoid !important;
+          margin-bottom: 35px;
+          page-break-inside: avoid;
+          break-inside: avoid;
+        }
+        .pdf-section-title {
+          font-size: 18px;
+          font-weight: bold;
+          color: #1e40af;
+          margin-bottom: 20px;
+          padding-bottom: 8px;
+          border-bottom: 2px solid #e5e7eb;
+          page-break-after: avoid;
+          break-after: avoid;
+        }
+        .pdf-section-title + * {
+          page-break-before: avoid;
+          break-before: avoid;
         }
         .pdf-metric-card {
           page-break-inside: avoid !important;
@@ -1713,17 +1728,6 @@ const Resultado = () => {
           break-inside: avoid !important;
         }
         .pdf-margins-table tr {
-          page-break-inside: avoid !important;
-          break-inside: avoid !important;
-        }
-        .pdf-margins-table thead {
-          display: table-header-group;
-        }
-        .pdf-section-title {
-          page-break-after: avoid !important;
-          break-after: avoid !important;
-        }
-        .pdf-footer {
           page-break-inside: avoid !important;
           break-inside: avoid !important;
         }
