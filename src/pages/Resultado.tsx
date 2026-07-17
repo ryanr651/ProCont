@@ -1572,9 +1572,7 @@ const Resultado = () => {
       const rodape = (_pagina: number) => ``;
 
       const secTitle = (num: string, titulo: string) => `
-        <div style="margin-bottom:20px;padding-bottom:10px;border-bottom:2px solid #4A7FC1;">
-          <div style="font-size:22px;font-weight:800;color:#1E2A4A;">${num}. ${titulo}</div>
-        </div>`;
+        <div class="pdf-section-title">${num}. ${titulo}</div>`;
 
       const avalRow = (dimensao: string, estrelas: string, resumoAval: string) => `
         <tr>
