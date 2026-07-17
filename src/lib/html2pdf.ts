@@ -6,7 +6,7 @@ import { jsPDF } from "jspdf";
 // used by the app: html2pdf().set(opt).from(el).save()
 
 interface Html2PdfOptions {
-  margin?: number | [number, number, number, number];
+  margin?: number | number[] | [number, number, number, number];
   filename?: string;
   image?: { type?: string; quality?: number };
   html2canvas?: Record<string, unknown>;
