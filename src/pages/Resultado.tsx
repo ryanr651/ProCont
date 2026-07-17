@@ -313,36 +313,15 @@ const Resultado = () => {
         // Store the periodo from the first entry
         setBalancetePeriodo(balanceteData[0].periodo || "");
 
-        // Map raw data and apply synthetic detection
-        const rawBalancete = balanceteData.map((e: any) => ({
-          conta: e.conta,
-          grupo: e.grupo || "OUTROS",
-          saldo_anterior: Number(e.saldo_anterior) || 0,
-          debitos: Number(e.debitos) || 0,
-          creditos: Number(e.creditos) || 0,
-          saldo_atual: Number(e.saldo_atual) || 0,
-          natureza: e.natureza || "devedora",
-          valor: Number(e.saldo_atual) || 0, // for synthetic detection
-          indent_level: inferIndentFromRawRow(e),
-        }));
-
-        const balanceteWithDetection = detectSyntheticEntries(rawBalancete);
-        const synthBalanceteCount = balanceteWithDetection.filter((e) => e.natureza_conta === "sintetica").length;
-        console.log(
-          `[Synthetic Detection] ${synthBalanceteCount} sintéticas / ${balanceteWithDetection.length} total (Balancete)`,
-        );
-
         setBalanceteEntries(
-          balanceteWithDetection.map((e) => ({
+          balanceteData.map((e: any) => ({
             conta: e.conta,
-            grupo: e.grupo,
-            saldo_anterior: e.saldo_anterior,
-            debitos: e.debitos,
-            creditos: e.creditos,
-            saldo_atual: e.saldo_atual,
-            natureza: e.natureza,
-            natureza_conta: e.natureza_conta,
-            detection_motivo: e.detection_motivo,
+            grupo: e.grupo || "OUTROS",
+            saldo_anterior: Number(e.saldo_anterior) || 0,
+            debitos: Number(e.debitos) || 0,
+            creditos: Number(e.creditos) || 0,
+            saldo_atual: Number(e.saldo_atual) || 0,
+            natureza: e.natureza || "devedora",
           })),
         );
       }
