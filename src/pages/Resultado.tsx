@@ -1477,7 +1477,7 @@ const Resultado = () => {
 
       const logoHtml = branding?.logo_url
         ? `<img src="${branding.logo_url}" style="max-height:64px;max-width:200px;margin-bottom:16px;object-fit:contain;" crossorigin="anonymous" />`
-        : `<div style="font-size:32px;font-weight:800;color:#4A7FC1;margin-bottom:16px;">${brandName}</div>`;
+        : `<img src="${procontIcon}" alt="KlarCont" style="max-height:64px;max-width:200px;margin-bottom:16px;object-fit:contain;" crossorigin="anonymous" />`;
 
       const dreRow = (label: string, valor: number, pctVal: number, negativo = false, destaque = false, subtotal = false) => {
         const cor = destaque ? '#1E2A4A' : subtotal ? '#EFF6FF' : '#ffffff';
