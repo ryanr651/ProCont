@@ -1690,7 +1690,7 @@ const Resultado = () => {
       <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Segoe UI', Arial, sans-serif; }
-        .page { width: 794px; min-height: 1122px; padding: 48px 56px; background: white; overflow: hidden; }
+        .page { width: 794px; min-height: 1122px; height: auto; padding: 48px 56px; background: white; overflow: visible; }
         table { border-collapse: collapse; width: 100%; }
         p { margin-bottom: 12px; font-size: 13px; color: #374151; line-height: 1.75; text-align: justify; }
         /* ── ANTI PAGE-BREAK ── */
@@ -1992,7 +1992,7 @@ const Resultado = () => {
       document.body.appendChild(container);
 
       const opt = {
-        margin: [10, 10, 10, 10],
+        margin: 0,
         filename: `relatorio-procont-${new Date().toISOString().split("T")[0]}.pdf`,
         image: { type: "jpeg" as const, quality: 0.98 },
         html2canvas: {
