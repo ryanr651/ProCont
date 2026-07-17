@@ -2088,28 +2088,6 @@ const Resultado = () => {
           <FaturamentoAnalysis data={faturamentoData} />
         )}
 
-        {/* XLS Validation Mode */}
-        {validationRows.length > 0 && (
-          <section className="mb-12">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="font-display text-2xl font-bold flex items-center gap-3">
-                <FileSearch className="w-6 h-6 text-primary" />
-                Validação XLS
-              </h2>
-              <Button variant="outline" size="sm" onClick={() => setShowValidation(!showValidation)}>
-                <FileSearch className="w-4 h-4 mr-2" />
-                {showValidation ? "Ocultar" : "Ver"} Validação ({validationRows.length} linhas)
-              </Button>
-            </div>
-            {showValidation && (
-              <XLSValidationMode
-                rows={validationRows}
-                filename={validationFilename}
-                onClose={() => setShowValidation(false)}
-              />
-            )}
-          </section>
-        )}
 
         {/* AI Section - Analysis and Presentation */}
         <section className="mb-12">
