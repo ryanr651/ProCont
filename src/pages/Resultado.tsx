@@ -1695,6 +1695,46 @@ const Resultado = () => {
         .page { width: 794px; min-height: 1122px; padding: 48px 56px; background: white; overflow: hidden; }
         table { border-collapse: collapse; width: 100%; }
         p { margin-bottom: 12px; font-size: 13px; color: #374151; line-height: 1.75; text-align: justify; }
+        /* ── ANTI PAGE-BREAK ── */
+        .pdf-section {
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+        }
+        .pdf-metric-card {
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+        }
+        .pdf-metrics-grid {
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+        }
+        .pdf-insight {
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+        }
+        .pdf-margins-table tr {
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+        }
+        .pdf-margins-table thead {
+          display: table-header-group;
+        }
+        .pdf-section-title {
+          page-break-after: avoid !important;
+          break-after: avoid !important;
+        }
+        .pdf-footer {
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+        }
+        h2, h3, h4 {
+          page-break-after: avoid !important;
+          break-after: avoid !important;
+        }
+        li {
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+        }
       </style>
 
       <div class="page" style="padding:0;background:linear-gradient(160deg,#1E2A4A 0%,#2D4A8A 55%,#3D5FA8 100%);display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;position:relative;overflow:hidden;height:1122px;min-height:1122px;max-height:1122px;">
