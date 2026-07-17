@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import html2pdf from "html2pdf.js";
+import html2pdf from "@/lib/html2pdf";
 import PptxGenJS from "pptxgenjs";
 
 interface CalculatedDRE {
