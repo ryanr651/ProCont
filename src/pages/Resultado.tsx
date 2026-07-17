@@ -358,60 +358,13 @@ const Resultado = () => {
       const balanco = calculateBalancoMetrics(balancoEntries as BalancoEntry[]);
       setBalancoData(balanco);
 
-      // Apply synthetic/analytic detection and contra account detection to Balanço entries
-      const isContaRedutora = (conta: string) => {
-        const norm = normalizeText(conta);
-        return (
-          /DEPRECIA/.test(norm) ||
-          /AMORTIZA/.test(norm) ||
-          /EXAUSTAO/.test(norm) ||
-          /PROVISAO.*DEVED/.test(norm) ||
-          /PDD/.test(norm) ||
-          conta.trim().startsWith("(-)")
-        );
-      };
-      const balancoWithDetection = detectSyntheticEntries(
-        (balancoEntries as BalancoEntry[]).map((e) => ({
-          ...e,
-          indent_level: inferIndentFromRawRow(e),
-          is_redutora: isContaRedutora(e.conta),
-        })),
-      );
-
-      // Log synthetic detection results
-      const synthCount = balancoWithDetection.filter((e) => e.natureza_conta === "sintetica").length;
-      console.log(`[Synthetic Detection] ${synthCount} sintéticas / ${balancoWithDetection.length} total (Balanço)`);
-
-      // Validate: sum of analytics vs synthetic total
-      const validationWarnings = validateAgainstSyntheticTotals(balancoWithDetection);
-      if (validationWarnings.length > 0) {
-        console.warn("[Synthetic Validation]", validationWarnings);
-      }
-
-      // Store raw entries with detection results
-      setRawBalancoEntries(balancoWithDetection);
+      // Store raw entries
+      setRawBalancoEntries(balancoEntries as BalancoEntry[]);
       setRawDreEntries(dreEntries as DREEntry[]);
 
       // Generate diagnostic lines for debugging
       const diagnostic = generateDiagnosticLines(balancoEntries as BalancoEntry[]);
       setDiagnosticLines(diagnostic);
-
-      // Load validation logs from database
-      const { data: validationLogs } = await supabase
-        .from("xls_validation_logs")
-        .select("*")
-        .eq("user_id", user.id)
-        .eq("tipo", "balanco")
-        .order("created_at", { ascending: false })
-        .limit(1);
-
-      if (validationLogs && validationLogs.length > 0) {
-        const log = validationLogs[0];
-        // Cast from Json to ValidationRow[]
-        const rows = log.validation_rows as unknown as ValidationRow[];
-        setValidationRows(Array.isArray(rows) ? rows : []);
-        setValidationFilename(log.filename || "balanco.xls");
-      }
 
       // Load empresa data
       if (empresaIdParam) {
