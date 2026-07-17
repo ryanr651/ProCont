@@ -27,6 +27,7 @@ import { useToast } from "@/hooks/use-toast";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import html2pdf from "@/lib/html2pdf";
 import PptxGenJS from "pptxgenjs";
+import klarcontIcon from "@/assets/klarcont-icon.png";
 
 interface CalculatedDRE {
   receitaBruta: number;
@@ -663,7 +664,7 @@ export function AIPresentationDialog({
 
         <!-- COVER PAGE -->
         <div class="cover-page">
-          ${branding?.logo_url ? `<div class="cover-logo"><img src="${branding.logo_url}" alt="Logo" crossorigin="anonymous" /></div>` : ''}
+          ${branding?.logo_url ? `<div class="cover-logo"><img src="${branding.logo_url}" alt="Logo" crossorigin="anonymous" /></div>` : `<div class="cover-logo"><img src="${klarcontIcon}" alt="KlarCont" crossorigin="anonymous" /></div>`}
           <div class="cover-title">Apresentação Executiva</div>
           <div class="cover-subtitle">Análise Financeira com Inteligência Artificial</div>
           <div class="cover-empresa">
