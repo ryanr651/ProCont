@@ -1796,30 +1796,32 @@ const Resultado = () => {
       </div>
 
       <div class="page">
-        ${secTitle('2', 'DEMONSTRAÇÃO DO RESULTADO DO EXERCÍCIO (DRE)')}
-        <p>A DRE evidencia a geração de valor ao longo do exercício, partindo da receita bruta até o resultado líquido distribuível aos sócios.</p>
-        <table style="margin-bottom:20px;border-radius:8px;overflow:hidden;border:1px solid #E5E7EB;">
-          <thead>
-            <tr style="background:#1E2A4A;">
-              <th style="padding:9px 12px;text-align:left;font-size:12px;color:white;font-weight:700;">DEMONSTRAÇÃO DO RESULTADO</th>
-              <th style="padding:9px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">Valor (R$)</th>
-              <th style="padding:9px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">% Rec. Líq.</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${dreRow('(+) Receita Bruta', dreData.receitaBruta, dreData.receitaLiquida > 0 ? (dreData.receitaBruta / dreData.receitaLiquida) * 100 : 0)}
-            ${dreRow('(-) Deduções e Impostos s/ Vendas', dreData.receitaBruta - dreData.receitaLiquida, dreData.receitaLiquida > 0 ? ((dreData.receitaBruta - dreData.receitaLiquida) / dreData.receitaLiquida) * 100 : 0, true)}
-            ${dreRow('(=) Receita Líquida', dreData.receitaLiquida, 100, false, false, true)}
-            ${dreData.cmv > 0 ? dreRow('(-) CMV / Custo dos Serviços', dreData.cmv, dreData.receitaLiquida > 0 ? (dreData.cmv / dreData.receitaLiquida) * 100 : 0, true) : ''}
-            ${dreRow('(=) Lucro Bruto', dreData.lucroBruto, dreData.receitaLiquida > 0 ? (dreData.lucroBruto / dreData.receitaLiquida) * 100 : 0, false, false, true)}
-            ${dreRow('(-) Despesas Operacionais', dreData.despesasOperacionais, dreData.receitaLiquida > 0 ? (dreData.despesasOperacionais / dreData.receitaLiquida) * 100 : 0, true)}
-            ${dreRow('(=) Lucro Operacional (EBIT)', dreData.lucroOperacional, dreData.receitaLiquida > 0 ? (dreData.lucroOperacional / dreData.receitaLiquida) * 100 : 0, false, false, true)}
-            ${dreRow('(-) Resultado Financeiro Líquido', dreData.resultadoFinanceiro, dreData.receitaLiquida > 0 ? (dreData.resultadoFinanceiro / dreData.receitaLiquida) * 100 : 0, dreData.resultadoFinanceiro < 0)}
-            ${ebitda > 0 ? dreRow('(=) EBITDA', ebitda, dreData.receitaLiquida > 0 ? (ebitda / dreData.receitaLiquida) * 100 : 0, false, false, true) : ''}
-            ${dreData.contribuicaoSocial > 0 ? dreRow('(-) Contribuição Social (CSLL)', dreData.contribuicaoSocial, dreData.receitaLiquida > 0 ? (dreData.contribuicaoSocial / dreData.receitaLiquida) * 100 : 0, true) : ''}
-            ${dreRow('(=) LUCRO LÍQUIDO DO EXERCÍCIO', dreData.lucroLiquido, dreData.receitaLiquida > 0 ? (dreData.lucroLiquido / dreData.receitaLiquida) * 100 : 0, dreData.lucroLiquido < 0, true)}
-          </tbody>
-        </table>
+        <div class="pdf-section-header" style="page-break-inside: avoid; break-inside: avoid;">
+          ${secTitle('2', 'DEMONSTRAÇÃO DO RESULTADO DO EXERCÍCIO (DRE)')}
+          <p>A DRE evidencia a geração de valor ao longo do exercício, partindo da receita bruta até o resultado líquido distribuível aos sócios.</p>
+          <table style="margin-bottom:20px;border-radius:8px;overflow:hidden;border:1px solid #E5E7EB;">
+            <thead>
+              <tr style="background:#1E2A4A;">
+                <th style="padding:9px 12px;text-align:left;font-size:12px;color:white;font-weight:700;">DEMONSTRAÇÃO DO RESULTADO</th>
+                <th style="padding:9px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">Valor (R$)</th>
+                <th style="padding:9px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">% Rec. Líq.</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${dreRow('(+) Receita Bruta', dreData.receitaBruta, dreData.receitaLiquida > 0 ? (dreData.receitaBruta / dreData.receitaLiquida) * 100 : 0)}
+              ${dreRow('(-) Deduções e Impostos s/ Vendas', dreData.receitaBruta - dreData.receitaLiquida, dreData.receitaLiquida > 0 ? ((dreData.receitaBruta - dreData.receitaLiquida) / dreData.receitaLiquida) * 100 : 0, true)}
+              ${dreRow('(=) Receita Líquida', dreData.receitaLiquida, 100, false, false, true)}
+              ${dreData.cmv > 0 ? dreRow('(-) CMV / Custo dos Serviços', dreData.cmv, dreData.receitaLiquida > 0 ? (dreData.cmv / dreData.receitaLiquida) * 100 : 0, true) : ''}
+              ${dreRow('(=) Lucro Bruto', dreData.lucroBruto, dreData.receitaLiquida > 0 ? (dreData.lucroBruto / dreData.receitaLiquida) * 100 : 0, false, false, true)}
+              ${dreRow('(-) Despesas Operacionais', dreData.despesasOperacionais, dreData.receitaLiquida > 0 ? (dreData.despesasOperacionais / dreData.receitaLiquida) * 100 : 0, true)}
+              ${dreRow('(=) Lucro Operacional (EBIT)', dreData.lucroOperacional, dreData.receitaLiquida > 0 ? (dreData.lucroOperacional / dreData.receitaLiquida) * 100 : 0, false, false, true)}
+              ${dreRow('(-) Resultado Financeiro Líquido', dreData.resultadoFinanceiro, dreData.receitaLiquida > 0 ? (dreData.resultadoFinanceiro / dreData.receitaLiquida) * 100 : 0, dreData.resultadoFinanceiro < 0)}
+              ${ebitda > 0 ? dreRow('(=) EBITDA', ebitda, dreData.receitaLiquida > 0 ? (ebitda / dreData.receitaLiquida) * 100 : 0, false, false, true) : ''}
+              ${dreData.contribuicaoSocial > 0 ? dreRow('(-) Contribuição Social (CSLL)', dreData.contribuicaoSocial, dreData.receitaLiquida > 0 ? (dreData.contribuicaoSocial / dreData.receitaLiquida) * 100 : 0, true) : ''}
+              ${dreRow('(=) LUCRO LÍQUIDO DO EXERCÍCIO', dreData.lucroLiquido, dreData.receitaLiquida > 0 ? (dreData.lucroLiquido / dreData.receitaLiquida) * 100 : 0, dreData.lucroLiquido < 0, true)}
+            </tbody>
+          </table>
+        </div>
         ${chartDRE || chartMarg ? `
         <div style="display:flex;gap:16px;margin-bottom:20px;justify-content:center;align-items:flex-start;">
           ${chartDRE}
