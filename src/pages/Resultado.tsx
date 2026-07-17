@@ -2110,8 +2110,6 @@ const Resultado = () => {
           rawBalancoEntries={rawBalancoEntries}
           getDREGroupColor={getDREGroupColor}
           getDREGroupLabel={getDREGroupLabel}
-          showDreDebug={showDreDebug}
-          setShowDreDebug={setShowDreDebug}
         />
 
         {/* ===== DASHBOARD BALANCETE ===== */}

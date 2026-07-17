@@ -167,8 +167,6 @@ export default function ClienteResultado() {
           rawBalancoEntries={snapshot.rawBalancoEntries || []}
           getDREGroupColor={getDREGroupColor}
           getDREGroupLabel={getDREGroupLabel}
-          showDreDebug={false}
-          setShowDreDebug={() => {}}
         />
 
         {/* Balancete */}
