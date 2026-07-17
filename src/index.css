@@ -16,19 +16,19 @@
     --popover: 250 35% 10%;
     --popover-foreground: 220 20% 95%;
 
-    /* Purple Primary */
-    --primary: 262 100% 53%;
+    /* Orange Primary */
+    --primary: 24 92% 47%;
     --primary-foreground: 0 0% 100%;
 
-    /* Neon Blue Secondary */
-    --secondary: 192 100% 50%;
-    --secondary-foreground: 250 30% 6%;
+    /* Blue-Gray Secondary */
+    --secondary: 215 19% 35%;
+    --secondary-foreground: 0 0% 100%;
 
     --muted: 250 25% 15%;
     --muted-foreground: 220 15% 60%;
 
-    /* Accent - Blend of purple and blue */
-    --accent: 280 80% 55%;
+    /* Accent - Orange */
+    --accent: 24 92% 42%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 84% 60%;
@@ -36,37 +36,37 @@
 
     --border: 250 30% 20%;
     --input: 250 30% 15%;
-    --ring: 262 100% 53%;
+    --ring: 24 92% 47%;
 
     --radius: 0.75rem;
 
     /* Custom KlarCont tokens */
-    --neon-purple: 262 100% 53%;
-    --neon-blue: 192 100% 50%;
-    --neon-cyan: 180 100% 50%;
+    --neon-purple: 24 92% 47%;
+    --neon-blue: 215 19% 35%;
+    --neon-cyan: 215 19% 45%;
     --deep-purple: 250 40% 8%;
     --glass: 250 30% 12%;
     
     /* Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(262, 100%, 53%) 0%, hsl(192, 100%, 50%) 100%);
-    --gradient-hero: linear-gradient(180deg, hsl(250, 30%, 6%) 0%, hsl(262, 40%, 12%) 50%, hsl(250, 30%, 6%) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(24, 92%, 47%) 0%, hsl(215, 19%, 35%) 100%);
+    --gradient-hero: linear-gradient(180deg, hsl(250, 30%, 6%) 0%, hsl(24, 40%, 10%) 50%, hsl(250, 30%, 6%) 100%);
     --gradient-card: linear-gradient(145deg, hsl(250, 35%, 12%) 0%, hsl(250, 35%, 8%) 100%);
-    --gradient-glow: radial-gradient(ellipse at center, hsl(262, 100%, 53%, 0.15) 0%, transparent 70%);
+    --gradient-glow: radial-gradient(ellipse at center, hsl(24, 92%, 47%, 0.15) 0%, transparent 70%);
     
     /* Shadows */
-    --shadow-neon: 0 0 30px hsl(262, 100%, 53%, 0.3), 0 0 60px hsl(192, 100%, 50%, 0.2);
+    --shadow-neon: 0 0 30px hsl(24, 92%, 47%, 0.3), 0 0 60px hsl(215, 19%, 35%, 0.2);
     --shadow-card: 0 8px 32px hsl(0, 0%, 0%, 0.4), 0 0 0 1px hsl(250, 30%, 20%);
-    --shadow-glow-purple: 0 0 20px hsl(262, 100%, 53%, 0.4);
-    --shadow-glow-blue: 0 0 20px hsl(192, 100%, 50%, 0.4);
+    --shadow-glow-purple: 0 0 20px hsl(24, 92%, 47%, 0.4);
+    --shadow-glow-blue: 0 0 20px hsl(215, 19%, 35%, 0.3);
 
     --sidebar-background: 250 30% 8%;
     --sidebar-foreground: 220 20% 95%;
-    --sidebar-primary: 262 100% 53%;
+    --sidebar-primary: 24 92% 47%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 250 30% 15%;
     --sidebar-accent-foreground: 220 20% 95%;
     --sidebar-border: 250 30% 20%;
-    --sidebar-ring: 262 100% 53%;
+    --sidebar-ring: 24 92% 47%;
   }
 
   /* LIGHT MODE */
@@ -81,19 +81,19 @@
     --popover: 0 0% 100%;
     --popover-foreground: 220 50% 8%;
 
-    /* Blue Primary */
-    --primary: 217 91% 45%;
+    /* Orange Primary */
+    --primary: 25 100% 40%;
     --primary-foreground: 0 0% 100%;
 
-    /* Light Blue Secondary */
-    --secondary: 199 89% 48%;
-    --secondary-foreground: 220 50% 8%;
+    /* Blue-Gray Secondary */
+    --secondary: 215 25% 27%;
+    --secondary-foreground: 0 0% 100%;
 
     --muted: 210 25% 94%;
     --muted-foreground: 220 25% 35%;
 
-    /* Blue Accent */
-    --accent: 217 80% 50%;
+    /* Orange Accent */
+    --accent: 25 100% 36%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 84% 55%;
@@ -101,35 +101,35 @@
 
     --border: 214 40% 82%;
     --input: 214 35% 88%;
-    --ring: 217 91% 45%;
+    --ring: 25 100% 40%;
 
     /* Custom KlarCont tokens - Light */
-    --neon-purple: 217 91% 45%;
-    --neon-blue: 199 89% 48%;
-    --neon-cyan: 199 89% 55%;
+    --neon-purple: 25 100% 40%;
+    --neon-blue: 215 25% 27%;
+    --neon-cyan: 215 25% 38%;
     --deep-purple: 217 30% 95%;
     --glass: 210 20% 96%;
     
     /* Gradients - Light */
-    --gradient-primary: linear-gradient(135deg, hsl(217, 91%, 45%) 0%, hsl(199, 89%, 48%) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(25, 100%, 40%) 0%, hsl(215, 25%, 27%) 100%);
     --gradient-hero: linear-gradient(180deg, hsl(210, 20%, 98%) 0%, hsl(210, 25%, 96%) 50%, hsl(210, 20%, 98%) 100%);
     --gradient-card: linear-gradient(145deg, hsl(0, 0%, 100%) 0%, hsl(210, 20%, 98%) 100%);
-    --gradient-glow: radial-gradient(ellipse at center, hsl(217, 91%, 45%, 0.1) 0%, transparent 70%);
+    --gradient-glow: radial-gradient(ellipse at center, hsl(25, 100%, 40%, 0.1) 0%, transparent 70%);
     
     /* Shadows - Light (mais definidas) */
-    --shadow-neon: 0 4px 24px hsl(217, 91%, 45%, 0.2), 0 2px 12px hsl(199, 89%, 48%, 0.15);
+    --shadow-neon: 0 4px 24px hsl(25, 100%, 40%, 0.2), 0 2px 12px hsl(215, 25%, 27%, 0.15);
     --shadow-card: 0 4px 20px hsl(220, 30%, 0%, 0.1), 0 0 0 1px hsl(214, 40%, 82%);
-    --shadow-glow-purple: 0 0 18px hsl(217, 91%, 45%, 0.25);
-    --shadow-glow-blue: 0 0 18px hsl(199, 89%, 48%, 0.25);
+    --shadow-glow-purple: 0 0 18px hsl(25, 100%, 40%, 0.25);
+    --shadow-glow-blue: 0 0 18px hsl(215, 25%, 27%, 0.2);
 
     --sidebar-background: 210 20% 98%;
     --sidebar-foreground: 220 50% 10%;
-    --sidebar-primary: 217 91% 45%;
+    --sidebar-primary: 25 100% 40%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 210 25% 94%;
     --sidebar-accent-foreground: 220 50% 10%;
     --sidebar-border: 214 40% 82%;
-    --sidebar-ring: 217 91% 45%;
+    --sidebar-ring: 25 100% 40%;
   }
 }
 
@@ -193,7 +193,7 @@
 
   .hero-glow {
     @apply absolute pointer-events-none;
-    background: radial-gradient(ellipse 80% 50% at 50% -20%, hsl(262, 100%, 53%, 0.3), transparent 80%);
+    background: radial-gradient(ellipse 80% 50% at 50% -20%, hsl(24, 92%, 47%, 0.22), transparent 80%);
   }
 }
 
