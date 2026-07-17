@@ -1993,8 +1993,8 @@ const Resultado = () => {
 
       const opt = {
         margin: [10, 10, 10, 10],
-        filename: `analise-financeira-${new Date().toISOString().split('T')[0]}.pdf`,
-        image: { type: 'jpeg' as const, quality: 0.98 },
+        filename: `relatorio-procont-${new Date().toISOString().split("T")[0]}.pdf`,
+        image: { type: "jpeg" as const, quality: 0.98 },
         html2canvas: {
           scale: 2,
           useCORS: true,
@@ -2005,14 +2005,12 @@ const Resultado = () => {
         jsPDF: { unit: "mm", format: "a4", orientation: "portrait" as const },
         pagebreak: {
           mode: ["css", "legacy"],
-          before: ".pdf-page-break-before",
-          after: ".pdf-page-break-after",
           avoid: [
             ".pdf-section",
+            ".pdf-section-header",
             ".pdf-metric-card",
             ".pdf-metrics-grid",
             ".pdf-insight",
-            ".pdf-footer",
             "li",
             "tr",
           ],
