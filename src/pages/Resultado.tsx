@@ -20,6 +20,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useBranding } from "@/contexts/BrandingContext";
 
 import html2pdf from "@/lib/html2pdf";
+import procontIcon from "@/assets/klarcont-icon.png";
 import {
   ArrowLeft,
   TrendingUp,

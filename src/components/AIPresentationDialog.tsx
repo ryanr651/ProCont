@@ -27,6 +27,7 @@ import { useToast } from "@/hooks/use-toast";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import html2pdf from "@/lib/html2pdf";
 import PptxGenJS from "pptxgenjs";
+import klarcontIcon from "@/assets/klarcont-icon.png";
 
 interface CalculatedDRE {
   receitaBruta: number;

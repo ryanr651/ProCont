@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import procontIcon from "@/assets/procont-logo-icon.png";
+import procontIcon from "@/assets/klarcont-icon.png";
 
 interface LogoProps {
   className?: string;
