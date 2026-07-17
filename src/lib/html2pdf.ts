@@ -19,7 +19,8 @@ const A4 = { mm: { w: 210, h: 297 } };
 function normalizeMargin(m: Html2PdfOptions["margin"]): [number, number, number, number] {
   if (m == null) return [0, 0, 0, 0];
   if (typeof m === "number") return [m, m, m, m];
-  return m;
+  const [t = 0, r = 0, b = 0, l = 0] = m;
+  return [t, r, b, l];
 }
 
 class Html2PdfBuilder {
