@@ -4,7 +4,7 @@ import { AddFilesDialog } from "@/components/AddFilesDialog";
 import { Button } from "@/components/ui/button";
 import { AppHeader } from "@/components/AppHeader";
 import { ProgressBar } from "@/components/ProgressBar";
-import { XLSValidationMode, ValidationRow } from "@/components/XLSValidationMode";
+
 import { ManualEditDialog, EditableBalancoEntry, EditableDREEntry } from "@/components/ManualEditDialog";
 import { AIAnalysisDialog } from "@/components/AIAnalysisDialog";
 import { AIPresentationDialog } from "@/components/AIPresentationDialog";
@@ -18,7 +18,7 @@ import { FaturamentoAnalysis, type FaturamentoRow } from "@/components/Faturamen
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranding } from "@/contexts/BrandingContext";
-import { detectSyntheticEntries, validateAgainstSyntheticTotals } from "@/lib/syntheticDetector";
+
 import html2pdf from "@/lib/html2pdf";
 import {
   ArrowLeft,
@@ -35,7 +35,7 @@ import {
   Calculator,
   LogOut,
   Loader2,
-  FileSearch,
+  
   FileDown,
   Edit3,
   Sparkles,
