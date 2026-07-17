@@ -4,7 +4,7 @@ import { AddFilesDialog } from "@/components/AddFilesDialog";
 import { Button } from "@/components/ui/button";
 import { AppHeader } from "@/components/AppHeader";
 import { ProgressBar } from "@/components/ProgressBar";
-import { XLSValidationMode, ValidationRow } from "@/components/XLSValidationMode";
+
 import { ManualEditDialog, EditableBalancoEntry, EditableDREEntry } from "@/components/ManualEditDialog";
 import { AIAnalysisDialog } from "@/components/AIAnalysisDialog";
 import { AIPresentationDialog } from "@/components/AIPresentationDialog";
@@ -18,7 +18,7 @@ import { FaturamentoAnalysis, type FaturamentoRow } from "@/components/Faturamen
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranding } from "@/contexts/BrandingContext";
-import { detectSyntheticEntries, validateAgainstSyntheticTotals } from "@/lib/syntheticDetector";
+
 import html2pdf from "@/lib/html2pdf";
 import {
   ArrowLeft,
@@ -35,7 +35,7 @@ import {
   Calculator,
   LogOut,
   Loader2,
-  FileSearch,
+  
   FileDown,
   Edit3,
   Sparkles,
@@ -150,29 +150,6 @@ interface DREClassifiedEntry {
   insideCMVBlock?: boolean;
 }
 
-/**
- * Infer indent level from raw_row data or account name when DB entry doesn't have indent_level stored.
- */
-function inferIndentFromRawRow(entry: any): number {
-  // If indent_level is already set (from parser), use it
-  if (typeof entry.indent_level === "number") return entry.indent_level;
-
-  // Try to find first non-empty text cell position from raw_row
-  if (entry.raw_row && Array.isArray(entry.raw_row)) {
-    for (let i = 0; i < entry.raw_row.length; i++) {
-      const cell = String(entry.raw_row[i] || "").trim();
-      if (cell.length >= 2 && /[a-zA-ZÀ-ú]/.test(cell)) {
-        return i;
-      }
-    }
-  }
-
-  // Fallback: infer from account name (top-level groups = 0)
-  const norm = normalizeText(entry.conta || "");
-  const topLevelNames = ["ATIVO", "PASSIVO", "CIRCULANTE", "NAO CIRCULANTE", "PATRIMONIO LIQUIDO"];
-  if (topLevelNames.some((n) => norm === n)) return 0;
-  return 1;
-}
 
 interface EmpresaData {
   nome: string;
@@ -188,12 +165,9 @@ const Resultado = () => {
   const [balancoData, setBalancoData] = useState<CalculatedBalanco | null>(null);
   const [insights, setInsights] = useState<string[]>([]);
   const [diagnosticLines, setDiagnosticLines] = useState<DiagnosticLine[]>([]);
-  const [validationRows, setValidationRows] = useState<ValidationRow[]>([]);
-  const [validationFilename, setValidationFilename] = useState<string>("balanco.xls");
-  const [showValidation, setShowValidation] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [dreClassifiedEntries, setDreClassifiedEntries] = useState<DREClassifiedEntry[]>([]);
-  const [showDreDebug, setShowDreDebug] = useState(false);
+  
 
   // Manual edit state
   const [showManualEdit, setShowManualEdit] = useState(false);
@@ -339,36 +313,15 @@ const Resultado = () => {
         // Store the periodo from the first entry
         setBalancetePeriodo(balanceteData[0].periodo || "");
 
-        // Map raw data and apply synthetic detection
-        const rawBalancete = balanceteData.map((e: any) => ({
-          conta: e.conta,
-          grupo: e.grupo || "OUTROS",
-          saldo_anterior: Number(e.saldo_anterior) || 0,
-          debitos: Number(e.debitos) || 0,
-          creditos: Number(e.creditos) || 0,
-          saldo_atual: Number(e.saldo_atual) || 0,
-          natureza: e.natureza || "devedora",
-          valor: Number(e.saldo_atual) || 0, // for synthetic detection
-          indent_level: inferIndentFromRawRow(e),
-        }));
-
-        const balanceteWithDetection = detectSyntheticEntries(rawBalancete);
-        const synthBalanceteCount = balanceteWithDetection.filter((e) => e.natureza_conta === "sintetica").length;
-        console.log(
-          `[Synthetic Detection] ${synthBalanceteCount} sintéticas / ${balanceteWithDetection.length} total (Balancete)`,
-        );
-
         setBalanceteEntries(
-          balanceteWithDetection.map((e) => ({
+          balanceteData.map((e: any) => ({
             conta: e.conta,
-            grupo: e.grupo,
-            saldo_anterior: e.saldo_anterior,
-            debitos: e.debitos,
-            creditos: e.creditos,
-            saldo_atual: e.saldo_atual,
-            natureza: e.natureza,
-            natureza_conta: e.natureza_conta,
-            detection_motivo: e.detection_motivo,
+            grupo: e.grupo || "OUTROS",
+            saldo_anterior: Number(e.saldo_anterior) || 0,
+            debitos: Number(e.debitos) || 0,
+            creditos: Number(e.creditos) || 0,
+            saldo_atual: Number(e.saldo_atual) || 0,
+            natureza: e.natureza || "devedora",
           })),
         );
       }
@@ -405,60 +358,13 @@ const Resultado = () => {
       const balanco = calculateBalancoMetrics(balancoEntries as BalancoEntry[]);
       setBalancoData(balanco);
 
-      // Apply synthetic/analytic detection and contra account detection to Balanço entries
-      const isContaRedutora = (conta: string) => {
-        const norm = normalizeText(conta);
-        return (
-          /DEPRECIA/.test(norm) ||
-          /AMORTIZA/.test(norm) ||
-          /EXAUSTAO/.test(norm) ||
-          /PROVISAO.*DEVED/.test(norm) ||
-          /PDD/.test(norm) ||
-          conta.trim().startsWith("(-)")
-        );
-      };
-      const balancoWithDetection = detectSyntheticEntries(
-        (balancoEntries as BalancoEntry[]).map((e) => ({
-          ...e,
-          indent_level: inferIndentFromRawRow(e),
-          is_redutora: isContaRedutora(e.conta),
-        })),
-      );
-
-      // Log synthetic detection results
-      const synthCount = balancoWithDetection.filter((e) => e.natureza_conta === "sintetica").length;
-      console.log(`[Synthetic Detection] ${synthCount} sintéticas / ${balancoWithDetection.length} total (Balanço)`);
-
-      // Validate: sum of analytics vs synthetic total
-      const validationWarnings = validateAgainstSyntheticTotals(balancoWithDetection);
-      if (validationWarnings.length > 0) {
-        console.warn("[Synthetic Validation]", validationWarnings);
-      }
-
-      // Store raw entries with detection results
-      setRawBalancoEntries(balancoWithDetection);
+      // Store raw entries
+      setRawBalancoEntries(balancoEntries as BalancoEntry[]);
       setRawDreEntries(dreEntries as DREEntry[]);
 
       // Generate diagnostic lines for debugging
       const diagnostic = generateDiagnosticLines(balancoEntries as BalancoEntry[]);
       setDiagnosticLines(diagnostic);
-
-      // Load validation logs from database
-      const { data: validationLogs } = await supabase
-        .from("xls_validation_logs")
-        .select("*")
-        .eq("user_id", user.id)
-        .eq("tipo", "balanco")
-        .order("created_at", { ascending: false })
-        .limit(1);
-
-      if (validationLogs && validationLogs.length > 0) {
-        const log = validationLogs[0];
-        // Cast from Json to ValidationRow[]
-        const rows = log.validation_rows as unknown as ValidationRow[];
-        setValidationRows(Array.isArray(rows) ? rows : []);
-        setValidationFilename(log.filename || "balanco.xls");
-      }
 
       // Load empresa data
       if (empresaIdParam) {
@@ -2110,8 +2016,6 @@ const Resultado = () => {
           rawBalancoEntries={rawBalancoEntries}
           getDREGroupColor={getDREGroupColor}
           getDREGroupLabel={getDREGroupLabel}
-          showDreDebug={showDreDebug}
-          setShowDreDebug={setShowDreDebug}
         />
 
         {/* ===== DASHBOARD BALANCETE ===== */}
@@ -2184,28 +2088,6 @@ const Resultado = () => {
           <FaturamentoAnalysis data={faturamentoData} />
         )}
 
-        {/* XLS Validation Mode */}
-        {validationRows.length > 0 && (
-          <section className="mb-12">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="font-display text-2xl font-bold flex items-center gap-3">
-                <FileSearch className="w-6 h-6 text-primary" />
-                Validação XLS
-              </h2>
-              <Button variant="outline" size="sm" onClick={() => setShowValidation(!showValidation)}>
-                <FileSearch className="w-4 h-4 mr-2" />
-                {showValidation ? "Ocultar" : "Ver"} Validação ({validationRows.length} linhas)
-              </Button>
-            </div>
-            {showValidation && (
-              <XLSValidationMode
-                rows={validationRows}
-                filename={validationFilename}
-                onClose={() => setShowValidation(false)}
-              />
-            )}
-          </section>
-        )}
 
         {/* AI Section - Analysis and Presentation */}
         <section className="mb-12">

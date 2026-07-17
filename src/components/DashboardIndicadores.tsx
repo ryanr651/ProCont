@@ -104,8 +104,6 @@ interface DashboardIndicadoresProps {
   rawBalancoEntries: BalancoEntry[];
   getDREGroupColor: (grupo: string) => string;
   getDREGroupLabel: (grupo: string) => string;
-  showDreDebug: boolean;
-  setShowDreDebug: (v: boolean) => void;
 }
 
 function getAccountsForGroup(entries: DREClassifiedEntry[], grupo: string): AccountDetail[] {
@@ -125,8 +123,6 @@ export function DashboardIndicadores({
   rawBalancoEntries,
   getDREGroupColor,
   getDREGroupLabel,
-  showDreDebug,
-  setShowDreDebug,
 }: DashboardIndicadoresProps) {
   // Compute EBITDA: Lucro Operacional + Depreciação/Amortização
   const depreciacao = useMemo(() => {
@@ -1191,111 +1187,6 @@ export function DashboardIndicadores({
         ))}
       </IndicatorSection>
 
-      {/* DRE Debug */}
-      {dreClassifiedEntries.length > 0 && (
-        <section className="mb-10">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-display font-semibold flex items-center gap-2">
-              🔬 Debug: Classificação DRE
-            </h3>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowDreDebug(!showDreDebug)}
-            >
-              <FileSearch className="w-4 h-4 mr-2" />
-              {showDreDebug ? "Ocultar" : "Ver"} Classificação ({dreClassifiedEntries.length} linhas)
-            </Button>
-          </div>
-          {showDreDebug && (
-            <div className="glass-card p-6">
-              <p className="text-sm text-muted-foreground mb-4">
-                Todas as linhas DRE importadas com seu grupo e classificação:
-              </p>
-
-              {/* Group Legend */}
-              <div className="flex flex-wrap gap-2 mb-4">
-                {(['receita_bruta', 'receita_liquida', 'cmv', 'lucro_bruto', 'despesas_operacionais', 'lucro_operacional', 'resultado_financeiro', 'lucro_liquido'] as const).map((grupo) => (
-                  <span key={grupo} className={`px-2 py-1 rounded text-xs font-medium border ${getDREGroupColor(grupo)}`}>
-                    {getDREGroupLabel(grupo)}
-                  </span>
-                ))}
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th className="text-left py-2 px-3 text-muted-foreground font-medium">#</th>
-                      <th className="text-left py-2 px-3 text-muted-foreground font-medium">Descrição</th>
-                      <th className="text-center py-2 px-3 text-muted-foreground font-medium">Grupo</th>
-                      <th className="text-right py-2 px-3 text-muted-foreground font-medium">Valor</th>
-                      <th className="text-center py-2 px-3 text-muted-foreground font-medium">Tipo</th>
-                      <th className="text-left py-2 px-3 text-muted-foreground font-medium">Motivo</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dreClassifiedEntries.map((entry, index) => (
-                      <tr
-                        key={index}
-                        className={`border-b border-border/50 hover:bg-muted/30 ${entry.isExplicit ? 'font-semibold' : ''}`}
-                      >
-                        <td className="py-2 px-3 text-muted-foreground">{index + 1}</td>
-                        <td className="py-2 px-3 text-foreground max-w-xs">
-                          <span className="block truncate" title={entry.descricao}>
-                            {entry.descricao}
-                          </span>
-                        </td>
-                        <td className="py-2 px-3 text-center">
-                          <span className={`px-2 py-1 rounded text-xs font-medium border ${getDREGroupColor(entry.grupo)}`}>
-                            {getDREGroupLabel(entry.grupo)}
-                          </span>
-                        </td>
-                        <td className="py-2 px-3 text-right text-foreground">
-                          {entry.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                        </td>
-                        <td className="py-2 px-3 text-center">
-                          {entry.isExplicit
-                            ? <span className="px-2 py-1 rounded text-xs font-medium bg-primary/20 text-primary border border-primary/30">Explícita</span>
-                            : <span className="px-2 py-1 rounded text-xs font-medium bg-muted text-muted-foreground border border-border">Componente</span>
-                          }
-                        </td>
-                        <td className="py-2 px-3 text-muted-foreground text-xs max-w-xs truncate" title={entry.motivo}>
-                          {entry.motivo}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Summary by Group */}
-              <div className="mt-6 pt-4 border-t border-border">
-                <h4 className="font-medium mb-3">Resumo por Grupo</h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {(['receita_bruta', 'receita_liquida', 'cmv', 'lucro_bruto', 'despesas_operacionais', 'lucro_operacional', 'resultado_financeiro', 'lucro_liquido'] as const).map((grupo) => {
-                    const entriesInGroup = dreClassifiedEntries.filter(e => e.grupo === grupo);
-                    const explicitEntry = entriesInGroup.find(e => e.isExplicit);
-                    const sumValue = entriesInGroup.reduce((sum, e) => sum + e.valor, 0);
-
-                    return (
-                      <div key={grupo} className={`p-3 rounded border ${getDREGroupColor(grupo)}`}>
-                        <div className="text-xs font-medium mb-1">{getDREGroupLabel(grupo)}</div>
-                        <div className="text-sm font-bold">
-                          {(explicitEntry?.valor ?? sumValue).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                        </div>
-                        <div className="text-xs opacity-70">
-                          {explicitEntry ? '(linha explícita)' : `(${entriesInGroup.length} linhas)`}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-        </section>
-      )}
 
       {/* ── Drill-down Sheet ─────────────────────────────────────────── */}
       <Sheet
