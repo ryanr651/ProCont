@@ -1915,9 +1915,11 @@ const Resultado = () => {
       </div>
 
       <div class="page">
-        ${secTitle('5', 'PONTOS FORTES E PONTOS DE ATENÇÃO')}
-        <div style="font-size:15px;font-weight:700;color:#16A34A;margin-bottom:12px;">✅ Pontos Fortes</div>
-        ${aiFortes.map((p) => insightCard('●', escapeHtml(p.titulo), escapeHtml(p.descricao || p.titulo), true)).join('')}
+        <div class="pdf-section-header" style="page-break-inside: avoid; break-inside: avoid;">
+          ${secTitle('5', 'PONTOS FORTES E PONTOS DE ATENÇÃO')}
+          <div style="font-size:15px;font-weight:700;color:#16A34A;margin-bottom:12px;">✅ Pontos Fortes</div>
+          ${aiFortes.map((p) => insightCard('●', escapeHtml(p.titulo), escapeHtml(p.descricao || p.titulo), true)).join('')}
+        </div>
         <div style="font-size:15px;font-weight:700;color:#D97706;margin:20px 0 12px;">⚠️ Pontos de Atenção</div>
         ${aiAtencao.map((p) => insightCard('▲', escapeHtml(p.titulo), escapeHtml(p.descricao || p.titulo), false)).join('')}
         ${rodape(6)}
