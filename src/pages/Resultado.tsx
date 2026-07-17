@@ -1572,9 +1572,7 @@ const Resultado = () => {
       const rodape = (_pagina: number) => ``;
 
       const secTitle = (num: string, titulo: string) => `
-        <div style="margin-bottom:20px;padding-bottom:10px;border-bottom:2px solid #4A7FC1;">
-          <div style="font-size:22px;font-weight:800;color:#1E2A4A;">${num}. ${titulo}</div>
-        </div>`;
+        <div class="pdf-section-title">${num}. ${titulo}</div>`;
 
       const avalRow = (dimensao: string, estrelas: string, resumoAval: string) => `
         <tr>
@@ -1697,8 +1695,23 @@ const Resultado = () => {
         p { margin-bottom: 12px; font-size: 13px; color: #374151; line-height: 1.75; text-align: justify; }
         /* ── ANTI PAGE-BREAK ── */
         .pdf-section {
-          page-break-inside: avoid !important;
-          break-inside: avoid !important;
+          margin-bottom: 35px;
+          page-break-inside: avoid;
+          break-inside: avoid;
+        }
+        .pdf-section-title {
+          font-size: 18px;
+          font-weight: bold;
+          color: #1e40af;
+          margin-bottom: 20px;
+          padding-bottom: 8px;
+          border-bottom: 2px solid #e5e7eb;
+          page-break-after: avoid;
+          break-after: avoid;
+        }
+        .pdf-section-title + * {
+          page-break-before: avoid;
+          break-before: avoid;
         }
         .pdf-metric-card {
           page-break-inside: avoid !important;
@@ -1713,17 +1726,6 @@ const Resultado = () => {
           break-inside: avoid !important;
         }
         .pdf-margins-table tr {
-          page-break-inside: avoid !important;
-          break-inside: avoid !important;
-        }
-        .pdf-margins-table thead {
-          display: table-header-group;
-        }
-        .pdf-section-title {
-          page-break-after: avoid !important;
-          break-after: avoid !important;
-        }
-        .pdf-footer {
           page-break-inside: avoid !important;
           break-inside: avoid !important;
         }
@@ -1794,30 +1796,32 @@ const Resultado = () => {
       </div>
 
       <div class="page">
-        ${secTitle('2', 'DEMONSTRAÇÃO DO RESULTADO DO EXERCÍCIO (DRE)')}
-        <p>A DRE evidencia a geração de valor ao longo do exercício, partindo da receita bruta até o resultado líquido distribuível aos sócios.</p>
-        <table style="margin-bottom:20px;border-radius:8px;overflow:hidden;border:1px solid #E5E7EB;">
-          <thead>
-            <tr style="background:#1E2A4A;">
-              <th style="padding:9px 12px;text-align:left;font-size:12px;color:white;font-weight:700;">DEMONSTRAÇÃO DO RESULTADO</th>
-              <th style="padding:9px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">Valor (R$)</th>
-              <th style="padding:9px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">% Rec. Líq.</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${dreRow('(+) Receita Bruta', dreData.receitaBruta, dreData.receitaLiquida > 0 ? (dreData.receitaBruta / dreData.receitaLiquida) * 100 : 0)}
-            ${dreRow('(-) Deduções e Impostos s/ Vendas', dreData.receitaBruta - dreData.receitaLiquida, dreData.receitaLiquida > 0 ? ((dreData.receitaBruta - dreData.receitaLiquida) / dreData.receitaLiquida) * 100 : 0, true)}
-            ${dreRow('(=) Receita Líquida', dreData.receitaLiquida, 100, false, false, true)}
-            ${dreData.cmv > 0 ? dreRow('(-) CMV / Custo dos Serviços', dreData.cmv, dreData.receitaLiquida > 0 ? (dreData.cmv / dreData.receitaLiquida) * 100 : 0, true) : ''}
-            ${dreRow('(=) Lucro Bruto', dreData.lucroBruto, dreData.receitaLiquida > 0 ? (dreData.lucroBruto / dreData.receitaLiquida) * 100 : 0, false, false, true)}
-            ${dreRow('(-) Despesas Operacionais', dreData.despesasOperacionais, dreData.receitaLiquida > 0 ? (dreData.despesasOperacionais / dreData.receitaLiquida) * 100 : 0, true)}
-            ${dreRow('(=) Lucro Operacional (EBIT)', dreData.lucroOperacional, dreData.receitaLiquida > 0 ? (dreData.lucroOperacional / dreData.receitaLiquida) * 100 : 0, false, false, true)}
-            ${dreRow('(-) Resultado Financeiro Líquido', dreData.resultadoFinanceiro, dreData.receitaLiquida > 0 ? (dreData.resultadoFinanceiro / dreData.receitaLiquida) * 100 : 0, dreData.resultadoFinanceiro < 0)}
-            ${ebitda > 0 ? dreRow('(=) EBITDA', ebitda, dreData.receitaLiquida > 0 ? (ebitda / dreData.receitaLiquida) * 100 : 0, false, false, true) : ''}
-            ${dreData.contribuicaoSocial > 0 ? dreRow('(-) Contribuição Social (CSLL)', dreData.contribuicaoSocial, dreData.receitaLiquida > 0 ? (dreData.contribuicaoSocial / dreData.receitaLiquida) * 100 : 0, true) : ''}
-            ${dreRow('(=) LUCRO LÍQUIDO DO EXERCÍCIO', dreData.lucroLiquido, dreData.receitaLiquida > 0 ? (dreData.lucroLiquido / dreData.receitaLiquida) * 100 : 0, dreData.lucroLiquido < 0, true)}
-          </tbody>
-        </table>
+        <div class="pdf-section-header" style="page-break-inside: avoid; break-inside: avoid;">
+          ${secTitle('2', 'DEMONSTRAÇÃO DO RESULTADO DO EXERCÍCIO (DRE)')}
+          <p>A DRE evidencia a geração de valor ao longo do exercício, partindo da receita bruta até o resultado líquido distribuível aos sócios.</p>
+          <table style="margin-bottom:20px;border-radius:8px;overflow:hidden;border:1px solid #E5E7EB;">
+            <thead>
+              <tr style="background:#1E2A4A;">
+                <th style="padding:9px 12px;text-align:left;font-size:12px;color:white;font-weight:700;">DEMONSTRAÇÃO DO RESULTADO</th>
+                <th style="padding:9px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">Valor (R$)</th>
+                <th style="padding:9px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">% Rec. Líq.</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${dreRow('(+) Receita Bruta', dreData.receitaBruta, dreData.receitaLiquida > 0 ? (dreData.receitaBruta / dreData.receitaLiquida) * 100 : 0)}
+              ${dreRow('(-) Deduções e Impostos s/ Vendas', dreData.receitaBruta - dreData.receitaLiquida, dreData.receitaLiquida > 0 ? ((dreData.receitaBruta - dreData.receitaLiquida) / dreData.receitaLiquida) * 100 : 0, true)}
+              ${dreRow('(=) Receita Líquida', dreData.receitaLiquida, 100, false, false, true)}
+              ${dreData.cmv > 0 ? dreRow('(-) CMV / Custo dos Serviços', dreData.cmv, dreData.receitaLiquida > 0 ? (dreData.cmv / dreData.receitaLiquida) * 100 : 0, true) : ''}
+              ${dreRow('(=) Lucro Bruto', dreData.lucroBruto, dreData.receitaLiquida > 0 ? (dreData.lucroBruto / dreData.receitaLiquida) * 100 : 0, false, false, true)}
+              ${dreRow('(-) Despesas Operacionais', dreData.despesasOperacionais, dreData.receitaLiquida > 0 ? (dreData.despesasOperacionais / dreData.receitaLiquida) * 100 : 0, true)}
+              ${dreRow('(=) Lucro Operacional (EBIT)', dreData.lucroOperacional, dreData.receitaLiquida > 0 ? (dreData.lucroOperacional / dreData.receitaLiquida) * 100 : 0, false, false, true)}
+              ${dreRow('(-) Resultado Financeiro Líquido', dreData.resultadoFinanceiro, dreData.receitaLiquida > 0 ? (dreData.resultadoFinanceiro / dreData.receitaLiquida) * 100 : 0, dreData.resultadoFinanceiro < 0)}
+              ${ebitda > 0 ? dreRow('(=) EBITDA', ebitda, dreData.receitaLiquida > 0 ? (ebitda / dreData.receitaLiquida) * 100 : 0, false, false, true) : ''}
+              ${dreData.contribuicaoSocial > 0 ? dreRow('(-) Contribuição Social (CSLL)', dreData.contribuicaoSocial, dreData.receitaLiquida > 0 ? (dreData.contribuicaoSocial / dreData.receitaLiquida) * 100 : 0, true) : ''}
+              ${dreRow('(=) LUCRO LÍQUIDO DO EXERCÍCIO', dreData.lucroLiquido, dreData.receitaLiquida > 0 ? (dreData.lucroLiquido / dreData.receitaLiquida) * 100 : 0, dreData.lucroLiquido < 0, true)}
+            </tbody>
+          </table>
+        </div>
         ${chartDRE || chartMarg ? `
         <div style="display:flex;gap:16px;margin-bottom:20px;justify-content:center;align-items:flex-start;">
           ${chartDRE}
@@ -1831,38 +1835,40 @@ const Resultado = () => {
       </div>
 
       <div class="page">
-        ${secTitle('3', 'BALANÇO PATRIMONIAL')}
-        <p>O balanço patrimonial fotografa a posição financeira da empresa, demonstrando a composição dos recursos e suas fontes de financiamento.</p>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
-          <table style="border-radius:8px;overflow:hidden;border:1px solid #E5E7EB;">
-            <thead>
-              <tr style="background:#1E2A4A;">
-                <th style="padding:8px 12px;text-align:left;font-size:12px;color:white;font-weight:700;">ATIVO</th>
-                <th style="padding:8px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">Valor</th>
-                <th style="padding:8px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">%</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${bpRow('ATIVO CIRCULANTE', balancoData.ativoCirculante, balancoData.ativoTotal > 0 ? (balancoData.ativoCirculante / balancoData.ativoTotal) * 100 : 0)}
-              ${bpRow('ATIVO NÃO CIRCULANTE', balancoData.ativoNaoCirculante, balancoData.ativoTotal > 0 ? (balancoData.ativoNaoCirculante / balancoData.ativoTotal) * 100 : 0)}
-              ${bpRow('ATIVO TOTAL', balancoData.ativoTotal, 100, false, true)}
-            </tbody>
-          </table>
-          <table style="border-radius:8px;overflow:hidden;border:1px solid #E5E7EB;">
-            <thead>
-              <tr style="background:#2D4A8A;">
-                <th style="padding:8px 12px;text-align:left;font-size:12px;color:white;font-weight:700;">PASSIVO + PL</th>
-                <th style="padding:8px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">Valor</th>
-                <th style="padding:8px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">%</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${bpRow('PASSIVO CIRCULANTE', balancoData.passivoCirculante, balancoData.ativoTotal > 0 ? (balancoData.passivoCirculante / balancoData.ativoTotal) * 100 : 0)}
-              ${bpRow('PASSIVO NÃO CIRCULANTE', balancoData.passivoNaoCirculante, balancoData.ativoTotal > 0 ? (balancoData.passivoNaoCirculante / balancoData.ativoTotal) * 100 : 0)}
-              ${bpRow(balancoData.patrimonioLiquido < 0 ? 'PATRIMÔNIO LÍQUIDO (Passivo a Descoberto)' : 'PATRIMÔNIO LÍQUIDO', balancoData.patrimonioLiquido, balancoData.ativoTotal > 0 ? (balancoData.patrimonioLiquido / balancoData.ativoTotal) * 100 : 0)}
-              ${bpRow('PASSIVO + PL TOTAL', balancoData.ativoTotal, 100, false, true)}
-            </tbody>
-          </table>
+        <div class="pdf-section-header" style="page-break-inside: avoid; break-inside: avoid;">
+          ${secTitle('3', 'BALANÇO PATRIMONIAL')}
+          <p>O balanço patrimonial fotografa a posição financeira da empresa, demonstrando a composição dos recursos e suas fontes de financiamento.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+            <table style="border-radius:8px;overflow:hidden;border:1px solid #E5E7EB;">
+              <thead>
+                <tr style="background:#1E2A4A;">
+                  <th style="padding:8px 12px;text-align:left;font-size:12px;color:white;font-weight:700;">ATIVO</th>
+                  <th style="padding:8px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">Valor</th>
+                  <th style="padding:8px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">%</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${bpRow('ATIVO CIRCULANTE', balancoData.ativoCirculante, balancoData.ativoTotal > 0 ? (balancoData.ativoCirculante / balancoData.ativoTotal) * 100 : 0)}
+                ${bpRow('ATIVO NÃO CIRCULANTE', balancoData.ativoNaoCirculante, balancoData.ativoTotal > 0 ? (balancoData.ativoNaoCirculante / balancoData.ativoTotal) * 100 : 0)}
+                ${bpRow('ATIVO TOTAL', balancoData.ativoTotal, 100, false, true)}
+              </tbody>
+            </table>
+            <table style="border-radius:8px;overflow:hidden;border:1px solid #E5E7EB;">
+              <thead>
+                <tr style="background:#2D4A8A;">
+                  <th style="padding:8px 12px;text-align:left;font-size:12px;color:white;font-weight:700;">PASSIVO + PL</th>
+                  <th style="padding:8px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">Valor</th>
+                  <th style="padding:8px 12px;text-align:right;font-size:12px;color:white;font-weight:700;">%</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${bpRow('PASSIVO CIRCULANTE', balancoData.passivoCirculante, balancoData.ativoTotal > 0 ? (balancoData.passivoCirculante / balancoData.ativoTotal) * 100 : 0)}
+                ${bpRow('PASSIVO NÃO CIRCULANTE', balancoData.passivoNaoCirculante, balancoData.ativoTotal > 0 ? (balancoData.passivoNaoCirculante / balancoData.ativoTotal) * 100 : 0)}
+                ${bpRow(balancoData.patrimonioLiquido < 0 ? 'PATRIMÔNIO LÍQUIDO (Passivo a Descoberto)' : 'PATRIMÔNIO LÍQUIDO', balancoData.patrimonioLiquido, balancoData.ativoTotal > 0 ? (balancoData.patrimonioLiquido / balancoData.ativoTotal) * 100 : 0)}
+                ${bpRow('PASSIVO + PL TOTAL', balancoData.ativoTotal, 100, false, true)}
+              </tbody>
+            </table>
+          </div>
         </div>
         ${chartBP || chartCap ? `
         <div style="display:flex;gap:16px;margin-bottom:20px;justify-content:center;align-items:flex-start;">
@@ -1909,9 +1915,11 @@ const Resultado = () => {
       </div>
 
       <div class="page">
-        ${secTitle('5', 'PONTOS FORTES E PONTOS DE ATENÇÃO')}
-        <div style="font-size:15px;font-weight:700;color:#16A34A;margin-bottom:12px;">✅ Pontos Fortes</div>
-        ${aiFortes.map((p) => insightCard('●', escapeHtml(p.titulo), escapeHtml(p.descricao || p.titulo), true)).join('')}
+        <div class="pdf-section-header" style="page-break-inside: avoid; break-inside: avoid;">
+          ${secTitle('5', 'PONTOS FORTES E PONTOS DE ATENÇÃO')}
+          <div style="font-size:15px;font-weight:700;color:#16A34A;margin-bottom:12px;">✅ Pontos Fortes</div>
+          ${aiFortes.map((p) => insightCard('●', escapeHtml(p.titulo), escapeHtml(p.descricao || p.titulo), true)).join('')}
+        </div>
         <div style="font-size:15px;font-weight:700;color:#D97706;margin:20px 0 12px;">⚠️ Pontos de Atenção</div>
         ${aiAtencao.map((p) => insightCard('▲', escapeHtml(p.titulo), escapeHtml(p.descricao || p.titulo), false)).join('')}
         ${rodape(6)}
@@ -1985,8 +1993,8 @@ const Resultado = () => {
 
       const opt = {
         margin: [10, 10, 10, 10],
-        filename: `analise-financeira-${new Date().toISOString().split('T')[0]}.pdf`,
-        image: { type: 'jpeg' as const, quality: 0.98 },
+        filename: `relatorio-procont-${new Date().toISOString().split("T")[0]}.pdf`,
+        image: { type: "jpeg" as const, quality: 0.98 },
         html2canvas: {
           scale: 2,
           useCORS: true,
@@ -1997,14 +2005,12 @@ const Resultado = () => {
         jsPDF: { unit: "mm", format: "a4", orientation: "portrait" as const },
         pagebreak: {
           mode: ["css", "legacy"],
-          before: ".pdf-page-break-before",
-          after: ".pdf-page-break-after",
           avoid: [
             ".pdf-section",
+            ".pdf-section-header",
             ".pdf-metric-card",
             ".pdf-metrics-grid",
             ".pdf-insight",
-            ".pdf-footer",
             "li",
             "tr",
           ],
