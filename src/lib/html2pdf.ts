@@ -49,17 +49,8 @@ class Html2PdfBuilder {
 
     const [mt, mr, mb, ml] = normalizeMargin(margin);
 
-    const canvas = await html2canvas(this.element, {
-      scale: 2,
-      useCORS: true,
-      logging: false,
-      backgroundColor: "#ffffff",
-      ...h2cOpts,
-    });
-
     const imgType = (image.type || "jpeg").toLowerCase();
     const mime = imgType === "png" ? "image/png" : "image/jpeg";
-    const imgData = canvas.toDataURL(mime, image.quality ?? 0.95);
 
     const orientation = jsPDFOpts.orientation ?? "portrait";
     const pdf = new jsPDF({
@@ -73,20 +64,32 @@ class Html2PdfBuilder {
     const contentW = pageW - ml - mr;
     const contentH = pageH - mt - mb;
 
-    // Scale the canvas so its width fits contentW in mm.
-    const imgWmm = contentW;
-    const imgHmm = (canvas.height * imgWmm) / canvas.width;
+    const renderCanvas = (el: HTMLElement) => html2canvas(el, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      backgroundColor: "#ffffff",
+      ...h2cOpts,
+    });
 
-    if (imgHmm <= contentH) {
-      pdf.addImage(imgData, imgType.toUpperCase(), ml, mt, imgWmm, imgHmm);
-    } else {
-      // Multi-page: slice by page height, drawing the same tall image shifted upward
-      // and clipping to the content rect on each page.
+    const addCanvasAsPage = async (canvas: HTMLCanvasElement, forceSinglePage = false) => {
+      const imgData = canvas.toDataURL(mime, image.quality ?? 0.95);
+      const imgWmm = contentW;
+      const imgHmm = (canvas.height * imgWmm) / canvas.width;
+
+      if (forceSinglePage || imgHmm <= contentH) {
+        const drawH = forceSinglePage ? Math.min(imgHmm, contentH) : imgHmm;
+        const drawW = forceSinglePage && imgHmm > contentH ? (canvas.width * drawH) / canvas.height : imgWmm;
+        const drawX = ml + (contentW - drawW) / 2;
+        pdf.addImage(imgData, imgType.toUpperCase(), drawX, mt, drawW, drawH);
+        return;
+      }
+
+      // Multi-page fallback: slice only when no explicit page elements exist.
       let renderedHmm = 0;
       while (renderedHmm < imgHmm) {
         const remaining = imgHmm - renderedHmm;
         const pageChunk = Math.min(contentH, remaining);
-        // jsPDF supports clipping via rect; use a temp canvas slice instead for reliability.
         const sliceCanvas = document.createElement("canvas");
         const pxPerMm = canvas.width / imgWmm;
         sliceCanvas.width = canvas.width;
@@ -111,7 +114,28 @@ class Html2PdfBuilder {
         renderedHmm += pageChunk;
         if (renderedHmm < imgHmm) pdf.addPage();
       }
+    };
+
+    const explicitPages = Array.from(this.element.children).filter(
+      (child): child is HTMLElement =>
+        child instanceof HTMLElement &&
+        (child.classList.contains("page") || child.hasAttribute("data-pdf-page")),
+    );
+
+    if (explicitPages.length > 0) {
+      for (let i = 0; i < explicitPages.length; i++) {
+        if (i > 0) pdf.addPage();
+        const canvas = await renderCanvas(explicitPages[i]);
+        await addCanvasAsPage(canvas, true);
+      }
+      pdf.save(filename);
+      return;
     }
+
+    const canvas = await renderCanvas(this.element);
+
+    // Scale the canvas so its width fits contentW in mm.
+    await addCanvasAsPage(canvas);
 
     pdf.save(filename);
   }
