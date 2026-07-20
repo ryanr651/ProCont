@@ -4,59 +4,72 @@ import { AppHeader } from "@/components/AppHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Check, Crown, Zap, Star, Loader2, ExternalLink } from "lucide-react";
+import { Check, X, Crown, Star, Loader2, ExternalLink } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { PLAN_PRICE_IDS } from "@/config/plans";
 
 const PLANS = {
-  monthly: {
-    priceId: "price_1TE6kzFAXSHGgoPGDmLOKR2w",
-    label: "Mensal",
-    price: 99.90,
-    perMonth: 99.90,
-    interval: "mês",
-    discount: null,
+  basico: {
+    priceId: PLAN_PRICE_IDS.basico,
+    nome: "Básico",
+    preco: 250,
+    maxEmpresas: 5,
+    destaque: false,
+    features: [
+      "Até 5 empresas",
+      "DRE, Balanço e Balancete",
+      "Análises com IA",
+      "Dashboard de indicadores",
+      "Exportação PDF e PPTX",
+    ],
+    bloqueadas: [
+      "Ferramenta de Faturamento",
+      "Simulador de Situações",
+      "Link para Cliente",
+      "Whitelabel / Personalização",
+    ],
   },
-  quarterly: {
-    priceId: "price_1TEF3wFAXSHGgoPGO64QLMk7",
-    label: "Trimestral",
-    price: 284.70,
-    perMonth: 94.90,
-    interval: "trimestre",
-    discount: "5%",
+  intermediario: {
+    priceId: PLAN_PRICE_IDS.intermediario,
+    nome: "Intermediário",
+    preco: 400,
+    maxEmpresas: 10,
+    destaque: true,
+    features: [
+      "Até 10 empresas",
+      "Tudo do plano Básico",
+      "Ferramenta de Faturamento",
+      "Simulador de Situações",
+    ],
+    bloqueadas: ["Link para Cliente", "Whitelabel / Personalização"],
   },
-  yearly: {
-    priceId: "price_1TE6m8FAXSHGgoPGM7LHE708",
-    label: "Anual",
-    price: 1078.92,
-    perMonth: 89.91,
-    interval: "ano",
-    discount: "10%",
+  premium: {
+    priceId: PLAN_PRICE_IDS.premium,
+    nome: "Premium",
+    preco: 550,
+    maxEmpresas: 20,
+    destaque: false,
+    features: [
+      "Até 20 empresas",
+      "Tudo do plano Intermediário",
+      "Link para Cliente",
+      "Whitelabel / Personalização",
+      "Suporte prioritário",
+    ],
+    bloqueadas: [] as string[],
   },
 };
 
 type PlanKey = keyof typeof PLANS;
 
-const FEATURES = [
-  "Upload ilimitado de DRE, Balanço e Balancete",
-  "Classificação automática por IA",
-  "Dashboard com indicadores financeiros",
-  "Análise Inteligente com IA",
-  "Simulador Financeiro IA",
-  "Exportação em PPTX profissional",
-  "Comparativo de períodos",
-  "Gestão de múltiplas empresas",
-  "Gerenciamento de usuários",
-  "Suporte prioritário",
-];
-
 export default function Planos() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [selectedPlan, setSelectedPlan] = useState<PlanKey>("quarterly");
   const [loading, setLoading] = useState(false);
+  const [loadingKey, setLoadingKey] = useState<PlanKey | null>(null);
   const [checkingSubscription, setCheckingSubscription] = useState(true);
   const [subscription, setSubscription] = useState<{
     subscribed: boolean;
@@ -105,6 +118,7 @@ export default function Planos() {
       return;
     }
     setLoading(true);
+    setLoadingKey(planKey);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error("Sessão expirada. Faça login novamente.");
@@ -121,6 +135,7 @@ export default function Planos() {
       toast.error(e.message || "Erro ao iniciar checkout");
     } finally {
       setLoading(false);
+      setLoadingKey(null);
     }
   };
 
@@ -187,7 +202,7 @@ export default function Planos() {
                 <div>
                   <p className="font-semibold text-lg flex items-center gap-2">
                     <Star className="w-5 h-5 text-primary" />
-                    Plano {PLANS[activePlanKey].label} ativo
+                    Plano {PLANS[activePlanKey].nome} ativo
                   </p>
                   {subscription?.subscription_end && (
                     <p className="text-sm text-muted-foreground mt-1">
@@ -205,94 +220,100 @@ export default function Planos() {
           </div>
         )}
 
-        {/* Billing toggle */}
-        <div className="flex justify-center mb-10">
-          <div className="inline-flex bg-muted rounded-xl p-1 gap-1">
-            {(Object.keys(PLANS) as PlanKey[]).map((key) => (
-              <button
+        {/* Plans grid */}
+        <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto">
+          {(Object.keys(PLANS) as PlanKey[]).map((key) => {
+            const plan = PLANS[key];
+            const isActive = activePlanKey === key;
+            return (
+              <Card
                 key={key}
-                onClick={() => setSelectedPlan(key)}
-                className={`px-5 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                  selectedPlan === key
-                    ? "bg-primary text-primary-foreground shadow-lg"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
+                className={`relative overflow-hidden flex flex-col ${
+                  plan.destaque
+                    ? "border-primary/60 shadow-xl scale-[1.02]"
+                    : "border-border"
+                } ${isActive ? "ring-2 ring-primary" : ""}`}
               >
-                {PLANS[key].label}
-                {PLANS[key].discount && (
-                  <span className="ml-1.5 text-xs opacity-80">-{PLANS[key].discount}</span>
+                {plan.destaque && (
+                  <div className="absolute top-0 right-0 bg-primary text-primary-foreground text-xs font-semibold px-3 py-1 rounded-bl-lg">
+                    Mais popular
+                  </div>
                 )}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Price card */}
-        <div className="max-w-lg mx-auto">
-          <Card className="relative overflow-hidden border-primary/30">
-            {/* Glow */}
-            <div className="absolute -top-24 -right-24 w-48 h-48 bg-primary/20 rounded-full blur-3xl" />
-            <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-secondary/20 rounded-full blur-3xl" />
-
-            <CardHeader className="relative text-center pb-2">
-              <div className="flex items-center justify-center gap-2 mb-2">
-                <Zap className="w-5 h-5 text-primary" />
-                <CardTitle className="text-2xl font-display">KlarCont</CardTitle>
-              </div>
-              <div className="mt-4">
-                <span className="text-5xl font-bold">
-                  R$ {PLANS[selectedPlan].perMonth.toFixed(2).replace(".", ",")}
-                </span>
-                <span className="text-muted-foreground">/mês</span>
-              </div>
-              {selectedPlan !== "monthly" && (
-                <p className="text-sm text-muted-foreground mt-2">
-                  Cobrado R$ {PLANS[selectedPlan].price.toFixed(2).replace(".", ",")} por{" "}
-                  {PLANS[selectedPlan].interval}
-                </p>
-              )}
-              {PLANS[selectedPlan].discount && (
-                <Badge className="mt-3 bg-primary/20 text-primary border-primary/30">
-                  Economia de {PLANS[selectedPlan].discount}
-                </Badge>
-              )}
-            </CardHeader>
-
-            <CardContent className="relative pt-6">
-              <ul className="space-y-3 mb-8">
-                {FEATURES.map((feature) => (
-                  <li key={feature} className="flex items-start gap-3">
-                    <Check className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-                    <span className="text-sm">{feature}</span>
-                  </li>
-                ))}
-              </ul>
-
-              {checkingSubscription ? (
-                <Button className="w-full" disabled>
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                  Verificando...
-                </Button>
-              ) : activePlanKey === selectedPlan ? (
-                <Button className="w-full" variant="outline" onClick={handleManageSubscription} disabled={loading}>
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                  Plano atual — Gerenciar
-                </Button>
-              ) : (
-                <Button
-                  className="w-full bg-gradient-to-r from-primary to-accent hover:opacity-90 text-primary-foreground"
-                  size="lg"
-                  onClick={() => handleCheckout(selectedPlan)}
-                  disabled={loading}
-                >
-                  {loading ? (
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                  ) : null}
-                  {isSubscribed ? "Alterar plano" : "Assinar agora"}
-                </Button>
-              )}
-            </CardContent>
-          </Card>
+                <CardHeader className="pb-4">
+                  <CardTitle className="text-2xl font-display">{plan.nome}</CardTitle>
+                  <div className="mt-3">
+                    <span className="text-4xl font-bold">
+                      R$ {plan.preco.toFixed(2).replace(".", ",")}
+                    </span>
+                    <span className="text-muted-foreground">/mês</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Até {plan.maxEmpresas} empresas
+                  </p>
+                </CardHeader>
+                <CardContent className="flex flex-col flex-1">
+                  <ul className="space-y-2.5 mb-4">
+                    {plan.features.map((f) => (
+                      <li key={f} className="flex items-start gap-2 text-sm">
+                        <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                        <span>{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {plan.bloqueadas.length > 0 && (
+                    <ul className="space-y-2.5 mb-6">
+                      {plan.bloqueadas.map((f) => (
+                        <li
+                          key={f}
+                          className="flex items-start gap-2 text-sm text-muted-foreground/70"
+                        >
+                          <X className="w-4 h-4 shrink-0 mt-0.5" />
+                          <span className="line-through">{f}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <div className="mt-auto pt-2">
+                    {checkingSubscription ? (
+                      <Button className="w-full" disabled>
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                        Verificando...
+                      </Button>
+                    ) : isActive ? (
+                      <Button
+                        className="w-full"
+                        variant="outline"
+                        onClick={handleManageSubscription}
+                        disabled={loading}
+                      >
+                        {loading && loadingKey === null ? (
+                          <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                        ) : null}
+                        Plano atual — Gerenciar
+                      </Button>
+                    ) : (
+                      <Button
+                        className={`w-full ${
+                          plan.destaque
+                            ? "bg-gradient-to-r from-primary to-accent hover:opacity-90 text-primary-foreground"
+                            : ""
+                        }`}
+                        variant={plan.destaque ? "default" : "outline"}
+                        size="lg"
+                        onClick={() => handleCheckout(key)}
+                        disabled={loading}
+                      >
+                        {loadingKey === key ? (
+                          <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                        ) : null}
+                        {isSubscribed ? "Alterar plano" : "Assinar agora"}
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       </div>
     </div>
