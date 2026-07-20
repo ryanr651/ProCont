@@ -1,5 +1,14 @@
 project_id = "nvpzjobotxvhpnedgvml"
 
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.setup-stripe-plans]
+verify_jwt = false
+
+[functions.create-test-users]
+verify_jwt = false
+
 [functions.analyze-financials]
 verify_jwt = false
 
