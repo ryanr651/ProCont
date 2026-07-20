@@ -84,10 +84,29 @@ serve(async (req) => {
       logStep("No active subscription found");
     }
 
+    const PRICE_TO_PLAN: Record<string, string> = {
+      [Deno.env.get("STRIPE_PRICE_BASICO") ?? ""]: "basico",
+      [Deno.env.get("STRIPE_PRICE_INTERMEDIARIO") ?? ""]: "intermediario",
+      [Deno.env.get("STRIPE_PRICE_PREMIUM") ?? ""]: "premium",
+    };
+    const plano = hasActiveSub ? (PRICE_TO_PLAN[priceId ?? ""] ?? "basico") : "sem_plano";
+
+    await supabaseClient
+      .from("profiles")
+      .update({
+        plano,
+        subscription_status: hasActiveSub ? "active" : "inactive",
+        stripe_customer_id: customerId,
+        subscription_end: subscriptionEnd,
+      })
+      .eq("user_id", user.id);
+    logStep("Profile updated", { plano });
+
     return new Response(JSON.stringify({
       subscribed: hasActiveSub,
       price_id: priceId,
       subscription_end: subscriptionEnd,
+      plano,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
