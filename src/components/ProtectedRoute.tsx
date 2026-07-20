@@ -2,17 +2,21 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranding } from "@/contexts/BrandingContext";
 import { Loader2 } from "lucide-react";
+import { usePlan } from "@/hooks/usePlan";
+import { PlanBlocker } from "@/components/PlanBlocker";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   masterOnly?: boolean;
+  allowWithoutPlan?: boolean;
 }
 
-export function ProtectedRoute({ children, masterOnly }: ProtectedRouteProps) {
+export function ProtectedRoute({ children, masterOnly, allowWithoutPlan }: ProtectedRouteProps) {
   const { user, loading: authLoading } = useAuth();
   const { userRole, loading: brandingLoading, isMaster } = useBranding();
+  const { isPago, loading: planLoading } = usePlan();
 
-  if (authLoading || brandingLoading) {
+  if (authLoading || brandingLoading || planLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -42,6 +46,10 @@ export function ProtectedRoute({ children, masterOnly }: ProtectedRouteProps) {
 
   if (masterOnly && !isMaster) {
     return <Navigate to="/upload" replace />;
+  }
+
+  if (!allowWithoutPlan && !isPago) {
+    return <PlanBlocker />;
   }
 
   return <>{children}</>;
