@@ -12,7 +12,7 @@ import { PLAN_PRICE_IDS } from "@/config/plans";
 
 const PLANS = {
   basico: {
-    priceId: PLAN_PRICE_IDS.basico,
+    priceId: PLAN_PRICE_IDS.basico.priceId,
     nome: "Básico",
     preco: 250,
     maxEmpresas: 5,
@@ -32,7 +32,7 @@ const PLANS = {
     ],
   },
   intermediario: {
-    priceId: PLAN_PRICE_IDS.intermediario,
+    priceId: PLAN_PRICE_IDS.intermediario.priceId,
     nome: "Intermediário",
     preco: 400,
     maxEmpresas: 10,
@@ -46,7 +46,7 @@ const PLANS = {
     bloqueadas: ["Link para Cliente", "Whitelabel / Personalização"],
   },
   premium: {
-    priceId: PLAN_PRICE_IDS.premium,
+    priceId: PLAN_PRICE_IDS.premium.priceId,
     nome: "Premium",
     preco: 550,
     maxEmpresas: 20,
