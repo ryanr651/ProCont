@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranding } from "@/contexts/BrandingContext";
+import { usePlan } from "@/hooks/usePlan";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { AppHeader } from "@/components/AppHeader";
@@ -14,6 +15,7 @@ import { formatCNPJ, formatPhone, isValidEmail } from "@/lib/cnpjMask";
 const PerfilEmpresa = () => {
   const { user } = useAuth();
   const { branding, isMaster, refetchBranding } = useBranding();
+  const { temWhitelabel, plano } = usePlan();
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -33,6 +35,15 @@ const PerfilEmpresa = () => {
   useEffect(() => {
     if (!isMaster) {
       navigate("/upload");
+      return;
+    }
+    if (!temWhitelabel) {
+      toast({
+        title: "Recurso indisponível",
+        description: `Personalização (White Label) está disponível apenas no plano Premium. Seu plano atual: ${plano}.`,
+        variant: "destructive",
+      });
+      navigate("/planos");
       return;
     }
     if (branding) {
