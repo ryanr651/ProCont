@@ -218,6 +218,7 @@ const Resultado = () => {
   const empresaIdParam = searchParams.get("empresa_id");
   const { user, signOut } = useAuth();
   const { branding } = useBranding();
+  const { temFaturamento, temSimulador, temLinkCliente } = usePlan();
 
   useEffect(() => {
     if (!user) {
@@ -2151,7 +2152,7 @@ const Resultado = () => {
         )}
 
         {/* Faturamento Analysis Section */}
-        {faturamentoData.length > 0 && (
+        {temFaturamento && faturamentoData.length > 0 && (
           <FaturamentoAnalysis data={faturamentoData} />
         )}
 
@@ -2205,7 +2206,7 @@ const Resultado = () => {
         </section>
 
         {/* Financial Chat Section */}
-        {dreData && balancoData && (
+        {temSimulador && dreData && balancoData && (
           <section className="mb-12">
             <h2 className="font-display text-2xl font-bold mb-6">🤖 Simulador de Cenários</h2>
             <FinancialChatBox
@@ -2258,7 +2259,7 @@ const Resultado = () => {
                 </>
               )}
             </Button>
-            {empresaIdParam && (
+            {temLinkCliente && empresaIdParam && (
               <Button
                 variant="outline"
                 size="xl"
