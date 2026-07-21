@@ -1,9 +1,9 @@
 // TODO: Substitua estes IDs pelos priceIds reais retornados pela Edge Function
 // `setup-stripe-plans` (execute-a uma vez no Stripe LIVE).
 export const PLAN_PRICE_IDS = {
-  basico: "price_REPLACE_BASICO",
-  intermediario: "price_REPLACE_INTERMEDIARIO",
-  premium: "price_REPLACE_PREMIUM",
+  basico: { productId: "prod_UvSrejlgHb7M7R", priceId: "price_1TvbwAFZbI5npYGNwTJLML3I" },
+  intermediario: { productId: "prod_UvSreDuU97sJRw", priceId: "price_1TvbwAFZbI5npYGNigHCZVYA" },
+  premium: { productId: "prod_UvSrlF4JjARz5Z", priceId: "price_1TvbwBFZbI5npYGNT2SVJnba" },
 } as const;
 
 export type PlanType = "sem_plano" | "basico" | "intermediario" | "premium";
