@@ -18,6 +18,7 @@ import { FaturamentoAnalysis, type FaturamentoRow } from "@/components/Faturamen
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranding } from "@/contexts/BrandingContext";
+import { usePlan } from "@/hooks/usePlan";
 
 import html2pdf from "@/lib/html2pdf";
 import procontIcon from "@/assets/klarcont-icon.png";
@@ -217,6 +218,7 @@ const Resultado = () => {
   const empresaIdParam = searchParams.get("empresa_id");
   const { user, signOut } = useAuth();
   const { branding } = useBranding();
+  const { temFaturamento, temSimulador, temLinkCliente } = usePlan();
 
   useEffect(() => {
     if (!user) {
@@ -2150,7 +2152,7 @@ const Resultado = () => {
         )}
 
         {/* Faturamento Analysis Section */}
-        {faturamentoData.length > 0 && (
+        {temFaturamento && faturamentoData.length > 0 && (
           <FaturamentoAnalysis data={faturamentoData} />
         )}
 
@@ -2204,7 +2206,7 @@ const Resultado = () => {
         </section>
 
         {/* Financial Chat Section */}
-        {dreData && balancoData && (
+        {temSimulador && dreData && balancoData && (
           <section className="mb-12">
             <h2 className="font-display text-2xl font-bold mb-6">🤖 Simulador de Cenários</h2>
             <FinancialChatBox
@@ -2257,7 +2259,7 @@ const Resultado = () => {
                 </>
               )}
             </Button>
-            {empresaIdParam && (
+            {temLinkCliente && empresaIdParam && (
               <Button
                 variant="outline"
                 size="xl"
