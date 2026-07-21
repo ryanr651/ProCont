@@ -18,6 +18,7 @@ import { FaturamentoAnalysis, type FaturamentoRow } from "@/components/Faturamen
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranding } from "@/contexts/BrandingContext";
+import { usePlan } from "@/hooks/usePlan";
 
 import html2pdf from "@/lib/html2pdf";
 import procontIcon from "@/assets/klarcont-icon.png";
