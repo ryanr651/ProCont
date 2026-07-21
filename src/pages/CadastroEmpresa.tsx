@@ -18,6 +18,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { formatCNPJ, isValidCNPJ } from "@/lib/cnpjMask";
 import { Building2, Save, X, Loader2 } from "lucide-react";
+import { usePlan } from "@/hooks/usePlan";
 
 const regimesTributarios = [
   "Simples Nacional",
@@ -32,6 +33,7 @@ const CadastroEmpresa = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const { maxEmpresas, plano } = usePlan();
 
   const [formData, setFormData] = useState({
     nome: "",
@@ -90,6 +92,23 @@ const CadastroEmpresa = () => {
     setLoading(true);
 
     try {
+      // Enforce plan limit
+      const { count, error: countError } = await supabase
+        .from("empresas")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id);
+      if (countError) throw countError;
+      if ((count ?? 0) >= maxEmpresas) {
+        toast({
+          title: "Limite do plano atingido",
+          description: `Seu plano (${plano}) permite até ${maxEmpresas} empresas. Faça upgrade para cadastrar mais.`,
+          variant: "destructive",
+        });
+        setLoading(false);
+        navigate("/planos");
+        return;
+      }
+
       const { error } = await supabase.from("empresas").insert({
         nome: formData.nome.trim(),
         cnpj: formData.cnpj,
